@@ -1,0 +1,43 @@
+services:
+  # 1. VERİTABANI (PostgreSQL)
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: asana_postgres
+    environment:
+      POSTGRES_USER: asana_user
+      POSTGRES_PASSWORD: asana_password
+      POSTGRES_DB: asana_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. BACKEND (Node.js)
+  backend:
+    build: ./backend
+    container_name: asana_backend
+    ports:
+      - "5001:5000"
+    environment:
+      - DATABASE_URL=postgresql://asana_user:asana_password@postgres_db:5432/asana_db
+      - PORT=5000
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - postgres_db
+
+  # 3. FRONTEND (React)
+  frontend:
+    build: ./frontend
+    container_name: asana_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

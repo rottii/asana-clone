@@ -1,0 +1,353 @@
+.portfolio-timeline-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: var(--bg-primary);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.pt-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  border-bottom: 1px solid #E8ECEE;
+  background-color: var(--bg-primary);
+}
+
+.pt-toolbar-left, .pt-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pt-add-work-btn {
+  background-color: var(--bg-primary);
+  border: 1px solid #E8ECEE;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.pt-add-work-btn:hover {
+  background-color: var(--bg-secondary);
+}
+
+.pt-today-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.pt-toolbar-btn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pt-toolbar-btn:hover {
+  color: var(--text-primary);
+}
+
+.pt-main-area {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Left Pane (Table) */
+.pt-left-pane {
+  width: 450px;
+  min-width: 450px;
+  border-right: 1px solid #E8ECEE;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-primary);
+  z-index: 10;
+  overflow-y: auto;
+}
+
+.pt-header-row {
+  display: flex;
+  border-bottom: 1px solid #E8ECEE;
+  height: 60px; /* To match timeline headers */
+  align-items: flex-end;
+  padding-bottom: 8px;
+  position: sticky;
+  top: 0;
+  background-color: var(--bg-primary);
+  z-index: 5;
+}
+
+.pt-col-header {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  padding: 0 16px;
+}
+
+.pt-col-name { flex: 2; }
+.pt-col-owner { flex: 1; }
+.pt-col-status { flex: 1; }
+
+.pt-project-row {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  border-bottom: 1px solid #E8ECEE;
+  background-color: var(--bg-primary);
+}
+
+.pt-project-row:hover {
+  background-color: var(--bg-secondary);
+}
+
+.pt-cell {
+  padding: 0 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pt-project-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.pt-owner-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #FBCFE8;
+  color: #831843;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.pt-status-badge {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.pt-status-none {
+  color: var(--text-secondary);
+  background-color: var(--bg-tertiary);
+}
+
+.pt-status-green {
+  color: #21A88A;
+  background-color: #E8F5E9;
+}
+
+/* Right Pane (Timeline) */
+.pt-right-pane {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-secondary);
+  position: relative;
+}
+
+.pt-timeline-header-container {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #E8ECEE;
+  background-color: var(--bg-primary);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.pt-quarters-row {
+  display: flex;
+  height: 30px;
+  border-bottom: 1px solid #E8ECEE;
+}
+
+.pt-quarter-cell {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+  border-right: 1px solid #E8ECEE;
+  box-sizing: border-box;
+}
+
+.pt-months-row {
+  display: flex;
+  height: 30px;
+}
+
+.pt-month-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-primary);
+  border-right: 1px solid #E8ECEE;
+  box-sizing: border-box;
+}
+
+.pt-timeline-grid-container {
+  position: relative;
+  flex: 1;
+}
+
+.pt-grid-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  pointer-events: none;
+}
+
+.pt-grid-line {
+  border-right: 1px solid #E8ECEE;
+  box-sizing: border-box;
+}
+
+.pt-timeline-row {
+  position: relative;
+  height: 48px;
+  border-bottom: 1px solid #E8ECEE;
+}
+
+.pt-project-bar {
+  position: absolute;
+  top: 8px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  gap: 8px;
+  box-sizing: border-box;
+  overflow: visible;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  cursor: pointer;
+  user-select: none;
+}
+
+.pt-project-bar.dragging {
+  z-index: 10;
+}
+
+.pt-project-bar:hover {
+  filter: brightness(0.95);
+}
+
+.pt-project-bar-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pt-drag-handle-left, .pt-drag-handle-right {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+
+.pt-drag-handle-left {
+  left: 0;
+}
+
+.pt-drag-handle-right {
+  right: 0;
+}
+
+.pt-drag-tooltip {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--text-primary);
+  color: #FFFFFF;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 100;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.pt-drag-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -4px;
+  border-width: 4px;
+  border-style: solid;
+  border-color: var(--text-primary) transparent transparent transparent;
+}
+
+.pt-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: #4573D2;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.pt-today-indicator {
+  position: absolute;
+  top: -4px;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #4573D2;
+}

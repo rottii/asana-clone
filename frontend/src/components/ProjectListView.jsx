@@ -1,0 +1,954 @@
+import React, { useState, useEffect, useRef } from 'react'
+import AddFieldModal from './AddFieldModal'
+
+export default function ProjectListView({
+  selectedProject,
+  groupedSections,
+  isVirtualGrouping,
+  isReadOnly,
+  token,
+  lastInteractedSectionId,
+  setLastInteractedSectionId,
+  draggingTaskId,
+  setDraggingTaskId,
+  draggingSectionId,       // YENİ
+  setDraggingSectionId,    // YENİ
+  handleLiveSectionSwap,   // YENİ
+  handleFinalSectionMove,  // YENİ
+  handleLiveTaskSwap,
+  applyTaskFilter,
+  applyTaskSort,
+  handleSortOptionClick,
+  activeSort,
+  handleTaskUpdate,
+  handleGeneralDrop,
+  handleToggleTaskCompleteInline,
+  handleOpenPopoverInline,
+  formatFriendlyDate,
+  onTaskContextMenu,
+  onRenameSection,
+  onDeleteSection,
+  onOpenTaskPane,
+  syncProjectStates
+}) {
+  const [collapsedSections, setCollapsedSections] = useState({})
+  const [quickTaskInputs, setQuickTaskInputs] = useState({})
+  const [editingSectionId, setEditingSectionId] = useState(null)
+  const [editSectionNameValue, setEditSectionNameValue] = useState('')
+  const [openSectionMenuId, setOpenSectionMenuId] = useState(null)
+  const [showAddFieldMenu, setShowAddFieldMenu] = useState(false)
+  const [openCellMenuId, setOpenCellMenuId] = useState(null)
+  const [menuPosition, setMenuPosition] = useState('bottom')
+  const [editingFieldOptions, setEditingFieldOptions] = useState(false)
+
+  const handleOpenCellMenu = (e, menuId) => {
+    document.body.click();
+    e.stopPropagation();
+    const isOpen = openCellMenuId === menuId;
+    closeAllMenus();
+    if (!isOpen) {
+      if (e.clientY > window.innerHeight - 250) {
+        setMenuPosition('top');
+      } else {
+        setMenuPosition('bottom');
+      }
+      setOpenCellMenuId(menuId);
+    }
+  };
+  const [fieldTitle, setFieldTitle] = useState('Effort level');
+  
+  const [fieldOptionsList, setFieldOptionsList] = useState([]);
+  const [customFields, setCustomFields] = useState([]);
+
+  useEffect(() => {
+    if (selectedProject) {
+      if (selectedProject.customFieldSettings && Array.isArray(selectedProject.customFieldSettings)) {
+        setCustomFields(selectedProject.customFieldSettings);
+      } else {
+        setCustomFields([]);
+      }
+    }
+  }, [selectedProject]);
+
+  const handleSaveProjectSettings = async (updates) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(updates)
+      });
+      if (response.ok) {
+        const updatedProject = await response.json();
+        if (syncProjectStates) syncProjectStates(updatedProject);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const [isAddFieldModalOpen, setIsAddFieldModalOpen] = useState(false);
+  const [draggingOptionId, setDraggingOptionId] = useState(null);
+  const [hoveredColumnName, setHoveredColumnName] = useState(null);
+  const [openColumnMenuName, setOpenColumnMenuName] = useState(null);
+
+  const [editingTaskId, setEditingTaskId] = useState(null)
+  const [editTaskTitleValue, setEditTaskTitleValue] = useState('')
+  const [editCursorPos, setEditCursorPos] = useState(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (editingTaskId && inputRef.current && editCursorPos !== null) {
+      inputRef.current.focus();
+      // setTimeout is used to ensure the input has finished rendering and is visible
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.setSelectionRange(editCursorPos, editCursorPos);
+        }
+      }, 0);
+    }
+  }, [editingTaskId, editCursorPos]);
+
+  const closeAllMenus = () => {
+    setOpenSectionMenuId(null);
+    setShowAddFieldMenu(false);
+    setOpenCellMenuId(null);
+    setOpenColumnMenuName(null);
+  };
+
+  const [colWidths, setColWidths] = useState({
+    name: 300,
+    assignee: 150,
+    dueDate: 150
+  });
+  const [resizingCol, setResizingCol] = useState(null);
+  const resizeRef = useRef({ startX: 0, startWidth: 0 });
+
+  useEffect(() => {
+    if (!resizingCol) return;
+
+    const handleMouseMove = (e) => {
+      const delta = e.clientX - resizeRef.current.startX;
+      const newWidth = Math.max(50, resizeRef.current.startWidth + delta);
+      setColWidths(prev => ({ ...prev, [resizingCol]: newWidth }));
+    };
+
+    const handleMouseUp = () => {
+      setResizingCol(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingCol]);
+
+  const handleResizeStart = (e, colId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setResizingCol(colId);
+    resizeRef.current = { startX: e.clientX, startWidth: colWidths[colId] || 140 };
+  };
+
+  const [columnOrder, setColumnOrder] = useState(['assignee', 'dueDate']);
+  const [draggingColId, setDraggingColId] = useState(null);
+  const [hiddenFields, setHiddenFields] = useState([]);
+
+  useEffect(() => {
+    setColumnOrder(prev => {
+      const base = ['assignee', 'dueDate'].filter(f => !hiddenFields.includes(f));
+      const cfs = customFields.map(cf => cf.id);
+      const allExpected = [...base, ...cfs];
+      const newOrder = prev.filter(id => allExpected.includes(id));
+      const missing = allExpected.filter(id => !prev.includes(id));
+      if (missing.length > 0 || newOrder.length !== allExpected.length) {
+        return [...newOrder, ...missing];
+      }
+      return prev;
+    });
+  }, [customFields]);
+
+  const [dropTargetCol, setDropTargetCol] = useState({ id: null, position: null });
+
+  const handleColDragStart = (e, colId) => {
+    setDraggingColId(colId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleColDragOver = (e, targetColId) => {
+    e.preventDefault();
+    if (!draggingColId || draggingColId === targetColId) {
+      if (dropTargetCol.id) setDropTargetCol({ id: null, position: null });
+      return;
+    }
+    
+    const isLastCol = columnOrder[columnOrder.length - 1] === targetColId;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseX = e.clientX;
+    const isRightHalf = mouseX > rect.left + rect.width / 2;
+    
+    let newPos = 'left';
+    if (isLastCol && isRightHalf) {
+      newPos = 'right';
+    } else if (isRightHalf && !isLastCol) {
+      // If hovering right half of a column that is NOT the last, 
+      // we actually want to show the indicator on the LEFT edge of the NEXT column
+      const targetIndex = columnOrder.indexOf(targetColId);
+      const nextColId = columnOrder[targetIndex + 1];
+      if (nextColId && nextColId !== draggingColId) {
+        if (dropTargetCol.id !== nextColId || dropTargetCol.position !== 'left') {
+          setDropTargetCol({ id: nextColId, position: 'left' });
+        }
+        return;
+      }
+    }
+
+    if (dropTargetCol.id !== targetColId || dropTargetCol.position !== newPos) {
+      setDropTargetCol({ id: targetColId, position: newPos });
+    }
+  };
+
+  const handleColDrop = (e, targetColId) => {
+    e.preventDefault();
+    if (!draggingColId || !dropTargetCol.id) {
+      setDraggingColId(null);
+      setDropTargetCol({ id: null, position: null });
+      return;
+    }
+    setColumnOrder(prev => {
+      const newOrder = [...prev];
+      const fromIndex = newOrder.indexOf(draggingColId);
+      newOrder.splice(fromIndex, 1);
+      
+      let toIndex = newOrder.indexOf(dropTargetCol.id);
+      if (dropTargetCol.position === 'right') {
+        toIndex += 1;
+      }
+      newOrder.splice(toIndex, 0, draggingColId);
+      return newOrder;
+    });
+
+    setDraggingColId(null);
+    setDropTargetCol({ id: null, position: null });
+  };
+
+  const handleColDragEnd = () => {
+    setDraggingColId(null);
+    setDropTargetCol({ id: null, position: null });
+  };
+
+  useEffect(() => {
+    window.addEventListener('click', closeAllMenus);
+    return () => window.removeEventListener('click', closeAllMenus);
+  }, []);
+
+  const handleCreateQuickTask = async (sectionId) => {
+    const title = quickTaskInputs[sectionId];
+    if (isReadOnly || !title || !title.trim()) return;
+    try {
+      const response = await fetch('http://localhost:5001/api/projects/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ title: title.trim(), sectionId })
+      })
+      const data = await response.json()
+      if (response.ok) {
+        handleTaskUpdate(data.id, data, 'create', sectionId)
+        setQuickTaskInputs({ ...quickTaskInputs, [sectionId]: '' })
+      }
+    } catch (err) { console.error(err) }
+  }
+
+  const submitRename = (section) => {
+    if (onRenameSection && editSectionNameValue.trim() !== section.name) {
+      onRenameSection(section.id, editSectionNameValue);
+    }
+    setEditingSectionId(null);
+  };
+
+  const submitTaskRename = async (task, sectionId) => {
+    if (isReadOnly || !editTaskTitleValue.trim() || editTaskTitleValue.trim() === task.title) {
+      setEditingTaskId(null);
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ title: editTaskTitleValue.trim() })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        handleTaskUpdate(task.id, data, 'edit', sectionId);
+      }
+    } catch (err) { console.error(err); }
+    setEditingTaskId(null);
+  };
+
+  const handleTaskCustomFieldUpdate = async (taskId, sectionId, fieldId, value) => {
+    if (isReadOnly) return;
+    try {
+      const taskObj = selectedProject.sections.find(s => s.id === sectionId)?.tasks.find(t => t.id === taskId);
+      let currentCustomFields = {};
+      if (typeof taskObj?.customFields === 'string') {
+        try { currentCustomFields = JSON.parse(taskObj.customFields); } catch(e){}
+      } else if (taskObj?.customFields) {
+        currentCustomFields = taskObj.customFields;
+      }
+      const newCustomFields = { ...currentCustomFields, [fieldId]: value };
+
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ customFields: newCustomFields })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        handleTaskUpdate(taskId, data, 'edit', sectionId);
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  useEffect(() => {
+    const handleAddFieldModal = () => setIsAddFieldModalOpen(true);
+    window.addEventListener('openAddFieldModal', handleAddFieldModal);
+    return () => window.removeEventListener('openAddFieldModal', handleAddFieldModal);
+  }, []);
+
+
+  const handleDeleteField = (fieldTitleToDelete) => {
+    if (fieldTitleToDelete === 'Name' || fieldTitleToDelete === 'Assignee' || fieldTitleToDelete === 'Due date') {
+      return; 
+    }
+    
+    const newCustomFields = customFields.filter(cf => cf.title !== fieldTitleToDelete);
+    setCustomFields(newCustomFields);
+    handleSaveProjectSettings({ customFieldSettings: newCustomFields });
+    setEditingFieldOptions(false);
+    setOpenColumnMenuName(null);
+  };
+
+  const renderColumnDropdownMenu = (colName) => {
+    const titles = { name: 'Name', assignee: 'Assignee', dueDate: 'Due date' };
+    return (
+      <div style={styles.columnDropdownMenu} onClick={(e) => e.stopPropagation()}>
+        {(colName !== 'name' && colName !== 'assignee' && colName !== 'dueDate') && (
+          <button onClick={() => { 
+            const title = titles[colName] || colName;
+            setFieldTitle(title); 
+            const cf = customFields.find(c => c.title === title);
+            if (cf) setFieldOptionsList(cf.options || []);
+            setEditingFieldOptions(true); 
+            setOpenColumnMenuName(null); 
+          }} style={styles.dropdownItem}>✏️ Edit field</button>
+        )}
+      <button style={styles.dropdownItem}>⚯ Field access and permissions <span style={{float:'right'}}>{'>'}</span></button>
+      <div style={styles.menuDivider}></div>
+      <button style={styles.dropdownItem}>↑↓ Sort <span style={{float:'right'}}>{'>'}</span></button>
+      <button style={styles.dropdownItem}>≡ Filter</button>
+      <button style={styles.dropdownItem}>⊞ Group <span style={{float:'right'}}>{'>'}</span></button>
+      <div style={styles.menuDivider}></div>
+      <button onClick={() => { setShowAddFieldMenu(true); setOpenColumnMenuName(null); }} style={styles.dropdownItem}>+ Add column</button>
+      <button style={styles.dropdownItem}>↔ Move column <span style={{float:'right'}}>{'>'}</span></button>
+      <button style={styles.dropdownItem}>👁 Hide column</button>
+      <div style={styles.menuDivider}></div>
+      <button style={styles.dropdownItem}>Add rule to field</button>
+      <button style={styles.dropdownItem}>✨ AI auto-fill</button>
+      <div style={styles.menuDivider}></div>
+      {(colName !== 'name' && colName !== 'assignee' && colName !== 'dueDate') && (
+        <button onClick={(e) => { e.stopPropagation(); handleDeleteField(titles[colName] || colName); }} style={{...styles.dropdownItemDelete, padding: '0.5rem 0.75rem', marginTop: 0}}>🗑 Delete field</button>
+      )}
+    </div>
+    );
+  };
+
+  const handleDragStartOption = (e, id) => {
+    setDraggingOptionId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOverOption = (e, targetId) => {
+    e.preventDefault();
+    if (!draggingOptionId || draggingOptionId === targetId) return;
+    const sourceIndex = fieldOptionsList.findIndex(o => o.id === draggingOptionId);
+    const targetIndex = fieldOptionsList.findIndex(o => o.id === targetId);
+    const newList = [...fieldOptionsList];
+    const [removed] = newList.splice(sourceIndex, 1);
+    newList.splice(targetIndex, 0, removed);
+    setFieldOptionsList(newList);
+  };
+
+  const handleDragEndOption = () => {
+    setDraggingOptionId(null);
+  };
+
+  const handleAddOption = () => {
+    setFieldOptionsList([...fieldOptionsList, { id: Date.now().toString(), label: '', color: '#FDBA74', icon: '⌄' }]);
+  };
+
+  const handleRemoveOption = (id) => {
+    setFieldOptionsList(fieldOptionsList.filter(o => o.id !== id));
+  };
+
+  const handleOptionLabelChange = (id, newLabel) => {
+    setFieldOptionsList(fieldOptionsList.map(o => o.id === id ? { ...o, label: newLabel } : o));
+  };
+
+  return (
+    <div style={styles.listSpreadsheetWrapper}>
+      {editingFieldOptions && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)', fontWeight: '500' }}>✏️ Edit field</h2>
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>Created by Iboro, 8 Jul</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button style={{ padding: '0.3rem 0.6rem', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                  <span style={{ fontSize: '1rem' }}>👥</span> Manage access
+                </button>
+                <button onClick={() => setEditingFieldOptions(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>✕</button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Field title <span style={{ color: 'var(--accent-danger)' }}>*</span></label>
+                <input
+                  type="text"
+                  value={fieldTitle}
+                  onChange={(e) => setFieldTitle(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)', boxSizing: 'border-box', outlineColor: 'var(--accent-primary)' }}
+                />
+              </div>
+              <div style={{ width: '150px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Field type</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--text-secondary)', fontSize: '0.9rem', paddingTop: '0.4rem' }}>
+                  <span>⊖</span> Single-select
+                </div>
+              </div>
+            </div>
+
+            <button style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', padding: 0, fontSize: '0.85rem', cursor: 'pointer', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <span style={{ fontSize: '1rem' }}>+</span> Add description
+            </button>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Options <span style={{ color: 'var(--accent-danger)' }}>*</span></label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {fieldOptionsList.map((opt) => (
+                  <div
+                    key={opt.id}
+                    draggable
+                    onDragStart={(e) => handleDragStartOption(e, opt.id)}
+                    onDragOver={(e) => handleDragOverOption(e, opt.id)}
+                    onDragEnd={handleDragEndOption}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: draggingOptionId === opt.id ? 0.5 : 1, padding: '0.2rem 0' }}
+                  >
+                    <div style={{ cursor: 'grab', color: 'var(--text-tertiary)', padding: '0 0.2rem', display: 'flex', alignItems: 'center', userSelect: 'none', fontSize: '1.2rem' }}>⋮⋮</div>
+                    <input 
+                      type="color" 
+                      value={opt.color || '#E0E7FF'} 
+                      onChange={(e) => setFieldOptionsList(fieldOptionsList.map(o => o.id === opt.id ? { ...o, color: e.target.value } : o))} 
+                      style={{ width: 24, height: 24, border: 'none', padding: 0, backgroundColor: 'transparent', cursor: 'pointer', flexShrink: 0 }} 
+                      title="Choose color"
+                    />
+                    <input
+                      type="text"
+                      value={opt.label}
+                      onChange={(e) => handleOptionLabelChange(opt.id, e.target.value)}
+                      placeholder="Type an option name"
+                      style={{ flex: 1, border: 'none', outline: 'none', fontSize: '0.9rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' }}
+                    />
+                    <button onClick={() => handleRemoveOption(opt.id)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={handleAddOption} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', padding: 0, fontSize: '0.85rem', cursor: 'pointer', marginTop: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ fontSize: '1rem' }}>+</span> Add an option
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <input type="checkbox" style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                Add to My workspace's field library
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <input type="checkbox" defaultChecked style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                Notify collaborators when this field's value is changed
+              </label>
+            </div>
+
+            <div style={{ borderTop: '1px solid #E5E7EB', margin: '0 -1.5rem 1rem -1.5rem' }}></div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <button style={{ padding: '0.5rem 1rem', backgroundColor: 'transparent', color: '#EF4444', border: '1px solid #FCA5A5', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }} onClick={() => handleDeleteField(fieldTitle)}>Delete field</button>
+              <button style={{ padding: '0.5rem 1rem', backgroundColor: '#4F46E5', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }} onClick={() => { 
+
+                  const newCustomFields = customFields.map(cf => cf.title === fieldTitle ? { ...cf, options: fieldOptionsList } : cf);
+                  setCustomFields(newCustomFields);
+                  handleSaveProjectSettings({ customFieldSettings: newCustomFields });
+                  setEditingFieldOptions(false); 
+              }}>Save changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grid Tablo Başlık Sütunları */}
+      <div style={styles.listTableHeaderRow}>
+        <div 
+          style={{ ...styles.gridHeaderCell, width: colWidths.name, flexShrink: 0, paddingLeft: '3.5rem', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          onMouseEnter={() => setHoveredColumnName('name')}
+          onMouseLeave={() => setHoveredColumnName(null)}
+          onClick={() => handleSortOptionClick && handleSortOptionClick('Alphabetical')}
+        >
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, fontWeight: activeSort?.field === 'Alphabetical' ? '700' : '500' }}>
+            Name {activeSort?.field === 'Alphabetical' && (activeSort.direction === 'asc' ? '↑' : '↓')}
+          </span>
+          {(hoveredColumnName === 'name' || openColumnMenuName === 'name') && (
+            <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>▼</button>
+          )}
+          {openColumnMenuName === 'name' && renderColumnDropdownMenu('name')}
+          <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, 'name')} />
+        </div>
+        {columnOrder.map(colId => {
+          let title = '';
+          let menuName = colId;
+          
+          if (colId === 'assignee') title = 'Assignee';
+          else if (colId === 'dueDate') title = 'Due date';
+          else {
+            const cf = customFields.find(f => f.id === colId);
+            if (cf) {
+              title = cf.title;
+              menuName = cf.title;
+            } else {
+              return null;
+            }
+          }
+
+          return (
+            <div 
+              key={colId}
+              draggable
+              onDragStart={(e) => handleColDragStart(e, colId)}
+              onDragOver={(e) => handleColDragOver(e, colId)}
+              onDrop={(e) => handleColDrop(e, colId)}
+              onDragEnd={handleColDragEnd}
+              onClick={() => handleSortOptionClick && handleSortOptionClick(title)}
+              style={{ ...styles.gridHeaderCell, width: colWidths[colId] || 140, flexShrink: 0, position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: draggingColId === colId ? 0.5 : 1, cursor: draggingColId === colId ? 'grabbing' : 'pointer', boxShadow: dropTargetCol.id === colId ? (dropTargetCol.position === 'left' ? 'inset 3px 0 0 #4F46E5' : 'inset -3px 0 0 #4F46E5') : 'none' }}
+              onMouseEnter={() => setHoveredColumnName(menuName)}
+              onMouseLeave={() => setHoveredColumnName(null)}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, pointerEvents: 'none', fontWeight: activeSort?.field === title ? '700' : '500' }}>
+                {title} {activeSort?.field === title && (activeSort.direction === 'asc' ? '↑' : '↓')}
+              </span>
+              {(hoveredColumnName === menuName || openColumnMenuName === menuName) && (
+                <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === menuName; closeAllMenus(); if (!isOpen) setOpenColumnMenuName(menuName); }} style={styles.columnHeaderMenuBtn}>▼</button>
+              )}
+              {openColumnMenuName === menuName && renderColumnDropdownMenu(menuName)}
+              <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, colId)} />
+            </div>
+          );
+        })}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', flexShrink: 0, position: 'relative', borderBottom: '1px solid #E5E7EB' }}>
+          <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = showAddFieldMenu; closeAllMenus(); setShowAddFieldMenu(!isOpen); }} style={styles.addFieldButton} title="Add column">
+            +
+          </button>
+          {showAddFieldMenu && (
+            <div style={styles.addFieldMenu} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.addFieldMenuHeader}>Field types</div>
+              <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>▼</span> Single-select</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>▼</span> Multi-select</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>📅</span> Date</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>👤</span> People</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🔗</span> Reference</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>A</span> Text</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>#</span> Number</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ƒ(x)</span> Formula</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🆔</span> ID</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⏱️</span> Timer</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⏱️</span> Time tracking</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🔍</span> Rollup</button>
+              <div style={styles.addFieldMenuShowMore}>Show more</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bölümler ve Görevler Gövdesi */}
+      <div style={styles.listSpreadsheetBody}>
+        {(groupedSections || selectedProject.sections)?.map((section, idx) => {
+          const filteredTasks = groupedSections ? section.tasks : (applyTaskSort ? applyTaskSort(applyTaskFilter(section.tasks)) : applyTaskFilter(section.tasks))
+          const isCollapsed = collapsedSections[section.id]
+          const isEditing = editingSectionId === section.id
+
+          return (
+            <div
+              key={section.id}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                opacity: draggingSectionId === section.id ? 0.4 : 1
+              }}
+              onClickCapture={() => setLastInteractedSectionId(section.id)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (draggingSectionId && draggingSectionId !== section.id && !isVirtualGrouping) {
+                  const sortedSections = [...(selectedProject.sections || [])].sort((a, b) => a.order - b.order);
+                  handleLiveSectionSwap(draggingSectionId, section.id);
+                }
+              }}
+              onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
+            >
+            {/* BÖLÜM (SECTION) BAŞLIK SATIRI */}
+            <div style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
+              <div
+                draggable={!isReadOnly && !isEditing && !isVirtualGrouping}
+                onDragStart={(e) => {
+                  setDraggingSectionId(section.id);
+                  e.dataTransfer.setData('drag-type', 'section');
+                  e.dataTransfer.setData('section-id', section.id);
+
+                  const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
+                  if (ghostEl) {
+                    ghostEl.textContent = section.name;
+                    e.dataTransfer.setDragImage(ghostEl, 20, 15);
+                  }
+                }}
+                onDragEnd={() => {
+                  handleFinalSectionMove();
+                  setDraggingSectionId(null);
+                }}
+                style={styles.drag6DotHandleCell}
+              >
+                ⋮⋮
+              </div>
+
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: isEditing ? 'default' : 'pointer' }}
+                onClick={() => !isEditing && setCollapsedSections({ ...collapsedSections, [section.id]: !isCollapsed })}
+              >
+                <span style={styles.accordionArrowIcon}>{isCollapsed ? '▶' : '▼'}</span>
+
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    value={editSectionNameValue}
+                    onChange={(e) => setEditSectionNameValue(e.target.value)}
+                    onBlur={() => submitRename(section)}
+                    onKeyDown={(e) => e.key === 'Enter' && submitRename(section)}
+                    style={styles.sectionRenameInput}
+                  />
+                ) : (
+                  <span style={styles.sectionTitleText}>{section.name}</span>
+                )}
+
+                {!isEditing && <span style={styles.sectionTaskCountBadge}>{filteredTasks.length}</span>}
+
+                {/* THREE DOTS MENU */}
+                {!isReadOnly && !isEditing && !isVirtualGrouping && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); const isOpen = openSectionMenuId === section.id; closeAllMenus(); if (!isOpen) setOpenSectionMenuId(section.id); }}
+                    style={styles.threeDotButton}
+                  >
+                    ⋮
+                  </button>
+                )}
+              </div>
+
+              {openSectionMenuId === section.id && (
+                <div style={{ ...styles.dropdownMenu, left: '250px', right: 'auto', top: '2rem' }} onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => { setEditingSectionId(section.id); setEditSectionNameValue(section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Yeniden Adlandır</button>
+                  <button onClick={() => { if (onDeleteSection) onDeleteSection(section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>Bölümü Sil</button>
+                </div>
+              )}
+            </div>
+
+            {/* Görev Satırları Gövdesi */}
+            {!isCollapsed && (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {filteredTasks.map(task => (
+                  <div
+                    key={task.id}
+                    onClick={() => setLastInteractedSectionId(section.id)}
+                    data-task-id={task.id}
+                    style={{
+                      ...styles.taskDataTableRow,
+                      backgroundColor: lastInteractedSectionId === section.id ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+                      opacity: draggingTaskId === task.id ? 0.4 : 1,
+                      borderLeft: lastInteractedSectionId === section.id ? '3px solid #4F46E5' : '3px solid transparent'
+                    }}
+                    onContextMenu={(e) => { e.preventDefault(); onTaskContextMenu(e, task.id); }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggingTaskId && draggingTaskId !== task.id && !isVirtualGrouping) {
+                        if (handleLiveTaskSwap) handleLiveTaskSwap(draggingTaskId, task.id);
+                      }
+                    }}
+                    onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id, task.id); }}
+                  >
+                    <div
+                      draggable={!isReadOnly && !isVirtualGrouping}
+                      onDragStart={(e) => {
+                        e.stopPropagation();
+                        setDraggingTaskId(task.id);
+                        e.dataTransfer.setData('drag-type', 'task');
+                        e.dataTransfer.setData('task-id', task.id);
+
+                        const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
+                        if (ghostEl) {
+                          ghostEl.textContent = task.title;
+                          e.dataTransfer.setDragImage(ghostEl, 20, 15);
+                        }
+                      }}
+                      onDragEnd={() => setDraggingTaskId(null)}
+                      style={styles.drag6DotHandleCellTask}
+                    >
+                      ⋮⋮
+                    </div>
+
+                    {/* Hücre 1: Checkbox & Başlık */}
+                    <div 
+                      style={{ ...styles.gridBodyCell, width: colWidths.name, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '1rem', cursor: 'pointer' }}
+                      onClick={() => {
+                        if (onOpenTaskPane) onOpenTaskPane(task.id);
+                      }}
+                    >
+                      <input 
+                        type="checkbox" 
+                        checked={task.isCompleted || false} 
+                        disabled={isReadOnly} 
+                        onChange={() => handleToggleTaskCompleteInline(task, section.id)} 
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ cursor: 'pointer' }} 
+                      />
+
+                      {editingTaskId === task.id ? (
+                        <input
+                          ref={editingTaskId === task.id ? inputRef : null}
+                          type="text"
+                          value={editTaskTitleValue}
+                          autoFocus
+                          onChange={(e) => setEditTaskTitleValue(e.target.value)}
+                          onBlur={() => submitTaskRename(task, section.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') submitTaskRename(task, section.id);
+                            if (e.key === 'Escape') setEditingTaskId(null);
+                          }}
+                          style={{
+                            minWidth: '200px',
+                            fontSize: '0.85rem',
+                            fontFamily: 'inherit',
+                            padding: '0',
+                            backgroundColor: 'transparent',
+                            color: 'var(--text-primary)',
+                            border: 'none',
+                            outline: 'none'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isReadOnly) {
+                              let offset = null;
+                              if (document.caretRangeFromPoint) {
+                                const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                                if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
+                                  offset = range.startOffset;
+                                }
+                              } else if (document.caretPositionFromPoint) {
+                                const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+                                if (pos && pos.offsetNode.nodeType === Node.TEXT_NODE) {
+                                  offset = pos.offset;
+                                }
+                              }
+                              setEditCursorPos(offset !== null ? offset : task.title.length);
+                              setEditingTaskId(task.id);
+                              setEditTaskTitleValue(task.title);
+                            }
+                            if (onOpenTaskPane) onOpenTaskPane(task.id);
+                          }}
+                          style={{ fontSize: '0.85rem', color: 'var(--text-primary)', textDecoration: task.isCompleted ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: isReadOnly ? 'default' : 'text', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                        >
+                          {task.title}
+                          {task.tags && task.tags.map(tag => (
+                            <span key={tag.id} style={{ color: tag.color, fontSize: '0.75rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path></svg> {tag.name}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Data Cells (Dynamic based on columnOrder) */}
+                    {columnOrder.map(colId => {
+                      if (colId === 'assignee') {
+                        return (
+                          <div key="assignee" style={{ ...styles.gridBodyCell, width: colWidths.assignee, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'assignee', task, section.id)}>
+                            {task.assignee ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', height: '22px' }}>
+                                <div style={styles.listAvatarIcon}>{task.assignee.name?.[0].toUpperCase()}</div>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.assignee.name}</span>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', height: '22px' }}>
+                                <span style={{ color: '#9CA3AF', fontSize: '0.8rem' }}>👤 Unassigned</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      } else if (colId === 'dueDate') {
+                        return (
+                          <div key="dueDate" style={{ ...styles.gridBodyCell, width: colWidths.dueDate, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer', color: (task.dueDate && new Date(task.dueDate).setHours(0,0,0,0) < new Date().setHours(0,0,0,0) && !task.isCompleted) ? '#EF4444' : '#4F46E5', fontSize: '0.8rem', fontWeight: '500' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'date', task, section.id)}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatFriendlyDate(task.startDate, task.dueDate)}</span>
+                          </div>
+                        );
+                      } else {
+                        const cf = customFields.find(f => f.id === colId);
+                        if (!cf) return null;
+                        let parsedFields = {};
+                        if (typeof task.customFields === 'string') {
+                          try { parsedFields = JSON.parse(task.customFields); } catch(e){}
+                        } else if (task.customFields) {
+                          parsedFields = task.customFields;
+                        }
+                        
+                        return (
+                          <div key={cf.id} style={{ ...styles.gridBodyCell, width: colWidths[cf.id] || 140, flexShrink: 0, position: 'relative', cursor: isReadOnly ? 'default' : 'pointer', overflow: 'visible' }} onClick={(e) => !isReadOnly && handleOpenCellMenu(e, `${task.id}-${cf.id}`)}>
+                            {(() => {
+                              const val = parsedFields[cf.id];
+                              if (!val) return null;
+                              
+                              if (cf.type === 'SELECT' || cf.type === 'single-select') {
+                                const opt = cf.options?.find(o => (o.label || o.value) === val);
+                                const displayValue = opt ? (opt.label || opt.value) : val;
+                                const displayColor = opt ? opt.color : '#F3F4F6';
+                                return (
+                                  <span style={{ fontSize: '0.75rem', fontWeight: '500', padding: '2px 8px', borderRadius: '4px', backgroundColor: displayColor, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    {displayValue}
+                                  </span>
+                                );
+                              }
+                              
+                              return <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</span>;
+                            })()}
+                            {openCellMenuId === `${task.id}-${cf.id}` && (
+                              <div style={{ ...styles.cellDropdownMenu, ...(menuPosition === 'top' ? { bottom: '100%', top: 'auto', marginBottom: '4px' } : { top: '100%', marginTop: '4px' }) }} onClick={(e) => e.stopPropagation()}>
+                                {(cf.type === 'SELECT' || cf.type === 'single-select') && cf.options?.map(o => (
+                                  <button
+                                    key={o.id}
+                                    onClick={() => { handleTaskCustomFieldUpdate(task.id, section.id, cf.id, o.label); setOpenCellMenuId(null); }}
+                                    style={{ ...styles.dropdownItem, color: 'var(--text-primary)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                                  >
+                                    <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', flexShrink: 0 }}></div>
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
+                                  </button>
+                                ))}
+                                <div style={{ borderTop: '1px solid #E5E7EB', margin: '4px 0' }}></div>
+                                <button onClick={() => { handleTaskCustomFieldUpdate(task.id, section.id, cf.id, ''); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  Clear value
+                                </button>
+                                <button onClick={() => { setFieldTitle(cf.title); setFieldOptionsList(cf.options); setEditingFieldOptions(true); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  <span style={{ fontSize: '1rem' }}>✏️</span> Edit field
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                    })}
+                  </div>
+                ))}
+
+                {/* Satır İçi Hızlı Görev Ekleme */}
+                {!isReadOnly && !isVirtualGrouping && (
+                  <div style={styles.quickAddTaskRowList}>
+                    <span style={{ paddingLeft: '3.5rem', color: '#9CA3AF', fontSize: '0.85rem' }}>+</span>
+                    <input
+                      type="text"
+                      placeholder="Add task..."
+                      value={quickTaskInputs[section.id] || ''}
+                      onChange={(e) => setQuickTaskInputs({ ...quickTaskInputs, [section.id]: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && handleCreateQuickTask(section.id)}
+                      onFocus={() => setLastInteractedSectionId(section.id)}
+                      style={styles.quickAddTaskInpCell}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {isAddFieldModalOpen && (
+        <AddFieldModal 
+          onClose={() => setIsAddFieldModalOpen(false)} 
+          onCreateField={(title, defaultVal, options) => {
+            const newField = { 
+              id: Date.now().toString(), 
+              title: title || 'Unnamed Field', 
+              type: 'single-select', 
+              options: options && options.length > 0 ? options : [{ id: '1', label: defaultVal, color: '#E0E7FF' }] 
+            };
+            const newCustomFields = [...customFields, newField];
+            setCustomFields(newCustomFields);
+            handleSaveProjectSettings({ customFieldSettings: newCustomFields });
+            setIsAddFieldModalOpen(false);
+          }} 
+        />
+      )}
+    </div>
+    </div>
+  )
+}
+
+const styles = {
+  listSpreadsheetWrapper: { flex: 1, overflowY: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
+  listTableHeaderRow: { display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', flexShrink: 0 },
+  gridHeaderCell: { padding: '0.6rem', fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderRight: '1px solid var(--border-color)' },
+  sectionAccordionRow: { display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none' },
+  accordionArrowIcon: { fontSize: '0.7rem', color: 'var(--text-primary)', width: '12px' },
+  sectionTitleText: { fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' },
+  sectionTaskCountBadge: { backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' },
+  taskDataTableRow: { display: 'flex', borderBottom: '1px solid var(--bg-tertiary)', transition: 'background-color 0.1s, opacity 0.15s ease' },
+  gridBodyCell: { padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center', borderRight: '1px solid var(--bg-tertiary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  listAvatarIcon: { width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' },
+  quickAddTaskRowList: { display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--bg-tertiary)', padding: '0.35rem 0' },
+  quickAddTaskInpCell: { flex: 1, border: 'none', outline: 'none', fontSize: '0.85rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' },
+  drag6DotHandleCell: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', color: 'var(--text-tertiary)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none', marginRight: '0.4rem' },
+  drag6DotHandleCellTask: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', color: 'var(--border-color)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none' },
+  sectionRenameInput: { flex: 1, border: '1px solid var(--accent-primary)', borderRadius: '4px', outline: 'none', padding: '2px 6px', fontSize: '0.9rem', fontWeight: '600', backgroundColor: 'transparent', color: 'var(--text-primary)' },
+  threeDotButton: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 0.5rem' },
+  dropdownMenu: { position: 'absolute', top: '100%', right: '1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, padding: '0.25rem', minWidth: '150px' },
+  dropdownItem: { width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left', marginBottom: '2px' },
+  dropdownItemDelete: { width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left' },
+  resizeHandle: { position: 'absolute', right: -2, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10 },
+  addFieldButton: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' },
+  addFieldMenu: { position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '200px', padding: '0.5rem 0', maxHeight: '350px', overflowY: 'auto' },
+  addFieldMenuHeader: { padding: '0.5rem 1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' },
+  addFieldMenuItem: { display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.5rem 1rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', textAlign: 'left' },
+  fieldMenuIcon: { fontSize: '1rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' },
+  addFieldMenuShowMore: { padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--accent-primary)', cursor: 'pointer', marginTop: '0.5rem' },
+  cellDropdownMenu: { position: 'absolute', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem', minWidth: '150px', display: 'flex', flexDirection: 'column', maxHeight: '250px', overflowY: 'auto' },
+  columnDropdownMenu: { position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem 0', minWidth: '240px', display: 'flex', flexDirection: 'column', fontWeight: 'normal', textTransform: 'none' },
+  columnHeaderMenuBtn: { background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '1rem', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: '0.5rem', lineHeight: 1 },
+  menuDivider: { borderTop: '1px solid var(--border-color)', margin: '4px 0' },
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+  modalContent: { backgroundColor: 'var(--bg-primary)', borderRadius: '8px', padding: '1.5rem', width: '550px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)' }
+}
+
+
+
+
+

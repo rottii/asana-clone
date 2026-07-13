@@ -1,0 +1,274 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id          String              @id @default(uuid())
+  email       String              @unique
+  password    String
+  name        String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  projects    Project[]           // Sahib olduğu projeler
+  memberships ProjectMembership[] // Rol içeren proje üyelikleri
+  assignedTasks Task[]            @relation("AssignedTasks")
+  createdTasks  Task[]            @relation("CreatedTasks")
+  taskCollaborators TaskCollaborator[]
+  comments      Comment[]
+  portfolios    Portfolio[]       @relation("OwnedPortfolios")
+  
+  notifications Notification[]    @relation("UserNotifications")
+  actorNotifications Notification[] @relation("ActorNotifications")
+  ownedGoals    Goal[]            @relation("OwnedGoals")
+}
+
+model Project {
+  id          String              @id @default(uuid())
+  name        String
+  description String?
+  status      String              @default("NONE")
+  isArchived  Boolean             @default(false)
+  startDate   DateTime?
+  dueDate     DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  ownerId     String
+  owner       User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  sections    Section[]
+  members     ProjectMembership[] // ← DEĞİŞEN SATIR: Rol içeren proje üyeleri
+  rules       Rule[]              // Kural motoru için
+  portfolios  PortfolioProject[]
+
+  defaultView String              @default("List")
+  activeViews Json?               @default("[\"Overview\", \"List\", \"Board\", \"Timeline\", \"Dashboard\", \"Calendar\", \"Forms\"]")
+  
+  customFieldSettings Json?       @default("[]")
+  priorityFieldSettings Json?
+  formSettings        Json?
+  notifications Notification[]
+  goals         GoalProject[]
+}
+
+// --- YENİ MODEL: ROL DESTEKLİ ÜYELİK TABLOSU ---
+model ProjectMembership {
+  id        String   @id @default(uuid())
+  role      String   @default("EDITOR") // "EDITOR", "COMMENTER", "VIEWER"
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId]) // Bir kullanıcı bir projeye sadece 1 kere üye olabilir
+}
+
+model Section {
+  id        String   @id @default(uuid())
+  name      String   
+  order     Int      
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  startDate   DateTime?
+  dueDate     DateTime?
+  priority    String    @default("MEDIUM") 
+  type        String    @default("TASK") // "TASK", "MILESTONE", "APPROVAL" vb.
+  order       Int       
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  likes       Int       @default(0)
+  customFields Json?    @default("{}") // (Sınırsız esnek alan için)
+  
+  sectionId   String
+  section     Section   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  assigneeId  String?
+  assignee    User?     @relation("AssignedTasks", fields: [assigneeId], references: [id])
+  creatorId   String
+  creator     User      @relation("CreatedTasks", fields: [creatorId], references: [id])
+  
+  parentId    String?
+  parent      Task?     @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks    Task[]    @relation("Subtasks")
+
+  blockedBy   TaskDependency[] @relation("BlockedBy")
+  blocking    TaskDependency[] @relation("Blocking")
+  collaborators TaskCollaborator[]
+  comments    Comment[]
+  notifications Notification[]
+  tags        Tag[]            @relation("TaskTags")
+}
+
+// --- YENİ MODEL: TAGS ---
+model Tag {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String   @default("#9CA3AF") // Varsayılan renk
+  createdAt DateTime @default(now())
+
+  tasks     Task[]   @relation("TaskTags")
+}
+
+model TaskDependency {
+  id           String @id @default(uuid())
+  blockingId   String 
+  blockedById  String 
+  blockingTask Task   @relation("Blocking", fields: [blockingId], references: [id], onDelete: Cascade)
+  blockedByTask Task  @relation("BlockedBy", fields: [blockedById], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([blockingId, blockedById])
+}
+
+// --- YENİ MODEL: KURAL MOTORU ---
+model Rule {
+  id           String   @id @default(uuid())
+  triggerType  String
+  triggerValue String?
+  actionType   String
+  actionValue  String?
+  createdAt    DateTime @default(now())
+
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// --- YENİ MODEL: YORUMLAR ---
+model Comment {
+  id        String   @id @default(uuid())
+  text      String
+  createdAt DateTime @default(now())
+  
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// --- YENİ MODEL: GÖREV ORTAK ÇALIŞANLARI ---
+model TaskCollaborator {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+}
+
+// --- YENİ MODEL: PORTFOLIOS ---
+model Portfolio {
+  id          String   @id @default(uuid())
+  name        String
+  privacy     String   @default("Public to My workspace")
+  defaultView String   @default("List")
+  status      String   @default("On track") // e.g., On track, At risk, Off track
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId     String
+  owner       User     @relation("OwnedPortfolios", fields: [ownerId], references: [id], onDelete: Cascade)
+  projects    PortfolioProject[]
+  
+  childPortfolios   PortfolioPortfolio[] @relation("ParentPortfolios")
+  parentPortfolios  PortfolioPortfolio[] @relation("ChildPortfolios")
+}
+
+model PortfolioProject {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, projectId])
+}
+
+model PortfolioPortfolio {
+  id              String    @id @default(uuid())
+  createdAt       DateTime  @default(now())
+
+  parentPortfolioId String
+  parentPortfolio   Portfolio @relation("ParentPortfolios", fields: [parentPortfolioId], references: [id], onDelete: Cascade)
+
+  childPortfolioId  String
+  childPortfolio    Portfolio @relation("ChildPortfolios", fields: [childPortfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([parentPortfolioId, childPortfolioId])
+}
+
+// --- YENİ MODEL: BİLDİRİMLER (NOTIFICATIONS) ---
+model Notification {
+  id        String   @id @default(uuid())
+  type      String   // "ASSIGNED", "COMMENTED", "COMPLETED", "MENTIONED" vb.
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  userId    String   
+  user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  
+  actorId   String?  
+  actor     User?    @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: SetNull)
+  
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// --- YENİ MODEL: GOALS (HEDEFLER) ---
+model Goal {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  status      String   @default("On track") // On track, At risk, Off track
+  timePeriod  String?  // e.g., Q3 2026, H2 2026
+  level       String   @default("Company")  // Company, Team
+  
+  metricType  String   @default("Percentage") // Percentage, Numeric, Currency
+  currentValue Float   @default(0)
+  targetValue  Float   @default(100)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId     String
+  owner       User     @relation("OwnedGoals", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  projects    GoalProject[]
+}
+
+model GoalProject {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+
+  goalId      String
+  goal        Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, projectId])
+}
