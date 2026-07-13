@@ -50,8 +50,8 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
               onClick={() => handleSelectProject(project)}
             >
               <div className="bp-col-name bp-flex-name">
-                <div className={`bp-project-icon bg-color-${index % 3}`}>
-                  🚀
+                <div className="bp-project-icon" style={{ backgroundColor: project.color || '#4F46E5', color: '#FFF' }}>
+                  {project.icon || '📋'}
                 </div>
                 <div className="bp-project-info">
                   <div className="bp-project-title">{project.name}</div>

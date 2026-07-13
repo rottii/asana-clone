@@ -24,6 +24,7 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+      - uploads_data:/app/uploads
     depends_on:
       - postgres_db
 
@@ -41,3 +42,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

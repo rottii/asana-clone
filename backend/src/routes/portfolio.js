@@ -43,7 +43,8 @@ router.get('/', authenticateToken, async (req, res) => {
             childPortfolio: true
           }
         },
-        owner: true
+        owner: true,
+        starredBy: true
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -142,7 +143,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
             childPortfolio: true
           }
         },
-        owner: true
+        owner: true,
+        starredBy: true
       }
     });
 
@@ -315,6 +317,38 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error("Error deleting portfolio:", error);
     res.status(500).json({ error: 'Portföy silinemedi.' });
+  }
+});
+
+// POST /api/portfolios/:id/star — Toggle star status for a portfolio
+router.post('/:id/star', authenticateToken, async (req, res) => {
+  try {
+    const portfolioId = req.params.id;
+    const userId = req.user.userId;
+
+    const existingStar = await prisma.starredPortfolio.findUnique({
+      where: {
+        userId_portfolioId: {
+          userId,
+          portfolioId
+        }
+      }
+    });
+
+    if (existingStar) {
+      await prisma.starredPortfolio.delete({
+        where: { id: existingStar.id }
+      });
+      res.json({ isStarred: false });
+    } else {
+      await prisma.starredPortfolio.create({
+        data: { userId, portfolioId }
+      });
+      res.json({ isStarred: true });
+    }
+  } catch (error) {
+    console.error('Error toggling portfolio star:', error);
+    res.status(500).json({ error: 'Yıldız durumu güncellenirken hata oluştu.', details: error.message });
   }
 });
 

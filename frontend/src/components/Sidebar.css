@@ -388,3 +388,18 @@
   background-color: var(--nav-bg-hover);
   color: var(--nav-text);
 }
+
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 100;
+  background-color: transparent;
+  transition: background-color 0.2s;
+}
+.sidebar-resizer:hover, .sidebar-resizer.resizing {
+  background-color: var(--accent-primary);
+}

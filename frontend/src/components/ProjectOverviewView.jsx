@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import RichTextEditor from './RichTextEditor';
 
-export default function ProjectOverviewView({ selectedProject, projectRole, isReadOnly, token, onUpdate }) {
+export default function ProjectOverviewView({ selectedProject, projectRole, isReadOnly, token, onUpdate, onOpenShareModal }) {
   const [isEditingDesc, setIsEditingDesc] = useState(false);
   const [descInput, setDescInput] = useState(selectedProject.description || '');
 
@@ -42,12 +43,11 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
           <div style={styles.descriptionBox}>
             {isEditingDesc ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <textarea 
-                  style={{ width: '100%', minHeight: '100px', padding: '0.5rem', borderRadius: '6px', border: '1px solid #D1D5DB', fontFamily: 'inherit', fontSize: '0.95rem' }}
+                <RichTextEditor
                   value={descInput}
-                  onChange={(e) => setDescInput(e.target.value)}
-                  placeholder="What's this project about?"
-                  autoFocus
+                  onChange={setDescInput}
+                  users={members}
+                  minHeight="100px"
                 />
                 <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                   <button style={styles.cancelBtn} onClick={() => { setIsEditingDesc(false); setDescInput(selectedProject.description || ''); }}>Cancel</button>
@@ -55,7 +55,7 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
                 </div>
               </div>
             ) : selectedProject.description ? (
-              <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.5' }}>{selectedProject.description}</p>
+              <div className="rich-text-content" style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: selectedProject.description }} />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2rem 0', color: '#9CA3AF' }}>
                 <span style={{ fontSize: '2rem', marginBottom: '1rem' }}>📝</span>
@@ -105,7 +105,7 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
         <div style={styles.sideSection}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h3 style={styles.sideSectionTitle}>Project roles</h3>
-            {!isReadOnly && <span style={styles.addMemberLink}>Add member</span>}
+            {!isReadOnly && <span style={styles.addMemberLink} onClick={onOpenShareModal}>Add member</span>}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {members.map((member, idx) => (

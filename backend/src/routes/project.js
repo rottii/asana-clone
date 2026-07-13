@@ -1,7 +1,27 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const { evaluateRules } = require('../utils/ruleEngine');
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Multer storage config
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, uploadsDir),
+    filename: (req, file, cb) => {
+        const uniqueName = crypto.randomUUID() + path.extname(file.originalname);
+        cb(null, uniqueName);
+    }
+});
+const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } }); // 25MB limit
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -9,99 +29,230 @@ const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
 
 // ─── Auth Middleware ───────────────────────────────────────────────────────────
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Giriş yapmanız gerekiyor.' });
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Giriş yapmanız gerekiyor.' });
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Geçersiz veya süresi dolmuş token.' });
-    req.user = user;
-    next();
-  });
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ error: 'Geçersiz veya süresi dolmuş token.' });
+        req.user = user;
+        next();
+    });
 };
+
+// ─── Role Helpers ──────────────────────────────────────────────────────────────
+// Hierarchy: ADMIN > EDITOR > COMMENTER > VIEWER
+const ROLE_LEVEL = { VIEWER: 0, COMMENTER: 1, EDITOR: 2, ADMIN: 3 };
+
+// Resolve user's role in a project. Owner = ADMIN.
+async function getProjectRole(userId, projectId) {
+    const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { ownerId: true, members: { where: { userId }, select: { role: true } } }
+    });
+    if (!project) return null;
+    if (project.ownerId === userId) return 'ADMIN';
+    if (project.members.length > 0) return project.members[0].role;
+    return null; // not a member
+}
+
+// Resolve role via a taskId (looks up section → project)
+async function getProjectRoleFromTask(userId, taskId) {
+    const task = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: { section: { select: { projectId: true } } }
+    });
+    if (!task?.section?.projectId) return null;
+    return getProjectRole(userId, task.section.projectId);
+}
+
+// Resolve role via a sectionId
+async function getProjectRoleFromSection(userId, sectionId) {
+    const section = await prisma.section.findUnique({
+        where: { id: sectionId },
+        select: { projectId: true }
+    });
+    if (!section) return null;
+    return getProjectRole(userId, section.projectId);
+}
+
+// Check if role meets minimum required level
+function hasRole(userRole, minimumRole) {
+    if (!userRole) return false;
+    return (ROLE_LEVEL[userRole] || 0) >= (ROLE_LEVEL[minimumRole] || 0);
+}
 
 // ─── Shared include for full project data ──────────────────────────────────────
 const fullProjectInclude = {
-  owner: { select: { id: true, name: true, email: true } },
-  members: {
-    include: {
-      user: { select: { id: true, name: true, email: true } }
-    }
-  },
-  sections: {
-    orderBy: { order: 'asc' },
-    include: {
-      tasks: {
+    owner: { select: { id: true, name: true, email: true } },
+    members: {
+        include: {
+            user: { select: { id: true, name: true, email: true } }
+        }
+    },
+    sections: {
         orderBy: { order: 'asc' },
         include: {
-          assignee: { select: { id: true, name: true, email: true } },
-          creator: { select: { id: true, name: true, email: true } },
-          subtasks: {
-            orderBy: { order: 'asc' },
-            include: {
-              assignee: { select: { id: true, name: true, email: true } }
+            tasks: {
+                orderBy: { order: 'asc' },
+                include: {
+                    assignee: { select: { id: true, name: true, email: true } },
+                    creator: { select: { id: true, name: true, email: true } },
+                    subtasks: {
+                        orderBy: { order: 'asc' },
+                        include: {
+                            assignee: { select: { id: true, name: true, email: true } }
+                        }
+                    },
+                    comments: {
+                        orderBy: { createdAt: 'asc' },
+                        include: {
+                            user: { select: { id: true, name: true, email: true } }
+                        }
+                    },
+                    collaborators: {
+                        include: {
+                            user: { select: { id: true, name: true, email: true } }
+                        }
+                    },
+                    blockedBy: {
+                        include: {
+                            blockingTask: { select: { id: true, title: true, isCompleted: true } }
+                        }
+                    },
+                    blocking: {
+                        include: {
+                            blockedByTask: { select: { id: true, title: true, isCompleted: true } }
+                        }
+                    },
+                    tags: true,
+                    attachments: {
+                        orderBy: { createdAt: 'desc' },
+                        include: {
+                            uploader: { select: { id: true, name: true, email: true } }
+                        }
+                    },
+                    activities: {
+                        orderBy: { createdAt: 'desc' },
+                        include: {
+                            user: { select: { id: true, name: true, email: true } }
+                        }
+                    },
+                    secondaryProjects: {
+                        include: {
+                            project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } },
+                            section: { select: { id: true, name: true } }
+                        }
+                    }
+                }
+            },
+            secondaryTasks: {
+                include: {
+                    task: {
+                        include: {
+                            section: {
+                                include: {
+                                    project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } }
+                                }
+                            },
+                            assignee: { select: { id: true, name: true, email: true } },
+                            creator: { select: { id: true, name: true, email: true } },
+                            subtasks: {
+                                orderBy: { order: 'asc' },
+                                include: { assignee: { select: { id: true, name: true, email: true } } }
+                            },
+                            comments: {
+                                orderBy: { createdAt: 'asc' },
+                                include: { user: { select: { id: true, name: true, email: true } } }
+                            },
+                            collaborators: {
+                                include: { user: { select: { id: true, name: true, email: true } } }
+                            },
+                            blockedBy: {
+                                include: { blockingTask: { select: { id: true, title: true, isCompleted: true } } }
+                            },
+                            blocking: {
+                                include: { blockedByTask: { select: { id: true, title: true, isCompleted: true } } }
+                            },
+                            tags: true,
+                            attachments: {
+                                orderBy: { createdAt: 'desc' },
+                                include: { uploader: { select: { id: true, name: true, email: true } } }
+                            },
+                            activities: {
+                                orderBy: { createdAt: 'desc' },
+                                include: { user: { select: { id: true, name: true, email: true } } }
+                            },
+                            secondaryProjects: {
+                                include: {
+                                    project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } },
+                                    section: { select: { id: true, name: true } }
+                                }
+                            }
+                        }
+                    }
+                }
             }
-          },
-          comments: {
-            orderBy: { createdAt: 'asc' },
-            include: {
-              user: { select: { id: true, name: true, email: true } }
-            }
-          },
-          collaborators: {
-            include: {
-              user: { select: { id: true, name: true, email: true } }
-            }
-          },
-          blockedBy: {
-            include: {
-              blockingTask: { select: { id: true, title: true, isCompleted: true } }
-            }
-          },
-          blocking: {
-            include: {
-              blockedByTask: { select: { id: true, title: true, isCompleted: true } }
-            }
-          },
-          tags: true
         }
-      }
-    }
-  }
+    },
+    starredBy: true
 };
 
 // Shared include for returning a single task with all relations
 const fullTaskInclude = {
-  assignee: { select: { id: true, name: true, email: true } },
-  creator: { select: { id: true, name: true, email: true } },
-  subtasks: {
-    orderBy: { order: 'asc' },
-    include: {
-      assignee: { select: { id: true, name: true, email: true } }
+    assignee: { select: { id: true, name: true, email: true } },
+    creator: { select: { id: true, name: true, email: true } },
+    subtasks: {
+        orderBy: { order: 'asc' },
+        include: {
+            assignee: { select: { id: true, name: true, email: true } }
+        }
+    },
+    comments: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+            user: { select: { id: true, name: true, email: true } }
+        }
+    },
+    collaborators: {
+        include: {
+            user: { select: { id: true, name: true, email: true } }
+        }
+    },
+    blockedBy: {
+        include: {
+            blockingTask: { select: { id: true, title: true, isCompleted: true } }
+        }
+    },
+    blocking: {
+        include: {
+            blockedByTask: { select: { id: true, title: true, isCompleted: true } }
+        }
+    },
+    tags: true,
+    attachments: {
+        orderBy: { createdAt: 'desc' },
+        include: {
+            uploader: { select: { id: true, name: true, email: true } }
+        }
+    },
+    activities: {
+        orderBy: { createdAt: 'desc' },
+        include: {
+            user: { select: { id: true, name: true, email: true } }
+        }
+    },
+    secondaryProjects: {
+        include: {
+            project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } },
+            section: { select: { id: true, name: true } }
+        }
+    },
+    section: {
+        include: {
+            project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } }
+        }
     }
-  },
-  comments: {
-    orderBy: { createdAt: 'asc' },
-    include: {
-      user: { select: { id: true, name: true, email: true } }
-    }
-  },
-  collaborators: {
-    include: {
-      user: { select: { id: true, name: true, email: true } }
-    }
-  },
-  blockedBy: {
-    include: {
-      blockingTask: { select: { id: true, title: true, isCompleted: true } }
-    }
-  },
-  blocking: {
-    include: {
-      blockedByTask: { select: { id: true, title: true, isCompleted: true } }
-    }
-  },
-  tags: true
 };
 
 
@@ -111,112 +262,195 @@ const fullTaskInclude = {
 
 // GET /api/projects — List all projects the user owns or is a member of
 router.get('/', authenticateToken, async (req, res) => {
-  try {
-    const projects = await prisma.project.findMany({
-      where: {
-        OR: [
-          { ownerId: req.user.userId },
-          { members: { some: { userId: req.user.userId } } }
-        ]
-      },
-      include: fullProjectInclude,
-      orderBy: { createdAt: 'desc' }
-    });
-    res.json(projects);
-  } catch (error) {
-    console.error('Error fetching projects:', error);
-    res.status(500).json({ error: 'Projeler yüklenirken hata oluştu.', details: error.message });
-  }
+    try {
+        const projects = await prisma.project.findMany({
+            where: {
+                OR: [
+                    { ownerId: req.user.userId },
+                    { members: { some: { userId: req.user.userId } } }
+                ]
+            },
+            include: fullProjectInclude,
+            orderBy: { createdAt: 'desc' }
+        });
+
+        // Merge secondary tasks into the sections for all projects
+        projects.forEach(project => {
+            if (project.sections) {
+                project.sections.forEach(section => {
+                    const primaryTasks = section.tasks || [];
+                    const secondaryTasks = (section.secondaryTasks || []).map(st => ({
+                        ...st.task,
+                        order: st.order,
+                        sectionId: st.sectionId,
+                        isSecondary: true
+                    }));
+                    section.tasks = [...primaryTasks, ...secondaryTasks].sort((a, b) => a.order - b.order);
+                    delete section.secondaryTasks;
+                });
+            }
+        });
+
+        res.json(projects);
+    } catch (error) {
+        console.error('Error fetching projects:', error);
+        res.status(500).json({ error: 'Projeler yüklenirken hata oluştu.', details: error.message });
+    }
 });
 
 // GET /api/projects/:id — Get a single project with full data
 router.get('/:id', authenticateToken, async (req, res) => {
-  try {
-    const project = await prisma.project.findUnique({
-      where: { id: req.params.id },
-      include: fullProjectInclude
-    });
-    if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
-    res.json(project);
-  } catch (error) {
-    console.error('Error fetching project:', error);
-    res.status(500).json({ error: 'Proje yüklenirken hata oluştu.', details: error.message });
-  }
+    try {
+        const project = await prisma.project.findUnique({
+            where: { id: req.params.id },
+            include: fullProjectInclude
+        });
+        if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
+
+        // Merge secondary tasks into sections
+        if (project.sections) {
+            project.sections.forEach(section => {
+                const primaryTasks = section.tasks || [];
+                const secondaryTasks = (section.secondaryTasks || []).map(st => ({
+                    ...st.task,
+                    order: st.order,
+                    sectionId: st.sectionId,
+                    isSecondary: true
+                }));
+                section.tasks = [...primaryTasks, ...secondaryTasks].sort((a, b) => a.order - b.order);
+                delete section.secondaryTasks;
+            });
+        }
+
+        res.json(project);
+    } catch (error) {
+        console.error('Error fetching project:', error);
+        res.status(500).json({ error: 'Proje yüklenirken hata oluştu.', details: error.message });
+    }
 });
 
 // POST /api/projects — Create a new project
 router.post('/', authenticateToken, async (req, res) => {
-  try {
-    const { name, description, defaultView, activeViews } = req.body;
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'Proje adı zorunludur.' });
-    }
-
-    const newProject = await prisma.project.create({
-      data: {
-        name: name.trim(),
-        description: description || null,
-        ownerId: req.user.userId,
-        defaultView: defaultView || 'List',
-        activeViews: activeViews || undefined,
-        sections: {
-          create: [
-            { name: 'To do', order: 1 },
-            { name: 'In progress', order: 2 },
-            { name: 'Done', order: 3 }
-          ]
+    try {
+        const { name, description, defaultView, activeViews, color, icon } = req.body;
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Proje adı zorunludur.' });
         }
-      },
-      include: fullProjectInclude
-    });
 
-    res.status(201).json(newProject);
-  } catch (error) {
-    console.error('Error creating project:', error);
-    res.status(500).json({ error: 'Proje oluşturulurken hata oluştu.', details: error.message });
-  }
+        const newProject = await prisma.project.create({
+            data: {
+                name: name.trim(),
+                description: description || null,
+                ownerId: req.user.userId,
+                defaultView: defaultView || 'List',
+                activeViews: activeViews || undefined,
+                color: color || '#4F46E5',
+                icon: icon || '📋',
+                sections: {
+                    create: [
+                        { name: 'To do', order: 1 },
+                        { name: 'In progress', order: 2 },
+                        { name: 'Done', order: 3 }
+                    ]
+                }
+            },
+            include: fullProjectInclude
+        });
+
+        res.status(201).json(newProject);
+    } catch (error) {
+        console.error('Error creating project:', error);
+        res.status(500).json({ error: 'Proje oluşturulurken hata oluştu.', details: error.message });
+    }
 });
 
-// PATCH /api/projects/:id — Update project settings
+// PATCH /api/projects/:id — Update project settings (EDITOR+)
 router.patch('/:id', authenticateToken, async (req, res) => {
-  try {
-    const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, priorityFieldSettings, formSettings, startDate, dueDate } = req.body;
+    try {
+        const role = await getProjectRole(req.user.userId, req.params.id);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    const updateData = {};
-    if (name !== undefined) updateData.name = name;
-    if (description !== undefined) updateData.description = description;
-    if (status !== undefined) updateData.status = status;
-    if (isArchived !== undefined) updateData.isArchived = isArchived;
-    if (defaultView !== undefined) updateData.defaultView = defaultView;
-    if (activeViews !== undefined) updateData.activeViews = activeViews;
-    if (customFieldSettings !== undefined) updateData.customFieldSettings = customFieldSettings;
-    if (priorityFieldSettings !== undefined) updateData.priorityFieldSettings = priorityFieldSettings;
-    if (formSettings !== undefined) updateData.formSettings = formSettings;
-    if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
-    if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, priorityFieldSettings, formSettings, startDate, dueDate, color, icon } = req.body;
 
-    const updatedProject = await prisma.project.update({
-      where: { id: req.params.id },
-      data: updateData,
-      include: fullProjectInclude
-    });
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (description !== undefined) updateData.description = description;
+        if (status !== undefined) updateData.status = status;
+        if (isArchived !== undefined) updateData.isArchived = isArchived;
+        if (defaultView !== undefined) updateData.defaultView = defaultView;
+        if (activeViews !== undefined) updateData.activeViews = activeViews;
+        if (customFieldSettings !== undefined) updateData.customFieldSettings = customFieldSettings;
+        if (priorityFieldSettings !== undefined) updateData.priorityFieldSettings = priorityFieldSettings;
+        if (formSettings !== undefined) updateData.formSettings = formSettings;
+        if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
+        if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+        if (color !== undefined) updateData.color = color;
+        if (icon !== undefined) updateData.icon = icon;
 
-    res.json(updatedProject);
-  } catch (error) {
-    console.error('Error updating project:', error);
-    res.status(500).json({ error: 'Proje güncellenirken hata oluştu.', details: error.message });
-  }
+        const updatedProject = await prisma.project.update({
+            where: { id: req.params.id },
+            data: updateData,
+            include: fullProjectInclude
+        });
+
+        const io = req.app.get('io');
+        if (io) io.to(req.params.id).emit('project_updated', updatedProject);
+
+        res.json(updatedProject);
+    } catch (error) {
+        console.error('Error updating project:', error);
+        res.status(500).json({ error: 'Proje güncellenirken hata oluştu.', details: error.message });
+    }
 });
 
-// DELETE /api/projects/:id — Delete a project
+// POST /api/projects/:id/star — Toggle star status for a project
+router.post('/:id/star', authenticateToken, async (req, res) => {
+    try {
+        const projectId = req.params.id;
+        const userId = req.user.userId;
+
+        const existingStar = await prisma.starredProject.findUnique({
+            where: {
+                userId_projectId: {
+                    userId,
+                    projectId
+                }
+            }
+        });
+
+        if (existingStar) {
+            await prisma.starredProject.delete({
+                where: { id: existingStar.id }
+            });
+            res.json({ isStarred: false });
+        } else {
+            await prisma.starredProject.create({
+                data: { userId, projectId }
+            });
+            res.json({ isStarred: true });
+        }
+    } catch (error) {
+        console.error('Error toggling project star:', error);
+        res.status(500).json({ error: 'Yıldız durumu güncellenirken hata oluştu.', details: error.message });
+    }
+});
+
+// DELETE /api/projects/:id — Delete a project (ADMIN only)
 router.delete('/:id', authenticateToken, async (req, res) => {
-  try {
-    await prisma.project.delete({ where: { id: req.params.id } });
-    res.json({ message: 'Proje başarıyla silindi.' });
-  } catch (error) {
-    console.error('Error deleting project:', error);
-    res.status(500).json({ error: 'Proje silinirken hata oluştu.', details: error.message });
-  }
+    try {
+        const role = await getProjectRole(req.user.userId, req.params.id);
+        if (role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sadece proje yöneticisi projeyi silebilir.' });
+        }
+
+        await prisma.project.delete({ where: { id: req.params.id } });
+        res.json({ message: 'Proje başarıyla silindi.' });
+    } catch (error) {
+        console.error('Error deleting project:', error);
+        res.status(500).json({ error: 'Proje silinirken hata oluştu.', details: error.message });
+    }
 });
 
 
@@ -224,104 +458,124 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 //  SHARING / MEMBERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// POST /api/projects/:id/share — Invite a user by email
+// POST /api/projects/:id/share — Invite a user by email (ADMIN only)
 router.post('/:id/share', authenticateToken, async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email adresi zorunludur.' });
-
-    const userToAdd = await prisma.user.findUnique({ where: { email } });
-    if (!userToAdd) return res.status(404).json({ error: 'Bu email adresinde bir kullanıcı bulunamadı.' });
-
-    const project = await prisma.project.findUnique({ where: { id: req.params.id } });
-    if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
-
-    if (project.ownerId === userToAdd.id) {
-      return res.status(400).json({ error: 'Bu kullanıcı zaten proje sahibi.' });
-    }
-
-    // Create membership (upsert to handle if already exists)
-    await prisma.projectMembership.upsert({
-      where: {
-        projectId_userId: { projectId: req.params.id, userId: userToAdd.id }
-      },
-      update: {},
-      create: {
-        projectId: req.params.id,
-        userId: userToAdd.id,
-        role: 'EDITOR'
-      }
-    });
-
-    // Create notification for the invited user
     try {
-      const io = req.app.get('io');
-      await prisma.notification.create({
-        data: {
-          type: 'ADDED_TO_PROJECT',
-          message: `You were added to the project "${project.name}"`,
-          userId: userToAdd.id,
-          actorId: req.user.userId,
-          projectId: project.id
+        const role = await getProjectRole(req.user.userId, req.params.id);
+        if (role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sadece proje yöneticisi üye ekleyebilir.' });
         }
-      });
-      if (io) io.to(userToAdd.id).emit('new_notification');
-    } catch (notifErr) {
-      console.error('Notification error:', notifErr);
+
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email adresi zorunludur.' });
+
+        const userToAdd = await prisma.user.findUnique({ where: { email } });
+        if (!userToAdd) return res.status(404).json({ error: 'Bu email adresinde bir kullanıcı bulunamadı.' });
+
+        const project = await prisma.project.findUnique({ where: { id: req.params.id } });
+        if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
+
+        if (project.ownerId === userToAdd.id) {
+            return res.status(400).json({ error: 'Bu kullanıcı zaten proje sahibi.' });
+        }
+
+        // Create membership (upsert to handle if already exists)
+        await prisma.projectMembership.upsert({
+            where: {
+                projectId_userId: { projectId: req.params.id, userId: userToAdd.id }
+            },
+            update: {},
+            create: {
+                projectId: req.params.id,
+                userId: userToAdd.id,
+                role: 'EDITOR'
+            }
+        });
+
+        // Create notification for the invited user
+        try {
+            const io = req.app.get('io');
+            await prisma.notification.create({
+                data: {
+                    type: 'ADDED_TO_PROJECT',
+                    message: `You were added to the project "${project.name}"`,
+                    userId: userToAdd.id,
+                    actorId: req.user.userId,
+                    projectId: project.id
+                }
+            });
+            if (io) io.to(userToAdd.id).emit('new_notification');
+        } catch (notifErr) {
+            console.error('Notification error:', notifErr);
+        }
+
+        const updatedProject = await prisma.project.findUnique({
+            where: { id: req.params.id },
+            include: fullProjectInclude
+        });
+
+        res.json(updatedProject);
+    } catch (error) {
+        console.error('Error sharing project:', error);
+        res.status(500).json({ error: 'Proje paylaşılırken hata oluştu.', details: error.message });
     }
-
-    const updatedProject = await prisma.project.findUnique({
-      where: { id: req.params.id },
-      include: fullProjectInclude
-    });
-
-    res.json(updatedProject);
-  } catch (error) {
-    console.error('Error sharing project:', error);
-    res.status(500).json({ error: 'Proje paylaşılırken hata oluştu.', details: error.message });
-  }
 });
 
-// PATCH /api/projects/:id/members — Update a member's role
+// PATCH /api/projects/:id/members — Update a member's role (ADMIN only, cannot change own role)
 router.patch('/:id/members', authenticateToken, async (req, res) => {
-  try {
-    const { userId, role } = req.body;
-    if (!userId || !role) return res.status(400).json({ error: 'userId ve role zorunludur.' });
+    try {
+        const callerRole = await getProjectRole(req.user.userId, req.params.id);
+        if (callerRole !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sadece proje yöneticisi rolleri değiştirebilir.' });
+        }
 
-    await prisma.projectMembership.updateMany({
-      where: { projectId: req.params.id, userId },
-      data: { role }
-    });
+        const { userId, role } = req.body;
+        if (!userId || !role) return res.status(400).json({ error: 'userId ve role zorunludur.' });
 
-    const updatedProject = await prisma.project.findUnique({
-      where: { id: req.params.id },
-      include: fullProjectInclude
-    });
+        // Admin cannot change their own role
+        if (userId === req.user.userId) {
+            return res.status(403).json({ error: 'Kendi rolünüzü değiştiremezsiniz.' });
+        }
 
-    res.json(updatedProject);
-  } catch (error) {
-    console.error('Error updating member role:', error);
-    res.status(500).json({ error: 'Üye rolü güncellenirken hata oluştu.', details: error.message });
-  }
+        await prisma.projectMembership.updateMany({
+            where: { projectId: req.params.id, userId },
+            data: { role }
+        });
+
+        const updatedProject = await prisma.project.findUnique({
+            where: { id: req.params.id },
+            include: fullProjectInclude
+        });
+
+        res.json(updatedProject);
+    } catch (error) {
+        console.error('Error updating member role:', error);
+        res.status(500).json({ error: 'Üye rolü güncellenirken hata oluştu.', details: error.message });
+    }
 });
 
-// DELETE /api/projects/:id/members/:userId — Remove a member
+// DELETE /api/projects/:id/members/:userId — Remove a member (ADMIN only)
 router.delete('/:id/members/:userId', authenticateToken, async (req, res) => {
-  try {
-    await prisma.projectMembership.deleteMany({
-      where: { projectId: req.params.id, userId: req.params.userId }
-    });
+    try {
+        const callerRole = await getProjectRole(req.user.userId, req.params.id);
+        if (callerRole !== 'ADMIN' && req.user.userId !== req.params.userId) {
+            return res.status(403).json({ error: 'Sadece proje yöneticisi üyeleri veya kendi hesabınızı kaldırabilirsiniz.' });
+        }
 
-    const updatedProject = await prisma.project.findUnique({
-      where: { id: req.params.id },
-      include: fullProjectInclude
-    });
+        await prisma.projectMembership.deleteMany({
+            where: { projectId: req.params.id, userId: req.params.userId }
+        });
 
-    res.json(updatedProject);
-  } catch (error) {
-    console.error('Error removing member:', error);
-    res.status(500).json({ error: 'Üye kaldırılırken hata oluştu.', details: error.message });
-  }
+        const updatedProject = await prisma.project.findUnique({
+            where: { id: req.params.id },
+            include: fullProjectInclude
+        });
+
+        res.json(updatedProject);
+    } catch (error) {
+        console.error('Error removing member:', error);
+        res.status(500).json({ error: 'Üye kaldırılırken hata oluştu.', details: error.message });
+    }
 });
 
 
@@ -331,107 +585,129 @@ router.delete('/:id/members/:userId', authenticateToken, async (req, res) => {
 
 // POST /api/projects/sections — Create a section
 router.post('/sections', authenticateToken, async (req, res) => {
-  try {
-    const { name, projectId } = req.body;
-    if (!name || !projectId) return res.status(400).json({ error: 'name ve projectId zorunludur.' });
+    try {
+        const { name, projectId } = req.body;
+        if (!name || !projectId) return res.status(400).json({ error: 'name ve projectId zorunludur.' });
 
-    // Determine next order value
-    const lastSection = await prisma.section.findFirst({
-      where: { projectId },
-      orderBy: { order: 'desc' }
-    });
-    const nextOrder = lastSection ? lastSection.order + 1 : 1;
+        const role = await getProjectRole(req.user.userId, projectId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    const newSection = await prisma.section.create({
-      data: { name: name.trim(), projectId, order: nextOrder },
-      include: { tasks: true }
-    });
+        // Determine next order value
+        const lastSection = await prisma.section.findFirst({
+            where: { projectId },
+            orderBy: { order: 'desc' }
+        });
+        const nextOrder = lastSection ? lastSection.order + 1 : 1;
 
-    // Emit real-time event
-    const io = req.app.get('io');
-    if (io) io.to(projectId).emit('section_created', newSection);
+        const newSection = await prisma.section.create({
+            data: { name: name.trim(), projectId, order: nextOrder },
+            include: { tasks: true }
+        });
 
-    res.status(201).json(newSection);
-  } catch (error) {
-    console.error('Error creating section:', error);
-    res.status(500).json({ error: 'Bölüm oluşturulurken hata oluştu.', details: error.message });
-  }
+        // Emit real-time event
+        const io = req.app.get('io');
+        if (io) io.to(projectId).emit('section_created', newSection);
+
+        res.status(201).json(newSection);
+    } catch (error) {
+        console.error('Error creating section:', error);
+        res.status(500).json({ error: 'Bölüm oluşturulurken hata oluştu.', details: error.message });
+    }
+});
+
+// PATCH /api/projects/sections/move — Reorder sections (MUST be before /sections/:sectionId)
+router.patch('/sections/move', authenticateToken, async (req, res) => {
+    try {
+        const { orderedSectionIds, projectId } = req.body;
+        if (!orderedSectionIds || !projectId) {
+            return res.status(400).json({ error: 'orderedSectionIds ve projectId zorunludur.' });
+        }
+
+        const role = await getProjectRole(req.user.userId, projectId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
+
+        // Update each section's order
+        await Promise.all(
+            orderedSectionIds.map((sectionId, index) =>
+                prisma.section.update({
+                    where: { id: sectionId },
+                    data: { order: index + 1 }
+                })
+            )
+        );
+
+        const updatedProject = await prisma.project.findUnique({
+            where: { id: projectId },
+            include: fullProjectInclude
+        });
+
+        const io = req.app.get('io');
+        if (io) io.to(projectId).emit('section_moved', updatedProject);
+
+        res.json(updatedProject);
+    } catch (error) {
+        console.error('Error reordering sections:', error);
+        res.status(500).json({ error: 'Bölüm sıralaması güncellenirken hata oluştu.', details: error.message });
+    }
 });
 
 // PATCH /api/projects/sections/:sectionId — Rename a section
 router.patch('/sections/:sectionId', authenticateToken, async (req, res) => {
-  try {
-    const { name } = req.body;
-    const updatedSection = await prisma.section.update({
-      where: { id: req.params.sectionId },
-      data: { name: name?.trim() },
-      include: {
-        tasks: {
-          orderBy: { order: 'asc' },
-          include: fullTaskInclude
+    try {
+        const role = await getProjectRoleFromSection(req.user.userId, req.params.sectionId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
-      }
-    });
 
-    const io = req.app.get('io');
-    if (io) io.to(updatedSection.projectId).emit('section_updated', updatedSection);
+        const { name } = req.body;
+        const updatedSection = await prisma.section.update({
+            where: { id: req.params.sectionId },
+            data: { name: name?.trim() },
+            include: {
+                tasks: {
+                    orderBy: { order: 'asc' },
+                    include: fullTaskInclude
+                }
+            }
+        });
 
-    res.json(updatedSection);
-  } catch (error) {
-    console.error('Error renaming section:', error);
-    res.status(500).json({ error: 'Bölüm yeniden adlandırılırken hata oluştu.', details: error.message });
-  }
-});
+        const io = req.app.get('io');
+        if (io) io.to(updatedSection.projectId).emit('section_updated', updatedSection);
 
-// PATCH /api/projects/sections/move — Reorder sections
-router.patch('/sections/move', authenticateToken, async (req, res) => {
-  try {
-    const { orderedSectionIds, projectId } = req.body;
-    if (!orderedSectionIds || !projectId) {
-      return res.status(400).json({ error: 'orderedSectionIds ve projectId zorunludur.' });
+        res.json(updatedSection);
+    } catch (error) {
+        console.error('Error renaming section:', error);
+        res.status(500).json({ error: 'Bölüm yeniden adlandırılırken hata oluştu.', details: error.message });
     }
-
-    // Update each section's order
-    await Promise.all(
-      orderedSectionIds.map((sectionId, index) =>
-        prisma.section.update({
-          where: { id: sectionId },
-          data: { order: index + 1 }
-        })
-      )
-    );
-
-    const updatedProject = await prisma.project.findUnique({
-      where: { id: projectId },
-      include: fullProjectInclude
-    });
-
-    const io = req.app.get('io');
-    if (io) io.to(projectId).emit('section_moved', updatedProject);
-
-    res.json(updatedProject);
-  } catch (error) {
-    console.error('Error reordering sections:', error);
-    res.status(500).json({ error: 'Bölüm sıralaması güncellenirken hata oluştu.', details: error.message });
-  }
 });
+
+
 
 // DELETE /api/projects/sections/:sectionId — Delete a section
 router.delete('/sections/:sectionId', authenticateToken, async (req, res) => {
-  try {
-    const section = await prisma.section.findUnique({ where: { id: req.params.sectionId } });
-    if (!section) return res.status(404).json({ error: 'Bölüm bulunamadı.' });
+    try {
+        const role = await getProjectRoleFromSection(req.user.userId, req.params.sectionId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    await prisma.section.delete({ where: { id: req.params.sectionId } });
+        const section = await prisma.section.findUnique({ where: { id: req.params.sectionId } });
+        if (!section) return res.status(404).json({ error: 'Bölüm bulunamadı.' });
 
-    const io = req.app.get('io');
-    if (io) io.to(section.projectId).emit('section_deleted', { sectionId: req.params.sectionId });
+        await prisma.section.delete({ where: { id: req.params.sectionId } });
 
-    res.json({ message: 'Bölüm başarıyla silindi.' });
-  } catch (error) {
-    console.error('Error deleting section:', error);
-    res.status(500).json({ error: 'Bölüm silinirken hata oluştu.', details: error.message });
-  }
+        const io = req.app.get('io');
+        if (io) io.to(section.projectId).emit('section_deleted', { sectionId: req.params.sectionId });
+
+        res.json({ message: 'Bölüm başarıyla silindi.' });
+    } catch (error) {
+        console.error('Error deleting section:', error);
+        res.status(500).json({ error: 'Bölüm silinirken hata oluştu.', details: error.message });
+    }
 });
 
 
@@ -441,271 +717,402 @@ router.delete('/sections/:sectionId', authenticateToken, async (req, res) => {
 
 // POST /api/projects/tasks — Create a task
 router.post('/tasks', authenticateToken, async (req, res) => {
-  try {
-    const { title, sectionId, parentId, assigneeId, dueDate, startDate, description, priority, type } = req.body;
-    if (!title || !sectionId) return res.status(400).json({ error: 'title ve sectionId zorunludur.' });
+    try {
+        const { title, sectionId, parentId, assigneeId, dueDate, startDate, description, priority, type } = req.body;
+        if (!title || !sectionId) return res.status(400).json({ error: 'title ve sectionId zorunludur.' });
 
-    // Determine next order value in the section
-    const lastTask = await prisma.task.findFirst({
-      where: { sectionId, parentId: parentId || null },
-      orderBy: { order: 'desc' }
-    });
-    const nextOrder = lastTask ? lastTask.order + 1 : 0;
+        const role = await getProjectRoleFromSection(req.user.userId, sectionId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    const newTask = await prisma.task.create({
-      data: {
-        title: title.trim(),
-        sectionId,
-        creatorId: req.user.userId,
-        parentId: parentId || null,
-        assigneeId: assigneeId || null,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        startDate: startDate ? new Date(startDate) : null,
-        description: description || null,
-        priority: priority || 'MEDIUM',
-        type: type || 'TASK',
-        order: nextOrder
-      },
-      include: fullTaskInclude
-    });
-
-    // Get the section to find the projectId for socket and rules
-    const section = await prisma.section.findUnique({ where: { id: sectionId } });
-    if (section) {
-      const io = req.app.get('io');
-      if (io) io.to(section.projectId).emit('task_created', newTask);
-
-      // Trigger rule engine
-      try {
-        await evaluateRules(section.projectId, newTask.id, { type: 'task_added_to_project' });
-      } catch (ruleErr) {
-        console.error('Rule engine error:', ruleErr);
-      }
-    }
-
-    // Notify assignee if different from creator
-    if (assigneeId && assigneeId !== req.user.userId) {
-      try {
-        await prisma.notification.create({
-          data: {
-            type: 'ASSIGNED',
-            message: `You were assigned to "${title}"`,
-            userId: assigneeId,
-            actorId: req.user.userId,
-            taskId: newTask.id,
-            projectId: section?.projectId || null
-          }
+        // Determine next order value in the section
+        const lastTask = await prisma.task.findFirst({
+            where: { sectionId, parentId: parentId || null },
+            orderBy: { order: 'desc' }
         });
-        const io = req.app.get('io');
-        if (io) io.to(assigneeId).emit('new_notification');
-      } catch (notifErr) {
-        console.error('Notification error:', notifErr);
-      }
-    }
+        const nextOrder = lastTask ? lastTask.order + 1 : 0;
 
-    res.status(201).json(newTask);
-  } catch (error) {
-    console.error('Error creating task:', error);
-    res.status(500).json({ error: 'Görev oluşturulurken hata oluştu.', details: error.message });
-  }
+        const newTask = await prisma.task.create({
+            data: {
+                title: title.trim(),
+                sectionId,
+                creatorId: req.user.userId,
+                parentId: parentId || null,
+                assigneeId: assigneeId || null,
+                dueDate: dueDate ? new Date(dueDate) : null,
+                startDate: startDate ? new Date(startDate) : null,
+                description: description || null,
+                priority: priority || 'MEDIUM',
+                type: type || 'TASK',
+                order: nextOrder,
+                activities: {
+                    create: {
+                        action: 'created this task',
+                        userId: req.user.userId
+                    }
+                }
+            },
+            include: fullTaskInclude
+        });
+
+        // Get the section to find the projectId for socket and rules
+        const section = await prisma.section.findUnique({ where: { id: sectionId } });
+        if (section) {
+            const io = req.app.get('io');
+            if (io) io.to(section.projectId).emit('task_created', newTask);
+
+            // Trigger rule engine
+            try {
+                await evaluateRules(section.projectId, newTask.id, { type: 'task_added_to_project' });
+            } catch (ruleErr) {
+                console.error('Rule engine error:', ruleErr);
+            }
+        }
+
+        // Notify assignee if different from creator
+        if (assigneeId && assigneeId !== req.user.userId) {
+            try {
+                await prisma.notification.create({
+                    data: {
+                        type: 'ASSIGNED',
+                        message: `You were assigned to "${title}"`,
+                        userId: assigneeId,
+                        actorId: req.user.userId,
+                        taskId: newTask.id,
+                        projectId: section?.projectId || null
+                    }
+                });
+                const io = req.app.get('io');
+                if (io) io.to(assigneeId).emit('new_notification');
+            } catch (notifErr) {
+                console.error('Notification error:', notifErr);
+            }
+        }
+
+        res.status(201).json(newTask);
+    } catch (error) {
+        console.error('Error creating task:', error);
+        res.status(500).json({ error: 'Görev oluşturulurken hata oluştu.', details: error.message });
+    }
+});
+
+// PATCH /api/projects/tasks/move — Move & reorder a task (MUST be before /tasks/:taskId)
+router.patch('/tasks/move', authenticateToken, async (req, res) => {
+    try {
+        const { taskId, targetSectionId, orderedTaskIds, projectId } = req.body;
+        if (!taskId || !targetSectionId) {
+            return res.status(400).json({ error: 'taskId ve targetSectionId zorunludur.' });
+        }
+
+        // Use projectId if available, else get from taskId
+        let role = null;
+        if (projectId) {
+            role = await getProjectRole(req.user.userId, projectId);
+        } else {
+            role = await getProjectRoleFromTask(req.user.userId, taskId);
+        }
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
+
+        // Check if the moved task is primary or secondary
+        const targetSection = await prisma.section.findUnique({ where: { id: targetSectionId } });
+        const safeProjectId = projectId || (targetSection ? targetSection.projectId : null);
+
+        const primaryTask = await prisma.task.findFirst({
+            where: { id: taskId, section: { projectId: safeProjectId } }
+        });
+
+        if (primaryTask) {
+            await prisma.task.update({
+                where: { id: taskId },
+                data: { 
+                    sectionId: targetSectionId,
+                    activities: { create: { action: `moved this task`, userId: req.user.userId } }
+                }
+            });
+        } else if (safeProjectId) {
+            // Secondary
+            await prisma.taskProject.updateMany({
+                where: { taskId, projectId: safeProjectId },
+                data: { sectionId: targetSectionId }
+            });
+        }
+
+        // Reorder all tasks in the target section
+        if (orderedTaskIds && orderedTaskIds.length > 0) {
+            await Promise.all(
+                orderedTaskIds.map(async (id, index) => {
+                    const isPrimary = await prisma.task.findFirst({
+                        where: { id, section: { projectId: safeProjectId } }
+                    });
+                    if (isPrimary) {
+                        return prisma.task.update({
+                            where: { id },
+                            data: { order: index }
+                        });
+                    } else if (safeProjectId) {
+                        return prisma.taskProject.updateMany({
+                            where: { taskId: id, projectId: safeProjectId },
+                            data: { order: index }
+                        });
+                    }
+                })
+            );
+        }
+
+        // Trigger rule engine for task_moved
+        if (projectId) {
+            try {
+                await evaluateRules(projectId, taskId, {
+                    type: 'task_moved',
+                    targetSectionId
+                });
+                await evaluateRules(projectId, taskId, { type: 'task_moved_general' });
+            } catch (ruleErr) {
+                console.error('Rule engine error:', ruleErr);
+            }
+        }
+
+        const io = req.app.get('io');
+        if (io) {
+            if (projectId) io.to(projectId).emit('task_moved', { taskId, targetSectionId });
+            
+            try {
+                const updatedTask = await prisma.task.findUnique({
+                    where: { id: taskId },
+                    include: fullTaskInclude
+                });
+                if (updatedTask) {
+                    const primaryProjId = updatedTask.section?.projectId;
+                    if (primaryProjId) io.to(primaryProjId).emit('task_updated', updatedTask);
+                    if (updatedTask.secondaryProjects) {
+                        updatedTask.secondaryProjects.forEach(sp => {
+                            io.to(sp.projectId).emit('task_updated', updatedTask);
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('Error emitting task_updated after move:', err);
+            }
+        }
+
+        res.json({ message: 'Görev başarıyla taşındı.' });
+    } catch (error) {
+        console.error('Error moving task:', error);
+        res.status(500).json({ error: 'Görev taşınırken hata oluştu.', details: error.message });
+    }
 });
 
 // PATCH /api/projects/tasks/:taskId — Update a task
 router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
-  try {
-    const { title, description, isCompleted, assigneeId, dueDate, startDate, priority, type, customFields, sectionId, order, likes } = req.body;
+    try {
+        const role = await getProjectRoleFromTask(req.user.userId, req.params.taskId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    const currentTask = await prisma.task.findUnique({
-      where: { id: req.params.taskId },
-      include: { section: true }
-    });
-    if (!currentTask) return res.status(404).json({ error: 'Görev bulunamadı.' });
+        const { title, description, isCompleted, assigneeId, dueDate, startDate, priority, type, customFields, sectionId, order, likes } = req.body;
 
-    const updateData = {};
-    if (title !== undefined) updateData.title = title;
-    if (description !== undefined) updateData.description = description;
-    if (assigneeId !== undefined) updateData.assigneeId = assigneeId || null;
-    if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
-    if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
-    if (priority !== undefined) updateData.priority = priority;
-    if (type !== undefined) updateData.type = type;
-    if (sectionId !== undefined) updateData.sectionId = sectionId;
-    if (order !== undefined) updateData.order = order;
-    if (likes !== undefined) updateData.likes = likes;
+        const currentTask = await prisma.task.findUnique({
+            where: { id: req.params.taskId },
+            include: { section: true, assignee: true }
+        });
+        if (!currentTask) return res.status(404).json({ error: 'Görev bulunamadı.' });
 
-    // Handle customFields — accept both string and object
-    if (customFields !== undefined) {
-      updateData.customFields = typeof customFields === 'string' ? customFields : JSON.stringify(customFields);
-    }
+        const updateData = {};
+        if (title !== undefined) updateData.title = title;
+        if (description !== undefined) updateData.description = description;
+        if (assigneeId !== undefined) updateData.assigneeId = assigneeId || null;
+        if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+        if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
+        if (priority !== undefined) updateData.priority = priority;
+        if (type !== undefined) updateData.type = type;
+        if (sectionId !== undefined) updateData.sectionId = sectionId;
+        if (order !== undefined) updateData.order = order;
+        if (likes !== undefined) updateData.likes = likes;
 
-    // Handle completion toggle
-    if (isCompleted !== undefined) {
-      updateData.isCompleted = isCompleted;
-      updateData.completedAt = isCompleted ? new Date() : null;
-    }
+        // Handle customFields — accept both string and object
+        if (customFields !== undefined) {
+            updateData.customFields = typeof customFields === 'string' ? customFields : JSON.stringify(customFields);
+        }
 
-    const updatedTask = await prisma.task.update({
-      where: { id: req.params.taskId },
-      data: updateData,
-      include: fullTaskInclude
-    });
-
-    const projectId = currentTask.section?.projectId;
-    const io = req.app.get('io');
-    if (io && projectId) io.to(projectId).emit('task_updated', updatedTask);
-
-    // ─── Rule Engine Triggers ────────────────────────────────────────────
-    if (projectId) {
-      try {
+        // Handle completion toggle
         if (isCompleted !== undefined) {
-          await evaluateRules(projectId, updatedTask.id, { type: 'task_completed' });
-          await evaluateRules(projectId, updatedTask.id, { type: 'completion_status_changed' });
+            updateData.isCompleted = isCompleted;
+            updateData.completedAt = isCompleted ? new Date() : null;
         }
-        if (assigneeId !== undefined && assigneeId !== currentTask.assigneeId) {
-          await evaluateRules(projectId, updatedTask.id, { type: 'task_assigned' });
-        }
+
+        const activitiesToLog = [];
         if (title !== undefined && title !== currentTask.title) {
-          await evaluateRules(projectId, updatedTask.id, { type: 'task_name_changed' });
+            activitiesToLog.push({ action: 'renamed this task', oldValue: currentTask.title, newValue: title });
         }
         if (description !== undefined && description !== currentTask.description) {
-          await evaluateRules(projectId, updatedTask.id, { type: 'task_description_changed' });
+            activitiesToLog.push({ action: 'changed the description' });
         }
-        if (type !== undefined && type !== currentTask.type) {
-          await evaluateRules(projectId, updatedTask.id, { type: 'task_type_changed' });
+        if (assigneeId !== undefined && assigneeId !== currentTask.assigneeId) {
+            if (assigneeId) {
+                const newAssignee = await prisma.user.findUnique({ where: { id: assigneeId } });
+                activitiesToLog.push({ action: `assigned this task to ${newAssignee?.name}` });
+            } else {
+                activitiesToLog.push({ action: 'unassigned this task' });
+            }
         }
         if (dueDate !== undefined) {
-          await evaluateRules(projectId, updatedTask.id, { type: 'due_date_changed' });
-        }
-        if (startDate !== undefined) {
-          await evaluateRules(projectId, updatedTask.id, { type: 'start_date_changed' });
-        }
-        if (customFields !== undefined) {
-          await evaluateRules(projectId, updatedTask.id, { type: 'custom_field_changed' });
+            const currentDueDate = currentTask.dueDate ? currentTask.dueDate.getTime() : null;
+            const newDueDate = dueDate ? new Date(dueDate).getTime() : null;
+            if (currentDueDate !== newDueDate) {
+                activitiesToLog.push({ action: dueDate ? 'changed the due date' : 'removed the due date' });
+                updateData.reminderSent1Week = false;
+                updateData.reminderSent1Day = false;
+                updateData.reminderSent1Hour = false;
+                updateData.reminderSentOverdue = false;
+            }
         }
         if (sectionId !== undefined && sectionId !== currentTask.sectionId) {
-          await evaluateRules(projectId, updatedTask.id, {
-            type: 'task_moved',
-            targetSectionId: sectionId
-          });
-          await evaluateRules(projectId, updatedTask.id, { type: 'task_moved_general' });
+            activitiesToLog.push({ action: 'moved this task' });
         }
-      } catch (ruleErr) {
-        console.error('Rule engine error:', ruleErr);
-      }
-    }
+        if (isCompleted !== undefined && isCompleted !== currentTask.isCompleted) {
+            activitiesToLog.push({ action: isCompleted ? 'completed this task' : 'marked this task incomplete' });
+        }
+        
+        if (activitiesToLog.length > 0) {
+            updateData.activities = {
+                create: activitiesToLog.map(act => ({
+                    ...act,
+                    userId: req.user.userId
+                }))
+            };
+        }
 
-    // ─── Notifications ───────────────────────────────────────────────────
-    if (assigneeId !== undefined && assigneeId && assigneeId !== req.user.userId && assigneeId !== currentTask.assigneeId) {
-      try {
-        await prisma.notification.create({
-          data: {
-            type: 'ASSIGNED',
-            message: `You were assigned to "${updatedTask.title}"`,
-            userId: assigneeId,
-            actorId: req.user.userId,
-            taskId: updatedTask.id,
-            projectId
-          }
+        const updatedTask = await prisma.task.update({
+            where: { id: req.params.taskId },
+            data: updateData,
+            include: fullTaskInclude
         });
-        if (io) io.to(assigneeId).emit('new_notification');
-      } catch (notifErr) {
-        console.error('Notification error:', notifErr);
-      }
-    }
 
-    if (isCompleted === true && currentTask.assigneeId && currentTask.assigneeId !== req.user.userId) {
-      try {
-        await prisma.notification.create({
-          data: {
-            type: 'COMPLETED',
-            message: `"${updatedTask.title}" was marked complete`,
-            userId: currentTask.assigneeId,
-            actorId: req.user.userId,
-            taskId: updatedTask.id,
-            projectId
-          }
-        });
-        if (io) io.to(currentTask.assigneeId).emit('new_notification');
-      } catch (notifErr) {
-        console.error('Notification error:', notifErr);
-      }
-    }
+        const projectId = currentTask.section?.projectId;
+        const io = req.app.get('io');
+        if (io) {
+            if (projectId) io.to(projectId).emit('task_updated', updatedTask);
+            if (updatedTask.secondaryProjects) {
+                updatedTask.secondaryProjects.forEach(sp => {
+                    io.to(sp.projectId).emit('task_updated', updatedTask);
+                });
+            }
+        }
 
-    res.json(updatedTask);
-  } catch (error) {
-    console.error('Error updating task:', error);
-    res.status(500).json({ error: 'Görev güncellenirken hata oluştu.', details: error.message });
-  }
+        // ─── Rule Engine Triggers ────────────────────────────────────────────
+        if (projectId) {
+            try {
+                if (isCompleted !== undefined) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'task_completed' });
+                    await evaluateRules(projectId, updatedTask.id, { type: 'completion_status_changed' });
+                }
+                if (assigneeId !== undefined && assigneeId !== currentTask.assigneeId) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'task_assigned' });
+                }
+                if (title !== undefined && title !== currentTask.title) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'task_name_changed' });
+                }
+                if (description !== undefined && description !== currentTask.description) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'task_description_changed' });
+                }
+                if (type !== undefined && type !== currentTask.type) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'task_type_changed' });
+                }
+                if (dueDate !== undefined) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'due_date_changed' });
+                }
+                if (startDate !== undefined) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'start_date_changed' });
+                }
+                if (customFields !== undefined) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'custom_field_changed' });
+                }
+                if (sectionId !== undefined && sectionId !== currentTask.sectionId) {
+                    await evaluateRules(projectId, updatedTask.id, {
+                        type: 'task_moved',
+                        targetSectionId: sectionId
+                    });
+                    await evaluateRules(projectId, updatedTask.id, { type: 'task_moved_general' });
+                }
+            } catch (ruleErr) {
+                console.error('Rule engine error:', ruleErr);
+            }
+        }
+
+        // ─── Notifications ───────────────────────────────────────────────────
+        if (assigneeId !== undefined && assigneeId && assigneeId !== req.user.userId && assigneeId !== currentTask.assigneeId) {
+            try {
+                await prisma.notification.create({
+                    data: {
+                        type: 'ASSIGNED',
+                        message: `You were assigned to "${updatedTask.title}"`,
+                        userId: assigneeId,
+                        actorId: req.user.userId,
+                        taskId: updatedTask.id,
+                        projectId
+                    }
+                });
+                if (io) io.to(assigneeId).emit('new_notification');
+            } catch (notifErr) {
+                console.error('Notification error:', notifErr);
+            }
+        }
+
+        if (isCompleted === true && currentTask.assigneeId && currentTask.assigneeId !== req.user.userId) {
+            try {
+                await prisma.notification.create({
+                    data: {
+                        type: 'COMPLETED',
+                        message: `"${updatedTask.title}" was marked complete`,
+                        userId: currentTask.assigneeId,
+                        actorId: req.user.userId,
+                        taskId: updatedTask.id,
+                        projectId
+                    }
+                });
+                if (io) io.to(currentTask.assigneeId).emit('new_notification');
+            } catch (notifErr) {
+                console.error('Notification error:', notifErr);
+            }
+        }
+
+        res.json(updatedTask);
+    } catch (error) {
+        console.error('Error updating task:', error);
+        res.status(500).json({ error: 'Görev güncellenirken hata oluştu.', details: error.message });
+    }
 });
 
-// PATCH /api/projects/tasks/move — Move & reorder a task
-router.patch('/tasks/move', authenticateToken, async (req, res) => {
-  try {
-    const { taskId, targetSectionId, orderedTaskIds, projectId } = req.body;
-    if (!taskId || !targetSectionId) {
-      return res.status(400).json({ error: 'taskId ve targetSectionId zorunludur.' });
-    }
 
-    // Move the task to the target section
-    await prisma.task.update({
-      where: { id: taskId },
-      data: { sectionId: targetSectionId }
-    });
-
-    // Reorder all tasks in the target section
-    if (orderedTaskIds && orderedTaskIds.length > 0) {
-      await Promise.all(
-        orderedTaskIds.map((id, index) =>
-          prisma.task.update({
-            where: { id },
-            data: { order: index }
-          })
-        )
-      );
-    }
-
-    // Trigger rule engine for task_moved
-    if (projectId) {
-      try {
-        await evaluateRules(projectId, taskId, {
-          type: 'task_moved',
-          targetSectionId
-        });
-        await evaluateRules(projectId, taskId, { type: 'task_moved_general' });
-      } catch (ruleErr) {
-        console.error('Rule engine error:', ruleErr);
-      }
-    }
-
-    const io = req.app.get('io');
-    if (io && projectId) io.to(projectId).emit('task_moved', { taskId, targetSectionId });
-
-    res.json({ message: 'Görev başarıyla taşındı.' });
-  } catch (error) {
-    console.error('Error moving task:', error);
-    res.status(500).json({ error: 'Görev taşınırken hata oluştu.', details: error.message });
-  }
-});
 
 // DELETE /api/projects/tasks/:taskId — Delete a task
 router.delete('/tasks/:taskId', authenticateToken, async (req, res) => {
-  try {
-    const task = await prisma.task.findUnique({
-      where: { id: req.params.taskId },
-      include: { section: true }
-    });
-    if (!task) return res.status(404).json({ error: 'Görev bulunamadı.' });
+    try {
+        const role = await getProjectRoleFromTask(req.user.userId, req.params.taskId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    await prisma.task.delete({ where: { id: req.params.taskId } });
+        const task = await prisma.task.findUnique({
+            where: { id: req.params.taskId },
+            include: { section: true }
+        });
+        if (!task) return res.status(404).json({ error: 'Görev bulunamadı.' });
 
-    const io = req.app.get('io');
-    if (io && task.section) io.to(task.section.projectId).emit('task_deleted', { taskId: req.params.taskId });
+        await prisma.task.delete({ where: { id: req.params.taskId } });
 
-    res.json({ message: 'Görev başarıyla silindi.' });
-  } catch (error) {
-    console.error('Error deleting task:', error);
-    res.status(500).json({ error: 'Görev silinirken hata oluştu.', details: error.message });
-  }
+        const io = req.app.get('io');
+        if (io && task.section) io.to(task.section.projectId).emit('task_deleted', { taskId: req.params.taskId });
+
+        res.json({ message: 'Görev başarıyla silindi.' });
+    } catch (error) {
+        console.error('Error deleting task:', error);
+        res.status(500).json({ error: 'Görev silinirken hata oluştu.', details: error.message });
+    }
 });
 
 
@@ -715,79 +1122,107 @@ router.delete('/tasks/:taskId', authenticateToken, async (req, res) => {
 
 // POST /api/projects/tasks/:taskId/comments — Add a comment
 router.post('/tasks/:taskId/comments', authenticateToken, async (req, res) => {
-  try {
-    const { text } = req.body;
-    if (!text || !text.trim()) return res.status(400).json({ error: 'Yorum metni zorunludur.' });
+    try {
+        const role = await getProjectRoleFromTask(req.user.userId, req.params.taskId);
+        if (!hasRole(role, 'COMMENTER')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Commenter veya üstü gerekli)' });
+        }
 
-    const newComment = await prisma.comment.create({
-      data: {
-        text: text.trim(),
-        taskId: req.params.taskId,
-        userId: req.user.userId
-      },
-      include: {
-        user: { select: { id: true, name: true, email: true } }
-      }
-    });
+        const { text } = req.body;
+        if (!text || !text.trim()) return res.status(400).json({ error: 'Yorum metni zorunludur.' });
 
-    // Notify task assignee about the comment
-    const task = await prisma.task.findUnique({
-      where: { id: req.params.taskId },
-      include: { section: true }
-    });
-
-    if (task && task.assigneeId && task.assigneeId !== req.user.userId) {
-      try {
-        await prisma.notification.create({
-          data: {
-            type: 'COMMENTED',
-            message: `New comment on "${task.title}"`,
-            userId: task.assigneeId,
-            actorId: req.user.userId,
-            taskId: task.id,
-            projectId: task.section?.projectId || null
-          }
+        const newComment = await prisma.comment.create({
+            data: {
+                text: text.trim(),
+                taskId: req.params.taskId,
+                userId: req.user.userId
+            },
+            include: {
+                user: { select: { id: true, name: true, email: true } }
+            }
         });
-        const io = req.app.get('io');
-        if (io) io.to(task.assigneeId).emit('new_notification');
-      } catch (notifErr) {
-        console.error('Notification error:', notifErr);
-      }
-    }
 
-    // Trigger rule engine
-    if (task?.section?.projectId) {
-      try {
-        await evaluateRules(task.section.projectId, task.id, { type: 'comment_added' });
-      } catch (ruleErr) {
-        console.error('Rule engine error:', ruleErr);
-      }
-    }
+        // Notify task assignee about the comment
+        const task = await prisma.task.findUnique({
+            where: { id: req.params.taskId },
+            include: { section: true }
+        });
 
-    res.status(201).json(newComment);
-  } catch (error) {
-    console.error('Error adding comment:', error);
-    res.status(500).json({ error: 'Yorum eklenirken hata oluştu.', details: error.message });
-  }
+        if (task && task.assigneeId && task.assigneeId !== req.user.userId) {
+            try {
+                await prisma.notification.create({
+                    data: {
+                        type: 'COMMENTED',
+                        message: `New comment on "${task.title}"`,
+                        userId: task.assigneeId,
+                        actorId: req.user.userId,
+                        taskId: task.id,
+                        projectId: task.section?.projectId || null
+                    }
+                });
+                const io = req.app.get('io');
+                if (io) io.to(task.assigneeId).emit('new_notification');
+            } catch (notifErr) {
+                console.error('Notification error:', notifErr);
+            }
+        }
+
+        // Trigger rule engine
+        if (task?.section?.projectId) {
+            try {
+                await evaluateRules(task.section.projectId, task.id, { type: 'comment_added' });
+            } catch (ruleErr) {
+                console.error('Rule engine error:', ruleErr);
+            }
+
+            const io = req.app.get('io');
+            if (io) {
+                const updatedTaskForSocket = await prisma.task.findUnique({
+                    where: { id: task.id },
+                    include: fullTaskInclude
+                });
+                io.to(task.section.projectId).emit('task_updated', updatedTaskForSocket);
+            }
+        }
+
+        res.status(201).json(newComment);
+    } catch (error) {
+        console.error('Error adding comment:', error);
+        res.status(500).json({ error: 'Yorum eklenirken hata oluştu.', details: error.message });
+    }
 });
 
 // DELETE /api/projects/tasks/:taskId/comments/:commentId — Delete a comment
 router.delete('/tasks/:taskId/comments/:commentId', authenticateToken, async (req, res) => {
-  try {
-    const comment = await prisma.comment.findUnique({ where: { id: req.params.commentId } });
-    if (!comment) return res.status(404).json({ error: 'Yorum bulunamadı.' });
+    try {
+        const role = await getProjectRoleFromTask(req.user.userId, req.params.taskId);
+        if (!hasRole(role, 'COMMENTER')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok.' });
+        }
 
-    // Only the comment author can delete
-    if (comment.userId !== req.user.userId) {
-      return res.status(403).json({ error: 'Sadece yorumun sahibi silebilir.' });
+        const comment = await prisma.comment.findUnique({ where: { id: req.params.commentId } });
+        if (!comment) return res.status(404).json({ error: 'Yorum bulunamadı.' });
+
+        if (role !== 'ADMIN' && comment.userId !== req.user.userId) {
+            return res.status(403).json({ error: 'Sadece kendi yorumunuzu veya yöneticiyseniz silebilirsiniz.' });
+        }
+
+        await prisma.comment.delete({ where: { id: req.params.commentId } });
+
+        const taskForSocket = await prisma.task.findUnique({
+            where: { id: req.params.taskId },
+            include: { ...fullTaskInclude, section: true }
+        });
+        const io = req.app.get('io');
+        if (io && taskForSocket?.section?.projectId) {
+            io.to(taskForSocket.section.projectId).emit('task_updated', taskForSocket);
+        }
+
+        res.json({ message: 'Yorum başarıyla silindi.' });
+    } catch (error) {
+        console.error('Error deleting comment:', error);
+        res.status(500).json({ error: 'Yorum silinirken hata oluştu.', details: error.message });
     }
-
-    await prisma.comment.delete({ where: { id: req.params.commentId } });
-    res.json({ message: 'Yorum başarıyla silindi.' });
-  } catch (error) {
-    console.error('Error deleting comment:', error);
-    res.status(500).json({ error: 'Yorum silinirken hata oluştu.', details: error.message });
-  }
 });
 
 
@@ -797,49 +1232,59 @@ router.delete('/tasks/:taskId/comments/:commentId', authenticateToken, async (re
 
 // POST /api/projects/tasks/:taskId/dependencies — Create a dependency
 router.post('/tasks/:taskId/dependencies', authenticateToken, async (req, res) => {
-  try {
-    const { blockingId } = req.body;
-    const blockedById = req.params.taskId;
+    try {
+        const role = await getProjectRoleFromTask(req.user.userId, req.params.taskId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    if (!blockingId) return res.status(400).json({ error: 'blockingId zorunludur.' });
-    if (blockingId === blockedById) return res.status(400).json({ error: 'Bir görev kendisini engelleyemez.' });
+        const { blockingId } = req.body;
+        const blockedById = req.params.taskId;
 
-    await prisma.taskDependency.create({
-      data: { blockingId, blockedById }
-    });
+        if (!blockingId) return res.status(400).json({ error: 'blockingId zorunludur.' });
+        if (blockingId === blockedById) return res.status(400).json({ error: 'Bir görev kendisini engelleyemez.' });
 
-    // Return updated task with all relations
-    const updatedTask = await prisma.task.findUnique({
-      where: { id: blockedById },
-      include: fullTaskInclude
-    });
+        await prisma.taskDependency.create({
+            data: { blockingId, blockedById }
+        });
 
-    res.status(201).json(updatedTask);
-  } catch (error) {
-    if (error.code === 'P2002') {
-      return res.status(400).json({ error: 'Bu bağımlılık zaten mevcut.' });
+        // Return updated task with all relations
+        const updatedTask = await prisma.task.findUnique({
+            where: { id: blockedById },
+            include: fullTaskInclude
+        });
+
+        res.status(201).json(updatedTask);
+    } catch (error) {
+        if (error.code === 'P2002') {
+            return res.status(400).json({ error: 'Bu bağımlılık zaten mevcut.' });
+        }
+        console.error('Error creating dependency:', error);
+        res.status(500).json({ error: 'Bağımlılık oluşturulurken hata oluştu.', details: error.message });
     }
-    console.error('Error creating dependency:', error);
-    res.status(500).json({ error: 'Bağımlılık oluşturulurken hata oluştu.', details: error.message });
-  }
 });
 
 // DELETE /api/projects/tasks/:taskId/dependencies/:dependencyId — Remove a dependency
 router.delete('/tasks/:taskId/dependencies/:dependencyId', authenticateToken, async (req, res) => {
-  try {
-    await prisma.taskDependency.delete({ where: { id: req.params.dependencyId } });
+    try {
+        const role = await getProjectRoleFromTask(req.user.userId, req.params.taskId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    // Return updated task
-    const updatedTask = await prisma.task.findUnique({
-      where: { id: req.params.taskId },
-      include: fullTaskInclude
-    });
+        await prisma.taskDependency.delete({ where: { id: req.params.dependencyId } });
 
-    res.json(updatedTask);
-  } catch (error) {
-    console.error('Error deleting dependency:', error);
-    res.status(500).json({ error: 'Bağımlılık silinirken hata oluştu.', details: error.message });
-  }
+        // Return updated task
+        const updatedTask = await prisma.task.findUnique({
+            where: { id: req.params.taskId },
+            include: fullTaskInclude
+        });
+
+        res.json(updatedTask);
+    } catch (error) {
+        console.error('Error deleting dependency:', error);
+        res.status(500).json({ error: 'Bağımlılık silinirken hata oluştu.', details: error.message });
+    }
 });
 
 
@@ -849,49 +1294,59 @@ router.delete('/tasks/:taskId/dependencies/:dependencyId', authenticateToken, as
 
 // POST /api/projects/:projectId/tasks/:taskId/tags — Assign a tag to a task
 router.post('/:projectId/tasks/:taskId/tags', authenticateToken, async (req, res) => {
-  try {
-    const { tagId } = req.body;
-    if (!tagId) return res.status(400).json({ error: 'tagId zorunludur.' });
+    try {
+        const role = await getProjectRole(req.user.userId, req.params.projectId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    await prisma.task.update({
-      where: { id: req.params.taskId },
-      data: {
-        tags: { connect: { id: tagId } }
-      }
-    });
+        const { tagId } = req.body;
+        if (!tagId) return res.status(400).json({ error: 'tagId zorunludur.' });
 
-    const updatedTask = await prisma.task.findUnique({
-      where: { id: req.params.taskId },
-      include: fullTaskInclude
-    });
+        await prisma.task.update({
+            where: { id: req.params.taskId },
+            data: {
+                tags: { connect: { id: tagId } }
+            }
+        });
 
-    res.json(updatedTask);
-  } catch (error) {
-    console.error('Error assigning tag:', error);
-    res.status(500).json({ error: 'Etiket atanırken hata oluştu.', details: error.message });
-  }
+        const updatedTask = await prisma.task.findUnique({
+            where: { id: req.params.taskId },
+            include: fullTaskInclude
+        });
+
+        res.json(updatedTask);
+    } catch (error) {
+        console.error('Error assigning tag:', error);
+        res.status(500).json({ error: 'Etiket atanırken hata oluştu.', details: error.message });
+    }
 });
 
 // DELETE /api/projects/:projectId/tasks/:taskId/tags/:tagId — Remove a tag from a task
 router.delete('/:projectId/tasks/:taskId/tags/:tagId', authenticateToken, async (req, res) => {
-  try {
-    await prisma.task.update({
-      where: { id: req.params.taskId },
-      data: {
-        tags: { disconnect: { id: req.params.tagId } }
-      }
-    });
+    try {
+        const role = await getProjectRole(req.user.userId, req.params.projectId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
+        }
 
-    const updatedTask = await prisma.task.findUnique({
-      where: { id: req.params.taskId },
-      include: fullTaskInclude
-    });
+        await prisma.task.update({
+            where: { id: req.params.taskId },
+            data: {
+                tags: { disconnect: { id: req.params.tagId } }
+            }
+        });
 
-    res.json(updatedTask);
-  } catch (error) {
-    console.error('Error removing tag:', error);
-    res.status(500).json({ error: 'Etiket kaldırılırken hata oluştu.', details: error.message });
-  }
+        const updatedTask = await prisma.task.findUnique({
+            where: { id: req.params.taskId },
+            include: fullTaskInclude
+        });
+
+        res.json(updatedTask);
+    } catch (error) {
+        console.error('Error removing tag:', error);
+        res.status(500).json({ error: 'Etiket kaldırılırken hata oluştu.', details: error.message });
+    }
 });
 
 
@@ -901,74 +1356,346 @@ router.delete('/:projectId/tasks/:taskId/tags/:tagId', authenticateToken, async 
 
 // GET /api/projects/:id/form — Get form settings for a project (public, no auth)
 router.get('/:id/form', async (req, res) => {
-  try {
-    const project = await prisma.project.findUnique({
-      where: { id: req.params.id },
-      select: {
-        id: true,
-        name: true,
-        formSettings: true,
-        customFieldSettings: true,
-        sections: {
-          orderBy: { order: 'asc' },
-          take: 1,
-          select: { id: true }
-        }
-      }
-    });
-    if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
-    if (!project.formSettings) return res.status(404).json({ error: 'Bu proje için form ayarlanmamış.' });
+    try {
+        const project = await prisma.project.findUnique({
+            where: { id: req.params.id },
+            select: {
+                id: true,
+                name: true,
+                formSettings: true,
+                customFieldSettings: true,
+                sections: {
+                    orderBy: { order: 'asc' },
+                    take: 1,
+                    select: { id: true }
+                }
+            }
+        });
+        if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
+        if (!project.formSettings) return res.status(404).json({ error: 'Bu proje için form ayarlanmamış.' });
 
-    res.json(project);
-  } catch (error) {
-    console.error('Error fetching form:', error);
-    res.status(500).json({ error: 'Form yüklenirken hata oluştu.', details: error.message });
-  }
+        res.json(project);
+    } catch (error) {
+        console.error('Error fetching form:', error);
+        res.status(500).json({ error: 'Form yüklenirken hata oluştu.', details: error.message });
+    }
 });
 
 // POST /api/projects/:id/form/submit — Submit a form (public, no auth)
 router.post('/:id/form/submit', async (req, res) => {
-  try {
-    const { title, description, customFields } = req.body;
-    const project = await prisma.project.findUnique({
-      where: { id: req.params.id },
-      include: {
-        sections: { orderBy: { order: 'asc' }, take: 1 },
-        owner: { select: { id: true } }
-      }
-    });
+    try {
+        const { title, description, customFields } = req.body;
+        const project = await prisma.project.findUnique({
+            where: { id: req.params.id },
+            include: {
+                sections: { orderBy: { order: 'asc' }, take: 1 },
+                owner: { select: { id: true } }
+            }
+        });
 
-    if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
-    if (!project.sections || project.sections.length === 0) {
-      return res.status(400).json({ error: 'Projede bölüm bulunamadı.' });
+        if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
+        if (!project.sections || project.sections.length === 0) {
+            return res.status(400).json({ error: 'Projede bölüm bulunamadı.' });
+        }
+
+        const sectionId = project.sections[0].id;
+
+        // Determine next order
+        const lastTask = await prisma.task.findFirst({
+            where: { sectionId, parentId: null },
+            orderBy: { order: 'desc' }
+        });
+        const nextOrder = lastTask ? lastTask.order + 1 : 0;
+
+        const newTask = await prisma.task.create({
+            data: {
+                title: title || 'Form Submission',
+                description: description || null,
+                sectionId,
+                creatorId: project.ownerId,
+                order: nextOrder,
+                customFields: customFields ? JSON.stringify(customFields) : '{}'
+            }
+        });
+
+        res.status(201).json(newTask);
+    } catch (error) {
+        console.error('Error submitting form:', error);
+        res.status(500).json({ error: 'Form gönderilirken hata oluştu.', details: error.message });
     }
-
-    const sectionId = project.sections[0].id;
-
-    // Determine next order
-    const lastTask = await prisma.task.findFirst({
-      where: { sectionId, parentId: null },
-      orderBy: { order: 'desc' }
-    });
-    const nextOrder = lastTask ? lastTask.order + 1 : 0;
-
-    const newTask = await prisma.task.create({
-      data: {
-        title: title || 'Form Submission',
-        description: description || null,
-        sectionId,
-        creatorId: project.ownerId,
-        order: nextOrder,
-        customFields: customFields ? JSON.stringify(customFields) : '{}'
-      }
-    });
-
-    res.status(201).json(newTask);
-  } catch (error) {
-    console.error('Error submitting form:', error);
-    res.status(500).json({ error: 'Form gönderilirken hata oluştu.', details: error.message });
-  }
 });
 
+// POST /api/projects/tasks/:taskId/duplicate — Duplicate a task
+router.post('/tasks/:taskId/duplicate', authenticateToken, async (req, res) => {
+    try {
+        const taskId = req.params.taskId;
+        const taskToDuplicate = await prisma.task.findUnique({
+            where: { id: taskId },
+            include: { section: { select: { projectId: true } } }
+        });
+
+        if (!taskToDuplicate) {
+            return res.status(404).json({ error: 'Kopyalanacak görev bulunamadı.' });
+        }
+
+        const role = await getProjectRole(req.user.userId, taskToDuplicate.section.projectId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu projede görev oluşturma yetkiniz yok.' });
+        }
+
+        // Determine next order
+        const lastTask = await prisma.task.findFirst({
+            where: { sectionId: taskToDuplicate.sectionId, parentId: taskToDuplicate.parentId },
+            orderBy: { order: 'desc' }
+        });
+        const nextOrder = lastTask ? lastTask.order + 1 : 0;
+
+        const duplicatedTask = await prisma.task.create({
+            data: {
+                title: `${taskToDuplicate.title} (Copy)`,
+                description: taskToDuplicate.description,
+                startDate: taskToDuplicate.startDate,
+                dueDate: taskToDuplicate.dueDate,
+                priority: taskToDuplicate.priority,
+                type: taskToDuplicate.type,
+                order: nextOrder,
+                isCompleted: false, // Don't copy completion status usually
+                customFields: taskToDuplicate.customFields,
+                sectionId: taskToDuplicate.sectionId,
+                assigneeId: taskToDuplicate.assigneeId,
+                creatorId: req.user.userId,
+                parentId: taskToDuplicate.parentId
+            },
+            include: fullTaskInclude
+        });
+
+        // Socket.io notification
+        const io = req.app.get('io');
+        if (io) {
+            io.to(taskToDuplicate.section.projectId).emit('task_created', duplicatedTask);
+        }
+
+        res.status(201).json(duplicatedTask);
+    } catch (error) {
+        console.error('Error duplicating task:', error);
+        res.status(500).json({ error: 'Görev kopyalanırken hata oluştu.', details: error.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ATTACHMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/projects/tasks/:taskId/attachments — Upload files to a task
+router.post('/tasks/:taskId/attachments', authenticateToken, upload.array('files', 10), async (req, res) => {
+    try {
+        const role = await getProjectRoleFromTask(req.user.userId, req.params.taskId);
+        if (!hasRole(role, 'COMMENTER')) {
+            // Clean up uploaded files if unauthorized
+            req.files?.forEach(f => fs.unlinkSync(f.path));
+            return res.status(403).json({ error: 'Dosya yükleme yetkiniz yok.' });
+        }
+
+        const attachments = await Promise.all(
+            req.files.map(file =>
+                prisma.attachment.create({
+                    data: {
+                        filename: file.filename,
+                        originalName: file.originalname,
+                        mimeType: file.mimetype,
+                        size: file.size,
+                        taskId: req.params.taskId,
+                        uploaderId: req.user.userId
+                    },
+                    include: {
+                        uploader: { select: { id: true, name: true, email: true } }
+                    }
+                })
+            )
+        );
+
+        // Create activity logs for attachments
+        await Promise.all(
+            req.files.map(file =>
+                prisma.taskActivity.create({
+                    data: {
+                        action: `attached ${file.originalname}`,
+                        taskId: req.params.taskId,
+                        userId: req.user.userId
+                    }
+                })
+            )
+        );
+
+        res.status(201).json(attachments);
+    } catch (error) {
+        console.error('Error uploading attachments:', error);
+        res.status(500).json({ error: 'Dosya yüklenirken hata oluştu.', details: error.message });
+    }
+});
+
+// GET /api/projects/tasks/:taskId/attachments — List attachments for a task
+router.get('/tasks/:taskId/attachments', authenticateToken, async (req, res) => {
+    try {
+        const attachments = await prisma.attachment.findMany({
+            where: { taskId: req.params.taskId },
+            orderBy: { createdAt: 'desc' },
+            include: {
+                uploader: { select: { id: true, name: true, email: true } }
+            }
+        });
+        res.json(attachments);
+    } catch (error) {
+        console.error('Error fetching attachments:', error);
+        res.status(500).json({ error: 'Ekler yüklenirken hata oluştu.', details: error.message });
+    }
+});
+
+// DELETE /api/projects/attachments/:attachmentId — Delete an attachment
+router.delete('/attachments/:attachmentId', authenticateToken, async (req, res) => {
+    try {
+        const attachment = await prisma.attachment.findUnique({
+            where: { id: req.params.attachmentId },
+            include: { task: { select: { section: { select: { projectId: true } } } } }
+        });
+        if (!attachment) return res.status(404).json({ error: 'Ek bulunamadı.' });
+
+        const role = await getProjectRole(req.user.userId, attachment.task.section.projectId);
+        // Allow if uploader or editor+
+        if (attachment.uploaderId !== req.user.userId && !hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu eki silme yetkiniz yok.' });
+        }
+
+        // Delete file from disk
+        const filePath = path.join(uploadsDir, attachment.filename);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+
+        await prisma.attachment.delete({ where: { id: req.params.attachmentId } });
+        
+        await prisma.taskActivity.create({
+            data: {
+                action: `removed attachment ${attachment.originalName}`,
+                taskId: attachment.taskId,
+                userId: req.user.userId
+            }
+        });
+
+        res.json({ message: 'Ek silindi.' });
+    } catch (error) {
+        console.error('Error deleting attachment:', error);
+        res.status(500).json({ error: 'Ek silinirken hata oluştu.', details: error.message });
+    }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  MULTI-HOMING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/projects/tasks/:taskId/projects — Add a task to a secondary project
+router.post('/tasks/:taskId/projects', authenticateToken, async (req, res) => {
+    try {
+        const { targetProjectId, targetSectionId } = req.body;
+        if (!targetProjectId || !targetSectionId) {
+            return res.status(400).json({ error: 'targetProjectId and targetSectionId are required' });
+        }
+
+        // Must be editor on target project
+        const role = await getProjectRole(req.user.userId, targetProjectId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'You do not have permission to add tasks to this project.' });
+        }
+
+        const task = await prisma.task.findUnique({
+            where: { id: req.params.taskId },
+            include: { section: true }
+        });
+        if (!task) return res.status(404).json({ error: 'Task not found' });
+
+        // Don't add if it's the primary project
+        if (task.section.projectId === targetProjectId) {
+            return res.status(400).json({ error: 'Task is already in this project (primary).' });
+        }
+
+        // Determine next order value
+        const lastSecondaryTask = await prisma.taskProject.findFirst({
+            where: { sectionId: targetSectionId },
+            orderBy: { order: 'desc' }
+        });
+        const lastPrimaryTask = await prisma.task.findFirst({
+            where: { sectionId: targetSectionId },
+            orderBy: { order: 'desc' }
+        });
+        const maxSecondary = lastSecondaryTask ? lastSecondaryTask.order : 0;
+        const maxPrimary = lastPrimaryTask ? lastPrimaryTask.order : 0;
+        const nextOrder = Math.max(maxSecondary, maxPrimary) + 1;
+
+        const taskProject = await prisma.taskProject.create({
+            data: {
+                taskId: req.params.taskId,
+                projectId: targetProjectId,
+                sectionId: targetSectionId,
+                order: nextOrder
+            },
+            include: {
+                project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true } },
+                section: { select: { id: true, name: true } }
+            }
+        });
+
+        // Log activity
+        await prisma.taskActivity.create({
+            data: {
+                action: 'added this task to another project',
+                taskId: req.params.taskId,
+                userId: req.user.userId
+            }
+        });
+
+        const io = req.app.get('io');
+        if (io) io.to(targetProjectId).emit('task_created', task); // Or a refresh event
+
+        res.status(201).json(taskProject);
+    } catch (error) {
+        console.error('Error adding task to project:', error);
+        res.status(500).json({ error: 'Failed to add task to project.', details: error.message });
+    }
+});
+
+// DELETE /api/projects/tasks/:taskId/projects/:projectId — Remove from secondary project
+router.delete('/tasks/:taskId/projects/:projectId', authenticateToken, async (req, res) => {
+    try {
+        const { taskId, projectId } = req.params;
+
+        // Must be editor on the target project
+        const role = await getProjectRole(req.user.userId, projectId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'You do not have permission to remove tasks from this project.' });
+        }
+
+        await prisma.taskProject.delete({
+            where: { taskId_projectId: { taskId, projectId } }
+        });
+
+        // Log activity
+        await prisma.taskActivity.create({
+            data: {
+                action: 'removed this task from a project',
+                taskId,
+                userId: req.user.userId
+            }
+        });
+
+        const io = req.app.get('io');
+        if (io) io.to(projectId).emit('task_deleted', { taskId });
+
+        res.json({ message: 'Task removed from project' });
+    } catch (error) {
+        console.error('Error removing task from project:', error);
+        res.status(500).json({ error: 'Failed to remove task from project.', details: error.message });
+    }
+});
 
 module.exports = router;

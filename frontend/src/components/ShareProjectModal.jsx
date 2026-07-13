@@ -32,11 +32,20 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
 
   const handleUpdateRole = async (userId, newRole) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${project.id}/members`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ userId, role: newRole })
-      })
+      let response;
+      if (newRole === 'REMOVE') {
+        response = await fetch(`http://localhost:5001/api/projects/${project.id}/members/${userId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      } else {
+        response = await fetch(`http://localhost:5001/api/projects/${project.id}/members`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ userId, role: newRole })
+        })
+      }
+      
       const data = await response.json()
       onProjectUpdated(data)
       setActiveMenuMemberId(null)
@@ -59,11 +68,14 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
     if (role === 'EDITOR') return 'Editor'
     if (role === 'COMMENTER') return 'Commenter'
     if (role === 'VIEWER') return 'Viewer'
-    return 'Editor'
+    return role
   }
 
+  const isProjectAdmin = project?.ownerId === currentUser?.id || 
+                         project?.members?.find(m => m.user?.id === currentUser?.id)?.role === 'ADMIN';
+
   return (
-    <div style={styles.backdrop} onClick={onClose}>
+    <div style={styles.backdrop} onClick={() => { setActiveMenuMemberId(null); onClose(); }}>
       <div style={styles.modalBox} onClick={(e) => e.stopPropagation()}>
         
         <div style={styles.modalHeader}>
@@ -114,12 +126,18 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
                     <div style={styles.memberEmailText}>{membership.user.email}</div>
                   </div>
                   
-                  <span 
-                    onClick={(e) => handleOpenRoleMenu(e, membership.user.id)} 
-                    style={styles.roleTriggerText}
-                  >
-                    {formatRoleText(membership.role)} ▼
-                  </span>
+                  {isProjectAdmin || (currentUser && membership.user.id === currentUser.id) ? (
+                    <span 
+                      onClick={(e) => handleOpenRoleMenu(e, membership.user.id)} 
+                      style={styles.roleTriggerText}
+                    >
+                      {formatRoleText(membership.role)} ▼
+                    </span>
+                  ) : (
+                    <span style={styles.roleReadOnlyText}>
+                      {formatRoleText(membership.role)}
+                    </span>
+                  )}
                 </div>
               )
             })}
@@ -212,6 +230,7 @@ const styles = {
   memberEmailText: { fontSize: '0.7rem', color: 'var(--text-secondary)' },
   roleAdminText: { fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', paddingRight: '0.25rem' },
   roleTriggerText: { fontSize: '0.8rem', color: 'var(--accent-primary)', cursor: 'pointer', fontWeight: '600', padding: '0.2rem 0.5rem', borderRadius: '4px', backgroundColor: 'var(--bg-tertiary)' },
+  roleReadOnlyText: { fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', padding: '0.2rem 0.5rem' },
   modalFooter: { display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' },
   copyLinkBtn: { background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.4rem 0.75rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-primary)', cursor: 'pointer' },
   roleMenuPopover: { position: 'fixed', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', zIndex: 10001, width: '250px', boxSizing: 'border-box', padding: '0.25rem 0' },

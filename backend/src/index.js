@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/project');
@@ -12,6 +13,7 @@ const goalsRoutes = require('./routes/goals');
 const tagsRoutes = require('./routes/tags');
 const reportingRoutes = require('./routes/reporting');
 const { startCronScheduler } = require('./utils/cronScheduler');
+const { startReminderCron } = require('./utils/reminders');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -56,6 +58,9 @@ const PORT = process.env.PORT || 5001;
 app.use(cors());
 app.use(express.json());
 
+// Serve uploaded files statically
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
 // Rotalar
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
@@ -80,4 +85,5 @@ app.get('/api/health', async (req, res) => {
 httpServer.listen(PORT, () => {
   console.log(`Server ${PORT} portunda başarıyla başlatıldı (HTTP & WebSocket).`);
   startCronScheduler();
+  startReminderCron(io);
 });

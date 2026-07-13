@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import PortfolioTimelineView from './PortfolioTimelineView';
 
-export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, setPortfolios, projects, setProjects, token, user, setActiveView, setPortfolioCreationParent }) {
+export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, setPortfolios, projects, setProjects, token, user, setActiveView, setPortfolioCreationParent, handleSelectProject }) {
   const [activeTab, setActiveTab] = useState('List');
   const [showAddWork, setShowAddWork] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
@@ -163,6 +163,31 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
     return { bg: '#F3F4F6', color: 'var(--text-secondary)' };
   };
 
+  const handleToggleStar = async () => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/portfolios/${details.id}/star`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const { isStarred } = await response.json();
+        const updatedPort = { ...details };
+        if (isStarred) {
+          updatedPort.starredBy = [...(updatedPort.starredBy || []), { userId: user.id }];
+        } else {
+          updatedPort.starredBy = (updatedPort.starredBy || []).filter(s => s.userId !== user.id);
+        }
+        setDetails(updatedPort);
+        setPortfolio(updatedPort);
+        if (setPortfolios) {
+          setPortfolios(prev => prev.map(p => p.id === updatedPort.id ? updatedPort : p));
+        }
+      }
+    } catch (err) {
+      console.error('Error toggling star:', err);
+    }
+  };
+
   const statusStyle = getStatusColor(details.status);
 
   return (
@@ -191,7 +216,16 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
                 </div>
               )}
             </div>
-            <span style={styles.starIcon}>☆</span>
+            <span 
+              style={{
+                ...styles.starIcon, 
+                color: details?.starredBy?.some(s => s.userId === user.id) ? '#F59E0B' : 'var(--text-tertiary)',
+                cursor: 'pointer'
+              }}
+              onClick={handleToggleStar}
+            >
+              {details?.starredBy?.some(s => s.userId === user.id) ? '★' : '☆'}
+            </span>
             <div style={{ ...styles.statusPill, backgroundColor: statusStyle.bg, color: statusStyle.color }}>
               <span style={styles.statusDot}>●</span>
               {details.status}
@@ -354,10 +388,10 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
                 const projStatusStyle = getStatusColor(proj.status);
 
                 return (
-                  <div key={proj.id} style={styles.tableRow}>
+                  <div key={proj.id} style={styles.tableRow} onClick={() => { if (handleSelectProject) handleSelectProject(proj); }}>
                     <div style={{ ...styles.tableCell, flex: 3 }}>
                       <div style={styles.projectNameWrapper}>
-                        <div style={styles.projectIcon}>📋</div>
+                        <div style={{...styles.projectIcon, color: '#FFF', backgroundColor: proj.color || '#4F46E5', borderRadius: '4px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px'}}>{proj.icon || '📋'}</div>
                         <div style={styles.projectName}>{proj.name}</div>
                       </div>
                     </div>

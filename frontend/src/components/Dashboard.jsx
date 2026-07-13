@@ -210,8 +210,8 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
             {/* Actual Projects from Database */}
             {activeProjects.map(p => (
               <div key={p.id} style={styles.projectCard} onClick={() => setSelectedProject(p)}>
-                <div style={styles.projectIconSquare}>
-                  <span style={{color:'#065F46', fontSize:'1.2rem'}}>🚀</span>
+                <div style={{...styles.projectIconSquare, backgroundColor: p.color || '#4F46E5'}}>
+                  <span style={{color: '#FFF', fontSize:'1.2rem'}}>{p.icon || '📋'}</span>
                 </div>
                 <div style={styles.projectCardText}>
                   <div style={styles.projectName}>{p.name}</div>
@@ -303,7 +303,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
 }
 
 const styles = {
-  container: { backgroundColor: 'var(--bg-secondary)', minHeight: '100vh', padding: '2rem 3rem', fontFamily: 'system-ui', boxSizing: 'border-box', overflowY: 'auto' },
+  container: { backgroundColor: 'var(--bg-secondary)', minHeight: '100vh', padding: '2rem 3rem 6rem 3rem', fontFamily: 'system-ui', boxSizing: 'border-box', overflowY: 'auto' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' },
   headerDate: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' },
   headerGreeting: { fontSize: '2rem', fontWeight: '400', margin: 0, color: 'var(--text-primary)' },
@@ -311,7 +311,7 @@ const styles = {
   headerBtn: { padding: '0.4rem 0.8rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' },
   grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'start' },
   
-  widgetCard: { backgroundColor: 'var(--bg-primary)', borderRadius: '12px', border: '1px solid var(--border-color)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '1.5rem', display: 'flex', flexDirection: 'column', minHeight: '350px' },
+  widgetCard: { backgroundColor: 'var(--bg-primary)', borderRadius: '12px', border: '1px solid var(--border-color)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '1.5rem', paddingRight: '1rem', display: 'flex', flexDirection: 'column', height: '400px' },
   widgetHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' },
   widgetTitle: { fontSize: '1.25rem', fontWeight: '400', margin: 0, color: 'var(--text-primary)' },
   widgetSubtitle: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.5rem' },
@@ -321,7 +321,7 @@ const styles = {
   tabsRow: { display: 'flex', gap: '1.5rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1rem' },
   tabItem: { paddingBottom: '0.5rem', fontSize: '0.9rem', cursor: 'pointer', fontWeight: '500' },
   
-  widgetBody: { display: 'flex', flexDirection: 'column' },
+  widgetBody: { display: 'flex', flexDirection: 'column', overflowY: 'auto', flex: 1, paddingRight: '0.5rem' },
   createTaskRow: { padding: '0.75rem 0', color: 'var(--text-secondary)', fontSize: '0.9rem', cursor: 'pointer' },
   
   taskRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0' },
@@ -332,7 +332,7 @@ const styles = {
   projectPill: { display: 'flex', alignItems: 'center', backgroundColor: '#A7F3D0', color: '#065F46', fontSize: '0.75rem', padding: '0.1rem 0.5rem', borderRadius: '12px' },
   taskDate: { fontSize: '0.8rem', color: 'var(--text-secondary)', width: '60px', textAlign: 'right' },
 
-  widgetBodyProjects: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', marginTop: '0.5rem' },
+  widgetBodyProjects: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', marginTop: '0.5rem', overflowY: 'auto', flex: 1, alignContent: 'start', paddingRight: '0.5rem' },
   createProjectCard: { display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' },
   dashedSquare: { width: '48px', height: '48px', border: '1px dashed var(--text-tertiary)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '1.5rem' },
   createProjectText: { fontSize: '0.9rem', color: 'var(--text-primary)' },

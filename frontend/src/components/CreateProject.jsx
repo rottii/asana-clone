@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
+import IconColorPicker from './IconColorPicker';
 
 export default function CreateProject({ token, setProjects, setActiveView, setSelectedProject, portfolioCreationParent, setPortfolioCreationParent }) {
   const [step, setStep] = useState(1);
   const [projectName, setProjectName] = useState('new project');
   const [privacy, setPrivacy] = useState('My workspace');
+  const [color, setColor] = useState('#4F46E5');
+  const [icon, setIcon] = useState('📋');
+  const [showPicker, setShowPicker] = useState(false);
   
   // Step 2 states
   const [views, setViews] = useState({
@@ -11,8 +15,10 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
     List: true,
     Board: true,
     Timeline: true,
+    Gantt: true,
     Calendar: true,
     Dashboard: true,
+    Workload: true,
     Messages: false,
     Files: false
   });
@@ -48,7 +54,9 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
       body: JSON.stringify({
         name: projectName,
         defaultView: finalDefaultView,
-        activeViews: activeViewsArray
+        activeViews: activeViewsArray,
+        color,
+        icon
       })
     })
     .then(res => res.json())
@@ -104,6 +112,39 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
               />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.formLabel}>Project icon & color</label>
+              <div style={{ position: 'relative' }}>
+                <div 
+                  style={{
+                    width: '36px', 
+                    height: '36px', 
+                    backgroundColor: color, 
+                    borderRadius: '8px', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    cursor: 'pointer',
+                    fontSize: '1.2rem'
+                  }}
+                  onClick={() => setShowPicker(!showPicker)}
+                >
+                  {icon}
+                </div>
+                {showPicker && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '8px', zIndex: 1000 }}>
+                    <IconColorPicker 
+                      selectedColor={color}
+                      setSelectedColor={setColor}
+                      selectedIcon={icon}
+                      setSelectedIcon={setIcon}
+                      onClose={() => setShowPicker(false)}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={styles.formGroup}>

@@ -22,10 +22,14 @@ model User {
   taskCollaborators TaskCollaborator[]
   comments      Comment[]
   portfolios    Portfolio[]       @relation("OwnedPortfolios")
+  starredProjects StarredProject[] @relation("StarredProjects")
+  starredPortfolios StarredPortfolio[] @relation("StarredPortfolios")
   
   notifications Notification[]    @relation("UserNotifications")
   actorNotifications Notification[] @relation("ActorNotifications")
   ownedGoals    Goal[]            @relation("OwnedGoals")
+  uploadedAttachments Attachment[] @relation("UploadedAttachments")
+  activities    TaskActivity[]
 }
 
 model Project {
@@ -38,22 +42,26 @@ model Project {
   dueDate     DateTime?
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
+  color       String?             @default("#4F46E5")
+  icon        String?             @default("📋")
 
   ownerId     String
   owner       User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   sections    Section[]
+  secondaryTasks TaskProject[]
   members     ProjectMembership[] // ← DEĞİŞEN SATIR: Rol içeren proje üyeleri
   rules       Rule[]              // Kural motoru için
   portfolios  PortfolioProject[]
 
   defaultView String              @default("List")
-  activeViews Json?               @default("[\"Overview\", \"List\", \"Board\", \"Timeline\", \"Dashboard\", \"Calendar\", \"Forms\"]")
+  activeViews Json?               @default("[\"Overview\", \"List\", \"Board\", \"Timeline\", \"Gantt\", \"Dashboard\", \"Calendar\", \"Workload\", \"Forms\"]")
   
   customFieldSettings Json?       @default("[]")
   priorityFieldSettings Json?
   formSettings        Json?
   notifications Notification[]
   goals         GoalProject[]
+  starredBy     StarredProject[] @relation("ProjectStars")
 }
 
 // --- YENİ MODEL: ROL DESTEKLİ ÜYELİK TABLOSU ---
@@ -79,6 +87,7 @@ model Section {
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks     Task[]
+  secondaryTasks TaskProject[] @relation("SecondaryTasks")
 }
 
 model Task {
@@ -114,6 +123,14 @@ model Task {
   comments    Comment[]
   notifications Notification[]
   tags        Tag[]            @relation("TaskTags")
+  attachments Attachment[]
+  activities  TaskActivity[]
+  secondaryProjects TaskProject[]
+
+  reminderSent1Week   Boolean @default(false)
+  reminderSent1Day    Boolean @default(false)
+  reminderSent1Hour   Boolean @default(false)
+  reminderSentOverdue Boolean @default(false)
 }
 
 // --- YENİ MODEL: TAGS ---
@@ -124,6 +141,21 @@ model Tag {
   createdAt DateTime @default(now())
 
   tasks     Task[]   @relation("TaskTags")
+}
+
+// --- YENİ MODEL: MULTI-HOMING (Task in Multiple Projects) ---
+model TaskProject {
+  id        String   @id @default(uuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sectionId String
+  section   Section  @relation("SecondaryTasks", fields: [sectionId], references: [id], onDelete: Cascade)
+  order     Int
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, projectId])
 }
 
 model TaskDependency {
@@ -162,6 +194,20 @@ model Comment {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// --- YENİ MODEL: GÖREV AKTİVİTELERİ (ACTIVITY FEED) ---
+model TaskActivity {
+  id        String   @id @default(uuid())
+  action    String   // e.g. "changed the due date", "moved this task to Done"
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+  
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 // --- YENİ MODEL: GÖREV ORTAK ÇALIŞANLARI ---
 model TaskCollaborator {
   id        String   @id @default(uuid())
@@ -191,6 +237,7 @@ model Portfolio {
   
   childPortfolios   PortfolioPortfolio[] @relation("ParentPortfolios")
   parentPortfolios  PortfolioPortfolio[] @relation("ChildPortfolios")
+  starredBy         StarredPortfolio[]   @relation("PortfolioStars")
 }
 
 model PortfolioProject {
@@ -271,4 +318,47 @@ model GoalProject {
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([goalId, projectId])
+}
+
+// --- YENİ MODEL: YILDIZLANMIŞ PROJELER ---
+model StarredProject {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation("StarredProjects", fields: [userId], references: [id], onDelete: Cascade)
+  
+  projectId String
+  project   Project  @relation("ProjectStars", fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+}
+
+// --- YENİ MODEL: YILDIZLANMIŞ PORTFOLIOS ---
+model StarredPortfolio {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+
+  userId      String
+  user        User     @relation("StarredPortfolios", fields: [userId], references: [id], onDelete: Cascade)
+  
+  portfolioId String
+  portfolio   Portfolio @relation("PortfolioStars", fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, portfolioId])
+}
+
+// --- YENİ MODEL: DOSYA EKLERİ (ATTACHMENTS) ---
+model Attachment {
+  id           String   @id @default(uuid())
+  filename     String   // UUID-based filename on disk
+  originalName String   // Original name the user uploaded
+  mimeType     String
+  size         Int      // File size in bytes
+  createdAt    DateTime @default(now())
+
+  taskId       String
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploaderId   String
+  uploader     User     @relation("UploadedAttachments", fields: [uploaderId], references: [id], onDelete: Cascade)
 }

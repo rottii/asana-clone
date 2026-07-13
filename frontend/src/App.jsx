@@ -197,6 +197,7 @@ export default function App() {
               user={user}
               setActiveView={setActiveView}
               setPortfolioCreationParent={setPortfolioCreationParent}
+              handleSelectProject={handleSelectProject}
             />
           ) : activeView === 'inbox' ? (
             <Inbox token={token} user={user} />

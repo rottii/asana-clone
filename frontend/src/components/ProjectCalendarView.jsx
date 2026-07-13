@@ -162,7 +162,7 @@ export default function ProjectCalendarView({ selectedProject, applyTaskFilter, 
   }, [weeks, todayWeekIndex, visibleMonth]);
 
   const handleDragStart = (e, task, weekDays, startCol, endCol) => {
-    setIsDragging(true);
+    setTimeout(() => setIsDragging(true), 0);
     const rect = e.currentTarget.getBoundingClientRect();
     const offsetX = e.clientX - rect.left;
     const visualSpanDays = endCol - startCol + 1;

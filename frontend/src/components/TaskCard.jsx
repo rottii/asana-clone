@@ -386,7 +386,12 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
           </div>
         </div>
 
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {task.attachments?.length > 0 && (
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                📎 {task.attachments.length}
+              </span>
+            )}
             <span 
               onClick={handleLikeToggle}
               style={{ ...styles.likeIconPlaceholder, cursor: isReadOnly ? 'default' : 'pointer', opacity: (isLiked || task.likes > 0) ? 1 : 0.3, color: isLiked ? '#4F46E5' : 'inherit' }}

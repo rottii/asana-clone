@@ -1,0 +1,647 @@
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+
+export default function ProjectGanttView({ 
+  selectedProject, handleTaskUpdate, onOpenTaskPane, token, isReadOnly, applyTaskFilter, applyTaskSort
+}) {
+  const [dragState, setDragState] = useState(null); 
+  const [connectingTask, setConnectingTask] = useState(null);
+  const [hoveredTaskId, setHoveredTaskId] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const scrollContainerRef = useRef(null);
+  const sidebarScrollRef = useRef(null);
+  const svgRef = useRef(null);
+  const hasDraggedRef = useRef(false);
+  const DAY_WIDTH = 40;
+
+  const { start, days, sectionData, rawTasks, dependencyLines, totalHeight } = useMemo(() => {
+    const today = new Date();
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - 30);
+    startDate.setHours(0,0,0,0);
+    const totalDays = 120;
+    
+    const daysArr = [];
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      daysArr.push({
+        date: d,
+        dateStr: d.toISOString().split('T')[0],
+        dayNum: d.getDate(),
+        dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        timestamp: d.getTime(),
+        isToday: d.toDateString() === today.toDateString()
+      });
+    }
+
+    const sections = [];
+    const rawMap = {};
+    const titleMap = {};
+    (selectedProject.sections || []).forEach(section => {
+      section.tasks?.forEach(task => {
+        titleMap[task.id] = task.title;
+      });
+    });
+
+    (selectedProject.sections || []).forEach(section => {
+      let filteredTasks = applyTaskFilter ? applyTaskFilter(section.tasks) : section.tasks;
+      filteredTasks = applyTaskSort ? applyTaskSort(filteredTasks) : filteredTasks;
+
+      const tasksWithPos = [];
+      filteredTasks?.forEach(task => {
+        // Ensure task has dates for the timeline, otherwise default to today
+        let tStart = task.startDate ? new Date(task.startDate) : (task.dueDate ? new Date(task.dueDate) : new Date(today));
+        let tEnd = task.dueDate ? new Date(task.dueDate) : (task.startDate ? new Date(task.startDate) : new Date(today));
+        tStart.setHours(0,0,0,0);
+        tEnd.setHours(0,0,0,0);
+
+        const offsetMs = tStart.getTime() - startDate.getTime();
+        const offsetDays = Math.round(offsetMs / (1000 * 60 * 60 * 24));
+        const durationMs = tEnd.getTime() - tStart.getTime();
+        const durationDays = Math.max(1, Math.round(durationMs / (1000 * 60 * 60 * 24)) + 1);
+
+        const taskData = {
+          ...task,
+          left: offsetDays * DAY_WIDTH,
+          width: durationDays * DAY_WIDTH,
+          formattedDueDate: task.dueDate ? new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '-'
+        };
+
+        if (dragState && dragState.taskId === task.id) {
+          if (dragState.type === 'LEFT') {
+            taskData.left += dragState.deltaX;
+            taskData.width -= dragState.deltaX;
+          } else if (dragState.type === 'RIGHT') {
+            taskData.width += dragState.deltaX;
+          } else if (dragState.type === 'MOVE') {
+            taskData.left += dragState.deltaX;
+          }
+          taskData.width = Math.max(taskData.width, 10);
+        }
+
+        // Parse blockers
+        let blockersStr = '';
+        if (task.blockedBy && task.blockedBy.length > 0) {
+          blockersStr = task.blockedBy.map(b => titleMap[b.blockingId] || 'Task').join(', ');
+        }
+        taskData.blockersStr = blockersStr;
+
+        rawMap[task.id] = taskData;
+        tasksWithPos.push(taskData);
+      });
+
+      sections.push({
+        ...section,
+        tasks: tasksWithPos
+      });
+    });
+
+    let currentY = 0;
+    sections.forEach(group => {
+      currentY += 36; // section header row
+      group.tasks.forEach(t => {
+        t.yCenter = currentY + 18; // center of task row
+        rawMap[t.id].yCenter = t.yCenter;
+        currentY += 36;
+      });
+    });
+
+    const lines = [];
+    Object.values(rawMap).forEach(t => {
+      t.blockedBy?.forEach(dep => {
+        const blockingTask = rawMap[dep.blockingId];
+        if (blockingTask && blockingTask.yCenter !== undefined) {
+          lines.push({
+            id: dep.id,
+            taskId: t.id,
+            x1: blockingTask.left + blockingTask.width,
+            y1: blockingTask.yCenter,
+            x2: t.left,
+            y2: t.yCenter
+          });
+        }
+      });
+    });
+
+    return { start: startDate, days: daysArr, sectionData: sections, rawTasks: rawMap, dependencyLines: lines, totalHeight: currentY };
+  }, [selectedProject, applyTaskFilter, applyTaskSort, dragState]);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (dragState) {
+        const deltaX = e.clientX - dragState.startX;
+        setDragState(prev => ({ ...prev, deltaX }));
+        if (Math.abs(deltaX) > 3) hasDraggedRef.current = true;
+      }
+      if (connectingTask && svgRef.current) {
+        const rect = svgRef.current.getBoundingClientRect();
+        setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      }
+    };
+
+    const handleMouseUp = async () => {
+      if (dragState) {
+        const deltaDays = Math.round(dragState.deltaX / DAY_WIDTH);
+        if (deltaDays !== 0) {
+          const t = rawTasks[dragState.taskId];
+          let newStart = t.startDate ? new Date(t.startDate) : (t.dueDate ? new Date(t.dueDate) : new Date());
+          let newEnd = t.dueDate ? new Date(t.dueDate) : (t.startDate ? new Date(t.startDate) : new Date());
+
+          if (dragState.type === 'LEFT') {
+            newStart.setDate(newStart.getDate() + deltaDays);
+            if (newStart > newEnd) newStart = newEnd;
+          } else if (dragState.type === 'RIGHT') {
+            newEnd.setDate(newEnd.getDate() + deltaDays);
+            if (newEnd < newStart) newEnd = newStart;
+          } else if (dragState.type === 'MOVE') {
+            newStart.setDate(newStart.getDate() + deltaDays);
+            newEnd.setDate(newEnd.getDate() + deltaDays);
+          }
+
+          if (handleTaskUpdate && !isReadOnly) {
+            try {
+              const response = await fetch(`http://localhost:5001/api/projects/tasks/${t.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ 
+                  startDate: newStart.toISOString().split('T')[0], 
+                  dueDate: newEnd.toISOString().split('T')[0] 
+                })
+              });
+              const data = await response.json();
+              if (response.ok) handleTaskUpdate(t.id, data);
+            } catch (err) { console.error(err); }
+          }
+        }
+        setDragState(null);
+        setTimeout(() => { hasDraggedRef.current = false; }, 50);
+      }
+      
+      if (connectingTask) {
+        setConnectingTask(null);
+      }
+    };
+
+    if (dragState || connectingTask) {
+      document.body.style.userSelect = 'none';
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    } else {
+      document.body.style.userSelect = '';
+    }
+    return () => {
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragState, connectingTask, rawTasks, token, handleTaskUpdate, isReadOnly]);
+
+  const handleCreateDependency = async (blockedById, blockingId) => {
+    if (blockedById === blockingId) return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${blockedById}/dependencies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ blockingId })
+      });
+      const data = await response.json();
+      if (response.ok && handleTaskUpdate) handleTaskUpdate(blockedById, data);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteDependency = async (taskId, dependencyId) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskId}/dependencies/${dependencyId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (response.ok && handleTaskUpdate) handleTaskUpdate(taskId, data);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleToggleComplete = async (e, task) => {
+    e.stopPropagation();
+    if (isReadOnly) return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ isCompleted: !task.isCompleted })
+      });
+      const data = await response.json();
+      if (response.ok && handleTaskUpdate) {
+        handleTaskUpdate(task.id, data);
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const goToday = () => {
+    if (scrollContainerRef.current) {
+      const todayIdx = days.findIndex(d => d.isToday);
+      if (todayIdx !== -1) {
+        scrollContainerRef.current.scrollTo({ left: Math.max(0, todayIdx * DAY_WIDTH - 200), behavior: 'smooth' });
+      }
+    }
+  };
+
+  const handleTimelineScroll = (e) => {
+    if (sidebarScrollRef.current) {
+      sidebarScrollRef.current.scrollTop = e.target.scrollTop;
+    }
+  };
+
+  const handleSidebarWheel = (e) => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop += e.deltaY;
+    }
+  };
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.toolbar}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <h2 style={styles.title}>Gantt</h2>
+        </div>
+        <button onClick={goToday} style={styles.todayBtn}>Today</button>
+      </div>
+
+      <div style={styles.layoutWrapper}>
+        
+        {/* Left Sidebar (Table) */}
+        <div style={styles.sidebar} onWheel={handleSidebarWheel}>
+          <div style={styles.sidebarHeader}>
+            <div style={{ ...styles.tableCol, flex: 2 }}>Name</div>
+            <div style={{ ...styles.tableCol, flex: 1 }}>Due Date</div>
+            <div style={{ ...styles.tableCol, flex: 1 }}>Blocked By</div>
+          </div>
+          <div style={styles.sidebarContent} ref={sidebarScrollRef}>
+            {sectionData.map((section, sIdx) => (
+              <React.Fragment key={section.id}>
+                <div style={styles.sectionHeaderRow}>
+                  <div style={styles.sectionTitle}>▼ {section.name}</div>
+                </div>
+                {section.tasks.map(task => (
+                  <div key={task.id} style={styles.taskTableRow}>
+                    <div style={{ ...styles.tableCol, flex: 2, paddingLeft: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span 
+                        onClick={(e) => handleToggleComplete(e, task)}
+                        style={{ 
+                          color: task.isCompleted ? '#10B981' : '#D1D5DB',
+                          cursor: isReadOnly ? 'default' : 'pointer'
+                        }}
+                      >
+                        ✓
+                      </span>
+                      <span style={{ 
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        textDecoration: task.isCompleted ? 'line-through' : 'none',
+                        color: task.isCompleted ? '#9CA3AF' : '#111827'
+                      }}>
+                        {task.title}
+                      </span>
+                    </div>
+                    <div style={{ ...styles.tableCol, flex: 1, color: '#6B7280' }}>{task.formattedDueDate}</div>
+                    <div style={{ ...styles.tableCol, flex: 1, color: '#6B7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {task.blockersStr || '-'}
+                    </div>
+                  </div>
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+        {/* Right Scrollable Timeline Grid */}
+        <div style={styles.timelineScrollArea} ref={scrollContainerRef} onScroll={handleTimelineScroll}>
+          <div style={{ width: days.length * DAY_WIDTH, position: 'relative' }}>
+            
+            {/* Timeline Header */}
+            <div style={styles.timelineHeader}>
+              {days.map((d, i) => (
+                <div key={i} style={{ ...styles.dayHeaderCell, width: DAY_WIDTH, borderBottom: d.isToday ? '3px solid #10B981' : '1px solid #E5E7EB' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#6B7280', textTransform: 'uppercase' }}>{d.dayName}</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: d.isToday ? '700' : '500', color: d.isToday ? '#10B981' : '#111827' }}>
+                    {d.dayNum}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Timeline Content */}
+            <div style={styles.timelineContent}>
+              <style>{`
+                .dependency-line-group .delete-btn { opacity: 0; pointer-events: none; }
+                .dependency-line-group:hover .delete-btn { opacity: 1; pointer-events: auto; }
+                .dependency-line-group:hover .line-path { stroke: #EF4444 !important; }
+              `}</style>
+              
+              <svg ref={svgRef} style={{ position: 'absolute', top: 0, left: 0, width: days.length * DAY_WIDTH, height: totalHeight, pointerEvents: 'none', zIndex: 4 }}>
+                {dependencyLines.map(line => {
+                  const midX = (line.x1 + line.x2) / 2;
+                  const midY = (line.y1 + line.y2) / 2;
+                  return (
+                    <g key={line.id} className="dependency-line-group" style={{ cursor: 'pointer', pointerEvents: 'auto' }}>
+                      <path d={`M ${line.x1} ${line.y1} C ${line.x1 + 30} ${line.y1}, ${line.x2 - 30} ${line.y2}, ${line.x2} ${line.y2}`} stroke="transparent" strokeWidth="15" fill="none" />
+                      <path className="line-path" d={`M ${line.x1} ${line.y1} C ${line.x1 + 30} ${line.y1}, ${line.x2 - 30} ${line.y2}, ${line.x2} ${line.y2}`} stroke="#9CA3AF" strokeWidth="2" fill="none" markerEnd="url(#arrowhead)" style={{ transition: 'stroke 0.2s' }} />
+                      <g className="delete-btn" style={{ transition: 'opacity 0.2s', transformOrigin: `${midX}px ${midY}px` }} onClick={(e) => { e.stopPropagation(); handleDeleteDependency(line.taskId, line.id); }}>
+                        <circle cx={midX} cy={midY} r="8" fill="#EF4444" />
+                        <text x={midX} y={midY + 1} fill="white" fontSize="10" fontWeight="bold" textAnchor="middle" dominantBaseline="central">×</text>
+                      </g>
+                    </g>
+                  );
+                })}
+                {connectingTask && rawTasks[connectingTask.id] && rawTasks[connectingTask.id].yCenter !== undefined && (
+                  <path d={`M ${rawTasks[connectingTask.id].left + rawTasks[connectingTask.id].width} ${rawTasks[connectingTask.id].yCenter} C ${rawTasks[connectingTask.id].left + rawTasks[connectingTask.id].width + 30} ${rawTasks[connectingTask.id].yCenter}, ${mousePos.x - 30} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`} stroke="#4F46E5" strokeWidth="2" strokeDasharray="4" fill="none" />
+                )}
+                <defs>
+                  <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#9CA3AF" />
+                  </marker>
+                </defs>
+              </svg>
+
+              <div style={styles.gridLinesContainer}>
+                {days.map((d, i) => (
+                  <div key={i} style={{ ...styles.gridLine, left: i * DAY_WIDTH, backgroundColor: d.isToday ? 'rgba(16, 185, 129, 0.1)' : 'transparent', borderLeft: d.dayName === 'Mon' ? '1px solid #E5E7EB' : '1px dashed #F3F4F6' }}></div>
+                ))}
+              </div>
+
+              {sectionData.map((section, sIdx) => (
+                <React.Fragment key={section.id}>
+                  {/* Section Spacer in Grid */}
+                  <div style={{ height: '36px', borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' }}></div>
+                  
+                  {/* Task Bars */}
+                  {section.tasks.map(task => (
+                    <div key={task.id} style={styles.taskBarRow} onMouseEnter={() => setHoveredTaskId(task.id)} onMouseLeave={() => setHoveredTaskId(null)}>
+                      <div 
+                        style={{ ...styles.taskBar, left: task.left, width: Math.max(task.width, 10), backgroundColor: task.isCompleted ? '#D1D5DB' : '#6366F1' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (hasDraggedRef.current) return;
+                          if (onOpenTaskPane) onOpenTaskPane(task.id);
+                        }}
+                        onMouseUp={(e) => {
+                          if (connectingTask && connectingTask.id !== task.id) {
+                            e.stopPropagation();
+                            handleCreateDependency(task.id, connectingTask.id);
+                            setConnectingTask(null);
+                          }
+                        }}
+                      >
+                        {/* Connector node LEFT */}
+                        <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => e.stopPropagation()}>
+                          <div style={styles.connectorLineLeft} />
+                        </div>
+
+                        {!isReadOnly && (
+                          <div style={{ ...styles.dragHandle, left: 0 }} onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: task.id, type: 'LEFT', startX: e.clientX, deltaX: 0 }); }} />
+                        )}
+                        
+                        <div 
+                          style={styles.taskBarContent} 
+                          onMouseDown={(e) => { if(!isReadOnly){ e.stopPropagation(); setDragState({ taskId: task.id, type: 'MOVE', startX: e.clientX, deltaX: 0 });} }}
+                        >
+                          <span style={styles.taskTitleTruncated}>{task.title}</span>
+                        </div>
+
+                        {!isReadOnly && (
+                          <div style={{ ...styles.dragHandle, right: 0 }} onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: task.id, type: 'RIGHT', startX: e.clientX, deltaX: 0 }); }} />
+                        )}
+
+                        {/* Connector node RIGHT */}
+                        <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { e.stopPropagation(); setConnectingTask(task); }}>
+                          <div style={styles.connectorLineRight} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </React.Fragment>
+              ))}
+            </div>
+            
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  container: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    backgroundColor: '#FFF',
+    overflow: 'hidden'
+  },
+  toolbar: {
+    padding: '1rem 1.5rem',
+    borderBottom: '1px solid var(--border-color)',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'var(--bg-secondary)'
+  },
+  title: {
+    fontSize: '1.2rem',
+    fontWeight: '600',
+    color: 'var(--text-primary)',
+    margin: 0
+  },
+  todayBtn: {
+    backgroundColor: 'var(--bg-primary)',
+    border: '1px solid var(--border-color)',
+    borderRadius: '4px',
+    padding: '0.25rem 0.75rem',
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+    color: 'var(--text-primary)',
+    fontWeight: '500'
+  },
+  layoutWrapper: {
+    display: 'flex',
+    flex: 1,
+    overflow: 'hidden'
+  },
+  sidebar: {
+    width: '450px',
+    borderRight: '1px solid var(--border-color)',
+    display: 'flex',
+    flexDirection: 'column',
+    backgroundColor: 'var(--bg-primary)',
+    zIndex: 10
+  },
+  sidebarHeader: {
+    height: '60px',
+    borderBottom: '1px solid var(--border-color)',
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0',
+    fontSize: '0.85rem',
+    fontWeight: '600',
+    color: 'var(--text-secondary)'
+  },
+  tableCol: {
+    padding: '0 0.75rem',
+    boxSizing: 'border-box'
+  },
+  sidebarContent: {
+    flex: 1,
+    overflowY: 'hidden',
+    overflowX: 'hidden',
+    paddingBottom: '100px'
+  },
+  sectionHeaderRow: {
+    height: '36px',
+    display: 'flex',
+    alignItems: 'center',
+    backgroundColor: 'var(--bg-secondary)',
+    borderBottom: '1px solid var(--border-color)',
+    padding: '0 0.75rem'
+  },
+  sectionTitle: {
+    fontWeight: '600',
+    color: 'var(--text-primary)',
+    fontSize: '0.9rem'
+  },
+  taskTableRow: {
+    height: '36px',
+    display: 'flex',
+    alignItems: 'center',
+    borderBottom: '1px solid var(--border-color)',
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+    backgroundColor: 'var(--bg-primary)'
+  },
+  timelineScrollArea: {
+    flex: 1,
+    overflowX: 'auto',
+    overflowY: 'auto',
+    backgroundColor: 'var(--bg-secondary)'
+  },
+  timelineHeader: {
+    height: '60px',
+    display: 'flex',
+    backgroundColor: 'var(--bg-primary)',
+    borderBottom: '1px solid var(--border-color)',
+    position: 'sticky',
+    top: 0,
+    zIndex: 5
+  },
+  dayHeaderCell: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxSizing: 'border-box'
+  },
+  timelineContent: {
+    position: 'relative',
+    paddingBottom: '100px'
+  },
+  gridLinesContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    right: 0,
+    pointerEvents: 'none'
+  },
+  gridLine: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: '40px',
+    boxSizing: 'border-box'
+  },
+  taskBarRow: {
+    position: 'relative',
+    height: '36px',
+    borderBottom: '1px solid var(--border-color)'
+  },
+  taskBar: {
+    position: 'absolute',
+    top: '6px',
+    height: '24px',
+    borderRadius: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    cursor: 'pointer',
+    userSelect: 'none'
+  },
+  taskBarContent: {
+    flex: 1,
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0 8px',
+    overflow: 'hidden',
+    cursor: 'grab'
+  },
+  taskTitleTruncated: {
+    fontSize: '0.75rem',
+    color: '#FFF',
+    fontWeight: '500',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+  },
+  dragHandle: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: '10px',
+    cursor: 'col-resize',
+    zIndex: 10
+  },
+  connectorNodeLeft: {
+    position: 'absolute',
+    left: '-16px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: '12px',
+    height: '12px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--bg-primary)',
+    border: '2px solid var(--text-tertiary)',
+    cursor: 'crosshair',
+    transition: 'opacity 0.2s',
+    zIndex: 15,
+    pointerEvents: 'auto'
+  },
+  connectorLineLeft: {
+    position: 'absolute',
+    right: '-6px',
+    top: '3px',
+    width: '6px',
+    height: '2px',
+    backgroundColor: 'var(--text-tertiary)'
+  },
+  connectorNodeRight: {
+    position: 'absolute',
+    right: '-16px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: '12px',
+    height: '12px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--bg-primary)',
+    border: '2px solid var(--text-tertiary)',
+    cursor: 'crosshair',
+    transition: 'opacity 0.2s',
+    zIndex: 15,
+    pointerEvents: 'auto'
+  },
+  connectorLineRight: {
+    position: 'absolute',
+    left: '-6px',
+    top: '3px',
+    width: '6px',
+    height: '2px',
+    backgroundColor: 'var(--text-tertiary)'
+  }
+};

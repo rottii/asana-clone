@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import RichTextEditor from './RichTextEditor';
 
-export default function TaskDetailPane({ task, selectedProject, onClose, onTaskUpdate, token, projectRole, customFieldSettings, onOpenPopover }) {
+export default function TaskDetailPane({ task, selectedProject, onClose, onTaskUpdate, token, projectRole, customFieldSettings, onOpenPopover, currentUser }) {
   const [editForm, setEditForm] = useState({
     title: '',
     description: '',
@@ -13,6 +13,42 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   const [tagInputValue, setTagInputValue] = useState('');
   const [tagColorValue, setTagColorValue] = useState('#3B82F6');
   const [availableTags, setAvailableTags] = useState([]);
+  
+  const [showProjectInput, setShowProjectInput] = useState(false);
+  const [availableProjects, setAvailableProjects] = useState([]);
+  const [expandedProjects, setExpandedProjects] = useState({});
+  
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [activeTab, setActiveTab] = useState('comments');
+  const [openSectionMenuId, setOpenSectionMenuId] = useState(null);
+
+  const getCustomFieldSettingsForProject = (proj) => {
+    if (!proj || !proj.customFieldSettings) return [];
+    try {
+      return typeof proj.customFieldSettings === 'string' 
+        ? JSON.parse(proj.customFieldSettings) 
+        : proj.customFieldSettings;
+    } catch {
+      return [];
+    }
+  };
+
+  const isProjectExpanded = (projectId) => {
+    if (expandedProjects[projectId] !== undefined) return expandedProjects[projectId];
+    return true; // Expanded by default
+  };
+
+  const toggleProject = (projectId) => {
+    setExpandedProjects(prev => {
+      const current = prev[projectId] !== undefined ? prev[projectId] : true; // Assuming default was true if not in state but was primary... actually let's just toggle
+      const isCurrentlyExpanded = prev[projectId] !== undefined ? prev[projectId] : true; // Actually if it's primary it defaults to true
+      // To be safe, let's just toggle the current visual state
+      // Wait, we can pass isCurrentlyExpanded directly to the toggle
+      return { ...prev, [projectId]: !current };
+    });
+  };
+  const fileInputRef = useRef(null);
 
   const isReadOnly = projectRole === 'VIEWER' || projectRole === 'COMMENTER';
 
@@ -30,29 +66,43 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
       fetch('http://localhost:5001/api/tags', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setAvailableTags(data);
-      })
-      .catch(console.error);
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAvailableTags(data);
+        })
+        .catch(console.error);
     }
   }, [showTagInput, token]);
 
   useEffect(() => {
-    if (!openFieldMenuId) return;
+    if (showProjectInput && availableProjects.length === 0) {
+      fetch('http://localhost:5001/api/projects', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAvailableProjects(data);
+        })
+        .catch(console.error);
+    }
+  }, [showProjectInput, token, availableProjects.length]);
+
+  useEffect(() => {
+    if (!openFieldMenuId && !openSectionMenuId) return;
     const handleClickOutside = (e) => {
       if (e.target.closest('.dropdownMenu') || e.target.closest('[class*="popover"]')) return;
       setOpenFieldMenuId(null);
+      setOpenSectionMenuId(null);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [openFieldMenuId]);
+  }, [openFieldMenuId, openSectionMenuId]);
 
   if (!task) return null;
 
   const handleSave = async (field, value) => {
     if (isReadOnly) return;
-    
+
     // Only save if changed
     if (field === 'title' && value === task.title) return;
     if (field === 'description' && value === task.description) return;
@@ -76,7 +126,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
   const handleToggleComplete = async () => {
     if (isReadOnly) return;
-    
+
     if (!task.isCompleted) {
       const activeBlockers = task.blockedBy?.filter(dep => !dep.blockingTask?.isCompleted) || [];
       if (activeBlockers.length > 0) {
@@ -188,7 +238,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
   const handleAddComment = async (e) => {
     e.preventDefault();
-    if (isReadOnly || !newCommentText.trim()) return;
+    if (projectRole === 'VIEWER' || !newCommentText.trim()) return;
     try {
       const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/comments`, {
         method: 'POST',
@@ -266,8 +316,86 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     } catch (err) { console.error(err); }
   };
 
-  const handleDeleteComment = async (commentId) => {
+  const handleAddToProject = async (projectId) => {
     if (isReadOnly) return;
+    try {
+      const selectedProj = availableProjects.find(p => p.id === projectId);
+      const sectionId = selectedProj?.sections?.[0]?.id; // Default to first section
+      if (!sectionId) return alert('This project has no sections!');
+
+      const res = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ targetProjectId: projectId, targetSectionId: sectionId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // Append locally
+        const updatedTask = {
+          ...task,
+          secondaryProjects: [...(task.secondaryProjects || []), data]
+        };
+        onTaskUpdate(task.id, updatedTask);
+        setShowProjectInput(false);
+      } else {
+        alert(data.error || 'Failed to add to project');
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleRemoveFromProject = async (projectId) => {
+    if (isReadOnly) return;
+    if (task.section?.projectId === projectId) {
+      alert("You cannot remove the task from its primary project from here.");
+      return;
+    }
+    if (!window.confirm("Are you sure you want to remove this task from the project?")) return;
+    try {
+      const res = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/projects/${projectId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const updatedTask = {
+          ...task,
+          secondaryProjects: (task.secondaryProjects || []).filter(sp => sp.projectId !== projectId)
+        };
+        onTaskUpdate(task.id, updatedTask);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to remove from project');
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleChangeSection = async (projectId, newSectionId) => {
+    if (isReadOnly) return;
+    setOpenSectionMenuId(null);
+    try {
+      const res = await fetch(`http://localhost:5001/api/projects/tasks/move`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ taskId: task.id, targetSectionId: newSectionId, projectId })
+      });
+      if (res.ok) {
+        // Refresh the task to get the new section data. 
+        // We can just rely on the socket 'task_moved' event to refresh the board, but let's also update locally.
+        // Wait, the API doesn't return the full task, it returns a success message or the updated taskProject.
+        // Actually, let's just let the board handle it, or we can fetch the task again.
+        // For now, we know the section name changed. Let's just optimistic update.
+        // But since we have websockets, it will update automatically!
+        // To be safe, let's just trigger a task update if we can.
+        // Actually `onTaskUpdate` requires the full task.
+        // We'll let the socket handle the board refresh!
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to change section');
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (projectRole === 'VIEWER') return;
     if (!window.confirm("Yorumu silmek istediğinize emin misiniz?")) return;
     try {
       const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/comments/${commentId}`, {
@@ -284,6 +412,63 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     } catch (err) { console.error(err); }
   };
 
+  const handleFileUpload = async (files) => {
+    if (isReadOnly || !files?.length) return;
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach(file => formData.append('files', file));
+
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/attachments`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      const newAttachments = await response.json();
+      if (response.ok) {
+        const simulatedActivities = newAttachments.map(att => ({
+          id: 'temp-' + Math.random(),
+          action: `attached ${att.originalName}`,
+          createdAt: new Date().toISOString(),
+          user: currentUser
+        }));
+        const updatedTask = { 
+          ...task, 
+          attachments: [...newAttachments, ...(task.attachments || [])],
+          activities: [...(task.activities || []), ...simulatedActivities]
+        };
+        onTaskUpdate(task.id, updatedTask);
+      }
+    } catch (err) { console.error(err); }
+    finally { setIsUploading(false); }
+  };
+
+  const handleDeleteAttachment = async (attachmentId) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/attachments/${attachmentId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const deletedAttachment = (task.attachments || []).find(a => a.id === attachmentId);
+        const updatedAttachments = (task.attachments || []).filter(a => a.id !== attachmentId);
+        const simulatedActivity = deletedAttachment ? {
+          id: 'temp-' + Math.random(),
+          action: `removed attachment ${deletedAttachment.originalName}`,
+          createdAt: new Date().toISOString(),
+          user: currentUser
+        } : null;
+        
+        const updatedTask = { 
+          ...task, 
+          attachments: updatedAttachments,
+          activities: simulatedActivity ? [...(task.activities || []), simulatedActivity] : task.activities
+        };
+        onTaskUpdate(task.id, updatedTask);
+      }
+    } catch (err) { console.error(err); }
+  };
+
   const parsedFields = getParsedCustomFields(task.customFields);
 
   const activeBlockedBy = task.blockedBy?.filter(dep => !dep.blockingTask?.isCompleted) || [];
@@ -293,8 +478,8 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     <>
       <div style={styles.pane}>
         <div style={styles.header}>
-          <button 
-            style={{ ...styles.completeBtn, backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent', color: task.isCompleted ? '#FFF' : 'var(--text-primary)' }} 
+          <button
+            style={{ ...styles.completeBtn, backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent', color: task.isCompleted ? '#FFF' : 'var(--text-primary)' }}
             onClick={handleToggleComplete}
             disabled={isReadOnly}
           >
@@ -306,8 +491,8 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
         </div>
 
         <div style={styles.body}>
-          <input 
-            type="text" 
+          <input
+            type="text"
             style={{ ...styles.titleInput, textDecoration: task.isCompleted ? 'line-through' : 'none' }}
             value={editForm.title}
             onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
@@ -344,13 +529,13 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                     {activeBlockedBy.map(dep => (
                       <div key={dep.id} style={styles.dependencyItem}>
-                        <span style={styles.dependencyType}>Blocked by:</span> 
+                        <span style={styles.dependencyType}>Blocked by:</span>
                         {dep.blockingTask?.title || 'Task'}
                       </div>
                     ))}
                     {activeBlocking.map(dep => (
                       <div key={dep.id} style={styles.dependencyItem}>
-                        <span style={styles.dependencyType}>Blocking:</span> 
+                        <span style={styles.dependencyType}>Blocking:</span>
                         {dep.blockedByTask?.title || 'Task'}
                       </div>
                     ))}
@@ -378,8 +563,8 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                           {availableTags.length > 0 && (
                             <div style={{ marginBottom: '8px', maxHeight: '120px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               {availableTags.filter(t => !task.tags?.find(tt => tt.id === t.id) && t.name.toLowerCase().includes(tagInputValue.toLowerCase())).map(tag => (
-                                <div 
-                                  key={tag.id} 
+                                <div
+                                  key={tag.id}
                                   onClick={() => handleAssignExistingTag(tag.id)}
                                   style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px', cursor: 'pointer', borderRadius: '4px' }}
                                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
@@ -409,100 +594,283 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
               </div>
             </div>
 
-            <div style={{ ...styles.fieldRow, flexDirection: 'column', alignItems: 'flex-start', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)', borderTop: '1px solid var(--border-color)', marginTop: '1rem' }}>
+            <div style={{ padding: '1rem 0', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', marginTop: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '500', color: 'var(--text-primary)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                Projects <span style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '0 0.4rem', borderRadius: '4px', fontSize: '0.75rem' }}>1</span> <span style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', lineHeight: '1' }}>+</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '0.5rem', fontSize: '0.85rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>▼</span>
-                {selectedProject ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#34D399' }}></div>
-                    <span style={{ color: 'var(--text-primary)' }}>{selectedProject.name}</span>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginLeft: '0.5rem' }}>Configuration ⌄</span>
-                  </div>
-                ) : (
-                  <span style={{ color: 'var(--text-secondary)' }}>No project</span>
-                )}
-              </div>
-            </div>
-
-            {customFieldSettings?.map((cf) => {
-              const value = parsedFields[cf.id] || '';
-              const opt = cf.options?.find(o => (o.value || o.label) === value);
-              const displayValue = opt ? (opt.label || opt.value) : (value || '—');
-              return (
-                <div key={cf.id} style={{ ...styles.fieldRow, borderBottom: '1px solid var(--border-color)', padding: '0.6rem 0', minHeight: '32px' }}>
-                  <div style={{ ...styles.fieldLabel, display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-secondary)' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="8 10 12 14 16 10"></polyline></svg>
-                    {cf.title}
-                  </div>
-                  <div style={{ ...styles.fieldValue, position: 'relative', paddingLeft: '0.5rem', borderLeft: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', height: '100%' }}>
-                    {(cf.type === 'SELECT' || cf.type === 'single-select') ? (
-                      <>
-                        <span 
-                          onClick={(e) => { e.stopPropagation(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }}
-                          style={{ cursor: isReadOnly ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', backgroundColor: (value && opt?.color) ? opt.color : 'transparent', color: value ? 'var(--text-primary)' : 'var(--text-secondary)', padding: value ? '0.2rem 0.5rem' : '0', borderRadius: '4px', fontSize: '0.85rem' }}
-                        >
-                          {displayValue}
-                        </span>
-                        {openFieldMenuId === cf.id && (
-                          <div style={styles.dropdownMenu} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
-                            <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>{cf.title}</div>
-                            {cf.options?.map(o => (
-                              <button 
-                                key={o.id}
-                                onClick={() => handleDirectFieldUpdate(cf.id, o.label || o.value)}
-                                style={{...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px'}}
+                Projects <span style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '0 0.4rem', borderRadius: '4px', fontSize: '0.75rem' }}>{(task.secondaryProjects?.length || 0) + 1}</span> 
+                {!isReadOnly && (
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', lineHeight: '1', marginLeft: '0.5rem' }} onClick={() => setShowProjectInput(true)}>+</span>
+                    {showProjectInput && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '4px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', padding: '8px', zIndex: 100, width: '250px' }}>
+                        {availableProjects.length > 0 ? (
+                          <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {availableProjects.filter(p => p.id !== task.section?.projectId && !task.secondaryProjects?.find(sp => sp.projectId === p.id)).map(proj => (
+                              <div
+                                key={proj.id}
+                                onClick={() => handleAddToProject(proj.id)}
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px', cursor: 'pointer', borderRadius: '4px' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               >
-                                <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', display: 'inline-block', flexShrink: 0 }}></div>
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
-                              </button>
+                                <span style={{ color: proj.color }}>{proj.icon || '📋'}</span>
+                                <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 'normal' }}>{proj.name}</span>
+                              </div>
                             ))}
-                            <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
-                            <button onClick={() => handleDirectFieldUpdate(cf.id, '')} style={{...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)'}}>Clear value</button>
                           </div>
+                        ) : (
+                          <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Loading projects...</div>
                         )}
-                      </>
-                    ) : (
-                      <input 
-                        type="text" 
-                        value={value} 
-                        placeholder="—" 
-                        readOnly={isReadOnly} 
-                        onChange={e => {
-                          const newFields = { ...parsedFields, [cf.id]: e.target.value };
-                          setEditForm({ ...editForm, _cfForceUpdate: Date.now() }); // Force render
-                          task.customFields = JSON.stringify(newFields); // Optimistic local
-                        }}
-                        onBlur={e => handleDirectFieldUpdate(cf.id, e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleDirectFieldUpdate(cf.id, e.target.value)}
-                        style={{ ...styles.inlineInput, color: value ? 'var(--text-primary)' : 'var(--text-secondary)' }} 
-                      />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                          <button onClick={() => setShowProjectInput(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'normal' }}>Cancel</button>
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
-              );
-            })}
+                )}
+              </div>
 
-            <div style={{ marginTop: '0.5rem', color: '#4F46E5', fontSize: '0.85rem', cursor: 'pointer' }}>Hide custom fields</div>
+              {/* Projects List */}
+              {[{
+                isPrimary: true,
+                project: task.section?.project || selectedProject,
+                section: task.section || selectedProject?.sections?.find(s => s.id === task.sectionId)
+              }, ...(task.secondaryProjects || []).map(sp => ({
+                isPrimary: false,
+                project: sp.project,
+                section: sp.section
+              }))].filter(p => p.project).map(({ isPrimary, project, section }, index) => {
+                const cfs = getCustomFieldSettingsForProject(project);
+                const expanded = isProjectExpanded(project.id);
+
+                return (
+                  <div key={`${project.id}-${index}`} style={{ width: '100%', marginBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0' }}>
+                      <span 
+                        onClick={() => {
+                          setExpandedProjects(prev => ({ ...prev, [project.id]: !expanded }));
+                        }} 
+                        style={{ color: 'var(--text-secondary)', fontSize: '0.6rem', cursor: 'pointer', display: 'inline-block', transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', padding: '0.2rem' }}
+                      >
+                        ▼
+                      </span>
+                      <div style={{ width: '14px', height: '14px', borderRadius: '4px', backgroundColor: project.color || 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}></div>
+                      <span style={{ color: 'var(--text-primary)' }}>{project.name}</span>
+                      
+                      <div style={{ position: 'relative', marginLeft: '0.5rem' }}>
+                        <span 
+                          onClick={(e) => { e.stopPropagation(); if (!isReadOnly) setOpenSectionMenuId(openSectionMenuId === project.id ? null : project.id); }}
+                          style={{ color: 'var(--text-secondary)', cursor: isReadOnly ? 'default' : 'pointer' }}
+                        >
+                          {section?.name} ⌄
+                        </span>
+                        {openSectionMenuId === project.id && project.sections && (
+                          <div style={{ ...styles.dropdownMenu, top: '100%', left: 0, marginTop: '4px' }} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
+                            <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>Sections</div>
+                            {project.sections.map(s => (
+                              <button
+                                key={s.id}
+                                onClick={() => handleChangeSection(project.id, s.id)}
+                                style={{ ...styles.dropdownItem, padding: '4px 8px' }}
+                              >
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {!isReadOnly && !isPrimary && (
+                          <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 'auto', paddingLeft: '8px', color: 'var(--text-secondary)' }} onClick={() => handleRemoveFromProject(project.id)}>×</span>
+                      )}
+                    </div>
+                    
+                    {/* Custom Fields */}
+                    {expanded && cfs?.length > 0 && (
+                      <div style={{ width: '100%' }}>
+                        {cfs.map((cf) => {
+                          const value = parsedFields[cf.id] || '';
+                          const opt = cf.options?.find(o => (o.value || o.label) === value);
+                          const displayValue = opt ? (opt.label || opt.value) : (value || '—');
+                          return (
+                            <div key={cf.id} style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', borderTop: cf.id === cfs[0].id ? '1px solid var(--border-color)' : 'none', minHeight: '36px', alignItems: 'center' }}>
+                              <div style={{ width: '150px', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem', paddingLeft: '0.5rem', flexShrink: 0 }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="8 10 12 14 16 10"></polyline></svg>
+                                {cf.title}
+                              </div>
+                              <div style={{ flex: 1, position: 'relative', paddingLeft: '0.5rem', borderLeft: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', height: '100%' }}>
+                                {(cf.type === 'SELECT' || cf.type === 'single-select') ? (
+                                  <>
+                                    <span
+                                      onClick={(e) => { e.stopPropagation(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }}
+                                      style={{ cursor: isReadOnly ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', backgroundColor: (value && opt?.color) ? opt.color : 'transparent', color: value ? 'var(--text-primary)' : 'var(--text-secondary)', padding: value ? '0.2rem 0.5rem' : '0', borderRadius: '4px', fontSize: '0.85rem' }}
+                                    >
+                                      {displayValue}
+                                    </span>
+                                    {openFieldMenuId === cf.id && (
+                                      <div style={styles.dropdownMenu} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
+                                        <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>{cf.title}</div>
+                                        {cf.options?.map(o => (
+                                          <button
+                                            key={o.id}
+                                            onClick={() => handleDirectFieldUpdate(cf.id, o.label || o.value)}
+                                            style={{ ...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px' }}
+                                          >
+                                            <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', display: 'inline-block', flexShrink: 0 }}></div>
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
+                                          </button>
+                                        ))}
+                                        <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+                                        <button onClick={() => handleDirectFieldUpdate(cf.id, '')} style={{ ...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)' }}>Clear value</button>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={value}
+                                    placeholder="—"
+                                    readOnly={isReadOnly}
+                                    onChange={e => {
+                                      const newFields = { ...parsedFields, [cf.id]: e.target.value };
+                                      setEditForm({ ...editForm, _cfForceUpdate: Date.now() }); // Force render
+                                      task.customFields = JSON.stringify(newFields); // Optimistic local
+                                    }}
+                                    onBlur={e => handleDirectFieldUpdate(cf.id, e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleDirectFieldUpdate(cf.id, e.target.value)}
+                                    style={{ ...styles.inlineInput, color: value ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
           </div>
 
-            <div style={styles.descriptionSection}>
-              <div style={styles.descriptionLabel}>Description</div>
-              {!isReadOnly ? (
-                <RichTextEditor
-                  value={editForm.description}
-                  onChange={val => setEditForm({ ...editForm, description: val })}
-                  onBlur={() => handleSave('description', editForm.description)}
-                  users={selectedProject?.members?.map(m => m.user) || []}
-                  minHeight="150px"
-                />
-              ) : (
-                <div className="rich-text-content" style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }} dangerouslySetInnerHTML={{ __html: editForm.description || '<p>No description</p>' }} />
+          <div style={styles.descriptionSection}>
+            <div style={styles.descriptionLabel}>Description</div>
+            {!isReadOnly ? (
+              <RichTextEditor
+                value={editForm.description}
+                onChange={val => setEditForm({ ...editForm, description: val })}
+                onBlur={() => handleSave('description', editForm.description)}
+                users={selectedProject?.members?.map(m => m.user) || []}
+                minHeight="150px"
+              />
+            ) : (
+              <div className="rich-text-content" style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }} dangerouslySetInnerHTML={{ __html: editForm.description || '<p>No description</p>' }} />
+            )}
+          </div>
+
+          {/* ATTACHMENTS SECTION */}
+          <div style={styles.attachmentsSection}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <div style={styles.sectionTitle}>Attachments {task.attachments?.length > 0 && <span style={{ color: 'var(--text-tertiary)', fontWeight: '400' }}>({task.attachments.length})</span>}</div>
+              {!isReadOnly && (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={styles.attachBtn}
+                  disabled={isUploading}
+                >
+                  📎 {isUploading ? 'Uploading...' : 'Attach file'}
+                </button>
               )}
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                if (!e.target.files?.length) return;
+                await handleFileUpload(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            {/* Drop zone */}
+            {!isReadOnly && (
+              <div
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(false); }}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragOver(false);
+                  if (e.dataTransfer.files?.length) {
+                    await handleFileUpload(e.dataTransfer.files);
+                  }
+                }}
+                style={{
+                  ...styles.dropZone,
+                  borderColor: isDragOver ? 'var(--accent-primary)' : 'var(--border-color)',
+                  backgroundColor: isDragOver ? 'rgba(79, 70, 229, 0.05)' : 'transparent'
+                }}
+              >
+                <span style={{ fontSize: '1.5rem' }}>📁</span>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>Drop files here to attach</span>
+              </div>
+            )}
+            {/* Attachment list */}
+            {task.attachments?.length > 0 && (
+              <div style={styles.attachmentList}>
+                {task.attachments.map(att => {
+                  const isImage = att.mimeType?.startsWith('image/');
+                  const fileUrl = `http://localhost:5001/uploads/${att.filename}`;
+                  const sizeStr = att.size < 1024 ? `${att.size} B`
+                    : att.size < 1024 * 1024 ? `${(att.size / 1024).toFixed(1)} KB`
+                    : `${(att.size / (1024 * 1024)).toFixed(1)} MB`;
+                  const fileIcon = att.mimeType?.includes('pdf') ? '📄'
+                    : att.mimeType?.includes('word') || att.mimeType?.includes('document') ? '📝'
+                    : att.mimeType?.includes('spreadsheet') || att.mimeType?.includes('excel') ? '📊'
+                    : att.mimeType?.includes('zip') || att.mimeType?.includes('archive') ? '📦'
+                    : att.mimeType?.includes('video') ? '🎬'
+                    : att.mimeType?.includes('audio') ? '🎵'
+                    : '📎';
+
+                  return (
+                    <div key={att.id} style={styles.attachmentItem}>
+                      <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={styles.attachmentPreviewLink}>
+                        {isImage ? (
+                          <div style={styles.attachmentThumb}>
+                            <img src={fileUrl} alt={att.originalName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }} />
+                          </div>
+                        ) : (
+                          <div style={styles.attachmentFileIcon}>
+                            <span style={{ fontSize: '1.8rem' }}>{fileIcon}</span>
+                          </div>
+                        )}
+                      </a>
+                      <div style={styles.attachmentInfo}>
+                        <a href={fileUrl} target="_blank" rel="noopener noreferrer" style={styles.attachmentName}>{att.originalName}</a>
+                        <div style={styles.attachmentMeta}>
+                          <span>{sizeStr}</span>
+                          <span>•</span>
+                          <span>{att.uploader?.name || 'Unknown'}</span>
+                          <span>•</span>
+                          <span>{new Date(att.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                        </div>
+                      </div>
+                      {(att.uploaderId === currentUser?.id || projectRole === 'ADMIN' || projectRole === 'EDITOR') && (
+                        <button
+                          onClick={() => handleDeleteAttachment(att.id)}
+                          style={styles.attachmentDeleteBtn}
+                          title="Delete attachment"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* SUBTASKS SECTION */}
           <div style={styles.subtasksSection}>
@@ -522,44 +890,70 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
             )}
           </div>
 
-          {/* COMMENTS SECTION */}
+          {/* COMMENTS & ACTIVITY SECTION */}
           <div style={styles.commentsSection}>
             <div style={styles.sectionTitle}>Comments & Activity</div>
             <div style={styles.commentList}>
-              {task.comments?.map(c => (
-                <div key={c.id} style={styles.commentItem}>
-                  <div style={styles.commentAvatar}>{c.user?.name?.charAt(0).toUpperCase() || '?'}</div>
-                  <div style={styles.commentContent}>
-                    <div style={styles.commentHeader}>
-                      <span style={styles.commentAuthor}>{c.user?.name || 'Unknown'}</span>
-                      <span style={styles.commentTime}>
-                        {new Date(c.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                      <div className="rich-text-content" style={styles.commentText} dangerouslySetInnerHTML={{ __html: c.text }} />
-                  </div>
-                  {!isReadOnly && (
-                    <button onClick={() => handleDeleteComment(c.id)} style={styles.commentDeleteBtn} title="Delete comment">×</button>
-                  )}
-                </div>
-              ))}
+              {(() => {
+                const combinedFeed = [
+                  ...(task.comments || []).map(c => ({ ...c, type: 'comment' })),
+                  ...(task.activities || []).map(a => ({ ...a, type: 'activity' }))
+                ].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+                return combinedFeed.map(item => {
+                  if (item.type === 'comment') {
+                    return (
+                      <div key={`comment-${item.id}`} style={styles.commentItem}>
+                        <div style={styles.commentAvatar}>{item.user?.name?.charAt(0).toUpperCase() || '?'}</div>
+                        <div style={styles.commentContent}>
+                          <div style={styles.commentHeader}>
+                            <span style={styles.commentAuthor}>{item.user?.name || 'Unknown'}</span>
+                            <span style={styles.commentTime}>
+                              {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <div className="rich-text-content" style={styles.commentText} dangerouslySetInnerHTML={{ __html: item.text }} />
+                        </div>
+                        {projectRole !== 'VIEWER' && (projectRole === 'ADMIN' || (currentUser && item.userId === currentUser.id)) && (
+                          <button onClick={() => handleDeleteComment(item.id)} style={styles.commentDeleteBtn} title="Delete comment">×</button>
+                        )}
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div key={`activity-${item.id}`} style={styles.activityItem}>
+                        <div style={styles.activityAvatar}>{item.user?.name?.charAt(0).toUpperCase() || '?'}</div>
+                        <div style={styles.activityContent}>
+                          <span style={styles.activityAuthor}>{item.user?.name || 'Unknown'}</span> {item.action}
+                          {item.oldValue && item.newValue && (
+                            <span> from <strong>{item.oldValue}</strong> to <strong>{item.newValue}</strong></span>
+                          )}
+                          <span style={styles.activityTime}>
+                            {' '}• {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+                });
+              })()}
             </div>
-                     {!isReadOnly && (
-                <div style={styles.commentForm}>
-                  <div style={styles.commentAvatarCurrentUser}>ME</div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <RichTextEditor
-                      value={newCommentText}
-                      onChange={val => setNewCommentText(val)}
-                      users={selectedProject?.members?.map(m => m.user) || []}
-                      minHeight="60px"
-                    />
-                    <button onClick={handleAddComment} style={{ ...styles.saveBtn, alignSelf: 'flex-end', padding: '6px 12px', fontSize: '0.85rem' }}>
-                      Comment
-                    </button>
-                  </div>
+            {projectRole !== 'VIEWER' && (
+              <div style={styles.commentForm}>
+                <div style={styles.commentAvatarCurrentUser}>ME</div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <RichTextEditor
+                    value={newCommentText}
+                    onChange={val => setNewCommentText(val)}
+                    users={selectedProject?.members?.map(m => m.user) || []}
+                    minHeight="60px"
+                  />
+                  <button onClick={handleAddComment} style={{ ...styles.saveBtn, alignSelf: 'flex-end', padding: '6px 12px', fontSize: '0.85rem' }}>
+                    Comment
+                  </button>
                 </div>
-              )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -568,7 +962,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 }
 
 const styles = {
-  pane: { position: 'fixed', top: '52px', right: 0, bottom: 0, width: '600px', backgroundColor: 'var(--bg-primary)', boxShadow: '-4px 0 15px rgba(0,0,0,0.05)', zIndex: 10001, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border-color)', animation: 'slideIn 0.2s ease-out' },
+  pane: { position: 'fixed', top: '52px', right: 0, bottom: 0, width: '700px', backgroundColor: 'var(--bg-primary)', boxShadow: '-4px 0 15px rgba(0,0,0,0.05)', zIndex: 10001, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border-color)', animation: 'slideIn 0.2s ease-out' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)' },
   completeBtn: { padding: '0.4rem 1rem', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: '0.2s' },
   headerActions: { display: 'flex', alignItems: 'center', gap: '0.5rem' },
@@ -610,6 +1004,26 @@ const styles = {
   commentTime: { fontSize: '0.75rem', color: 'var(--text-secondary)' },
   commentText: { fontSize: '0.9rem', color: 'var(--text-primary)', lineHeight: '1.4' },
   commentDeleteBtn: { background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1rem', padding: '0 0.25rem' },
-  commentForm: { display: 'flex', gap: '0.75rem', alignItems: 'flex-start' },
-  commentInput: { flex: 1, padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem', resize: 'vertical', outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)' }
+  commentForm: { display: 'flex', gap: '0.75rem', alignItems: 'flex-start', marginTop: '1rem' },
+  commentInput: { flex: 1, padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem', resize: 'vertical', outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)' },
+  
+  // Activity Feed Styles
+  activityItem: { display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0' },
+  activityAvatar: { width: '24px', height: '24px', borderRadius: '50%', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '500', fontSize: '0.7rem', flexShrink: 0 },
+  activityContent: { fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.4' },
+  activityAuthor: { fontWeight: '600', color: 'var(--text-primary)' },
+  activityTime: { fontSize: '0.75rem', color: 'var(--text-tertiary)' },
+
+  attachmentsSection: { marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' },
+  attachBtn: { background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 12px', fontSize: '0.82rem', cursor: 'pointer', color: 'var(--text-secondary)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.15s' },
+  dropZone: { border: '2px dashed var(--border-color)', borderRadius: '8px', padding: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', transition: 'all 0.2s', marginBottom: '0.75rem', cursor: 'pointer' },
+  attachmentList: { display: 'flex', flexDirection: 'column', gap: '0.5rem' },
+  attachmentItem: { display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', transition: 'box-shadow 0.15s' },
+  attachmentPreviewLink: { textDecoration: 'none', flexShrink: 0 },
+  attachmentThumb: { width: '56px', height: '56px', borderRadius: '6px', overflow: 'hidden', backgroundColor: 'var(--bg-tertiary)', flexShrink: 0 },
+  attachmentFileIcon: { width: '56px', height: '56px', borderRadius: '6px', backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  attachmentInfo: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' },
+  attachmentName: { fontSize: '0.85rem', fontWeight: '500', color: 'var(--accent-primary)', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' },
+  attachmentMeta: { fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '0.4rem' },
+  attachmentDeleteBtn: { background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 0.4rem', flexShrink: 0, transition: 'color 0.15s' }
 };

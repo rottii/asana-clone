@@ -12,7 +12,10 @@ import ProjectFormView from './ProjectFormView'
 import ProjectDashboardView from './ProjectDashboardView'
 import ProjectCalendarView from './ProjectCalendarView'
 import ProjectTimelineView from './ProjectTimelineView'
+import ProjectWorkloadView from './ProjectWorkloadView'
+import ProjectGanttView from './ProjectGanttView'
 import TaskDetailPane from './TaskDetailPane'
+import IconColorPicker from './IconColorPicker'
 import './KanbanBoard.css'
 
 export default function KanbanBoard({ selectedProject, setSelectedProject, projects, setProjects, token, user, handleLogout }) {
@@ -53,13 +56,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [activeSort, setActiveSort] = useState(null)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
   const [currentTab, setCurrentTab] = useState(() => {
     return localStorage.getItem(`currentProjectTab_${selectedProject.id}`) || selectedProject.defaultView || 'List';
   })
   const [tabContextMenu, setTabContextMenu] = useState({ visible: false, x: 0, y: 0, view: null })
 
   // Parse views for backward compatibility
-  const rawViews = selectedProject.activeViews || ['Overview', 'List', 'Board', 'Timeline', 'Dashboard', 'Calendar'];
+  const rawViews = selectedProject.activeViews || ['Overview', 'List', 'Board', 'Timeline', 'Gantt', 'Dashboard', 'Calendar', 'Workload'];
   const parsedViews = rawViews.map((v, i) => {
     if (typeof v === 'string') return { id: `legacy-${v.toLowerCase()}`, type: v, name: v };
     return v;
@@ -98,6 +102,10 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }, [selectedProject.sections]);
 
   useEffect(() => {
+    setNameInput(selectedProject.name);
+  }, [selectedProject.id, selectedProject.name]);
+
+  useEffect(() => {
     localStorage.setItem(`currentProjectTab_${selectedProject.id}`, currentTab);
   }, [currentTab, selectedProject.id]);
 
@@ -109,7 +117,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   // --- REAL-TIME UPDATES VIA SOCKET.IO ---
   useEffect(() => {
     if (!selectedProject || !selectedProject.id) return;
-    
+
     const socket = io('http://localhost:5001');
     socket.emit('join_project', selectedProject.id);
 
@@ -137,6 +145,10 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     socket.on('section_updated', refreshProject);
     socket.on('section_moved', refreshProject);
     socket.on('section_deleted', refreshProject);
+    socket.on('project_updated', refreshProject);
+
+    // Fetch initial fresh data when mounting this project board
+    refreshProject();
 
     return () => {
       socket.emit('leave_project', selectedProject.id);
@@ -174,14 +186,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       setIsGroupInnerDropdownOpen(false)
       setIsGroupMoreMenuOpen(false)
       setIsGroupOrderMenuOpen(false)
+      setIsIconPickerOpen(false)
     }
     window.addEventListener('click', closeAll)
     return () => window.removeEventListener('click', closeAll)
   }, [])
 
   const handleSetProjectStatus = async (newStatusId) => {
-    if (projectRole !== 'ADMIN') {
-      alert('Only project admins can change the status.');
+    if (projectRole !== 'ADMIN' && projectRole !== 'EDITOR') {
+      alert('Only project admins and editors can change the status.');
       return;
     }
     try {
@@ -212,6 +225,45 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         syncProjectStates(data);
       }
     } catch (err) { console.error(err); }
+  };
+
+  const handleUpdateIconColor = async (color, icon) => {
+    if (projectRole !== 'ADMIN' && projectRole !== 'EDITOR') return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ color, icon })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        syncProjectStates(data);
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleToggleStar = async () => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/star`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const { isStarred } = await response.json();
+        const updatedProj = { ...selectedProject };
+        if (isStarred) {
+          updatedProj.starredBy = [...(updatedProj.starredBy || []), { userId: user.id }];
+        } else {
+          updatedProj.starredBy = (updatedProj.starredBy || []).filter(s => s.userId !== user.id);
+        }
+        setSelectedProject(updatedProj);
+        if (setProjects) {
+          setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
+        }
+      }
+    } catch (err) {
+      console.error('Error toggling star:', err);
+    }
   };
 
   const handleLiveTabSwap = (dragId, hoverId) => {
@@ -549,7 +601,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   const handleRenameProject = async () => {
-    if (projectRole !== 'ADMIN' || !nameInput.trim() || nameInput.trim() === selectedProject.name) {
+    if ((projectRole !== 'ADMIN' && projectRole !== 'EDITOR') || !nameInput.trim() || nameInput.trim() === selectedProject.name) {
       setIsEditingName(false); return;
     }
     try {
@@ -561,7 +613,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   const handleArchiveProject = async () => {
-    if (projectRole !== 'ADMIN') return;
+    if (projectRole !== 'ADMIN' && projectRole !== 'EDITOR') return;
     if (!window.confirm("Proje arşivlensin mi?")) return;
     try {
       const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ isArchived: true }) })
@@ -745,6 +797,23 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     }
 
     setActivePopover({ type, task, coords: { top, bottom, left: rect.left } })
+  }
+  const handleDuplicateTask = async () => {
+    const taskIdToDuplicate = contextMenu.taskId;
+    setContextMenu({ visible: false, x: 0, y: 0, taskId: null });
+    if (isReadOnly) return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToDuplicate}/duplicate`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (response.ok) {
+        handleTaskUpdate(data.id, data, 'create', data.sectionId);
+      } else {
+        alert(data.error || "Görevi kopyalarken hata oluştu.");
+      }
+    } catch (err) { console.error(err) }
   }
 
   const handleDeleteTask = async () => {
@@ -1004,7 +1073,31 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       {/* 1. SATIR: ASANA MAIN HEADER */}
       <div style={styles.asanaMainHeader}>
         <div style={styles.headerLeftBlock}>
-          <div style={styles.asanaProjectIcon}>🟢</div>
+          <div style={{ position: 'relative' }}>
+            <div
+              style={{ ...styles.asanaProjectIcon, backgroundColor: selectedProject.color || '#4F46E5', cursor: (projectRole === 'ADMIN' || projectRole === 'EDITOR') ? 'pointer' : 'default' }}
+              onClick={(e) => {
+                if (projectRole === 'ADMIN' || projectRole === 'EDITOR') {
+                  document.body.click();
+                  e.stopPropagation();
+                  setIsIconPickerOpen(!isIconPickerOpen);
+                }
+              }}
+            >
+              {selectedProject.icon || '📋'}
+            </div>
+            {isIconPickerOpen && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '8px', zIndex: 10000 }}>
+                <IconColorPicker
+                  selectedColor={selectedProject.color || '#4F46E5'}
+                  setSelectedColor={(c) => handleUpdateIconColor(c, selectedProject.icon || '📋')}
+                  selectedIcon={selectedProject.icon || '📋'}
+                  setSelectedIcon={(i) => handleUpdateIconColor(selectedProject.color || '#4F46E5', i)}
+                  onClose={() => setIsIconPickerOpen(false)}
+                />
+              </div>
+            )}
+          </div>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             {isEditingName ? (
               <input type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} onBlur={handleRenameProject} onKeyDown={e => e.key === 'Enter' && handleRenameProject()} style={styles.renameInputInline} autoFocus />
@@ -1029,8 +1122,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               </div>
             )}
           </div>
-          <span style={styles.starIconStyle}>☆</span>
-          <span style={styles.privacyCircleStyle}>⚪</span>
+          <span
+            style={{
+              ...styles.starIconStyle,
+              color: selectedProject?.starredBy?.some(s => s.userId === user.id) ? '#F59E0B' : 'var(--text-tertiary)'
+            }}
+            onClick={handleToggleStar}
+          >
+            {selectedProject?.starredBy?.some(s => s.userId === user.id) ? '★' : '☆'}
+          </span>
 
           {/* Status Dropdown */}
           <div style={{ position: 'relative' }}>
@@ -1145,6 +1245,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             }}
             onClick={() => setCurrentTab(view.id)}
             onContextMenu={(e) => {
+              if (isReadOnly) return;
               e.preventDefault();
               setTabContextMenu({ visible: true, x: e.clientX, y: e.clientY, view });
             }}
@@ -1167,7 +1268,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           </span>
           {isAddViewMenuOpen && (
             <div style={{ ...styles.addWidgetDropdownMenu, top: '100%', left: 0, marginTop: '4px', zIndex: 100 }} onClick={(e) => e.stopPropagation()}>
-              {['Overview', 'List', 'Board', 'Timeline', 'Dashboard', 'Calendar'].map(type => (
+              {['Overview', 'List', 'Board', 'Timeline', 'Gantt', 'Dashboard', 'Calendar', 'Workload'].map(type => (
                 <div key={type} style={styles.addWidgetDropdownItem} onClick={() => handleAddView(type)}>
                   {type}
                 </div>
@@ -1178,322 +1279,324 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       </div>
 
       {/* 3. SATIR: OPTIONS SUB-HEADER */}
-      <div style={styles.asanaOptionsSubHeader}>
-        {currentTab === 'Dashboard' ? (
-          <div>
-            <div style={{ position: 'relative', display: 'inline-block' }}>
-              <button
-                style={styles.addTaskDropdownBtn}
-                disabled={isReadOnly}
-                onClick={(e) => { e.stopPropagation(); setIsAddWidgetMenuOpen(!isAddWidgetMenuOpen); }}
-              >
-                <span style={{ fontWeight: '700' }}>+</span> Add widget <span style={{ fontSize: '0.6rem' }}>▼</span>
-              </button>
-              {isAddWidgetMenuOpen && (
-                <div style={styles.addWidgetDropdownMenu} onClick={(e) => e.stopPropagation()}>
-                  <div style={styles.addWidgetDropdownItem}>Chart</div>
-                  <div style={styles.addWidgetDropdownItem}>Text</div>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div>
-            <button style={styles.addTaskDropdownBtn} disabled={isReadOnly} onClick={handleTopAddTaskGlobal}>
-              <span style={{ fontWeight: '700' }}>+</span> Add task <span style={{ fontSize: '0.6rem' }}>▼</span>
-            </button>
-          </div>
-        )}
-
-        {currentTab !== 'Dashboard' && (
-          <div style={{ position: 'relative' }}>
-            <div style={styles.optionsRightGroup}>
-              <div className="option-sub-item" style={{ ...styles.optionSubItem, backgroundColor: activeFilters.length > 0 ? '#EEF2F6' : 'transparent', fontWeight: activeFilters.length > 0 ? '700' : '500' }} onClick={(e) => { document.body.click(); e.stopPropagation(); setIsFilterDropdownOpen(!isFilterDropdownOpen); }}>
-                <span style={styles.optionIcon}>📊</span> Filter {activeFilters.length > 0 && `(${activeFilters.length})`}
-                {activeFilters.length > 0 && (
-                  <span
-                    onClick={(e) => { e.stopPropagation(); setActiveFilters([]); }}
-                    style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                    onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                  >×</span>
+      {activeViewObj.type !== 'Overview' && (
+        <div style={styles.asanaOptionsSubHeader}>
+          {currentTab === 'Dashboard' ? (
+            <div>
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <button
+                  style={styles.addTaskDropdownBtn}
+                  disabled={isReadOnly}
+                  onClick={(e) => { e.stopPropagation(); setIsAddWidgetMenuOpen(!isAddWidgetMenuOpen); }}
+                >
+                  <span style={{ fontWeight: '700' }}>+</span> Add widget <span style={{ fontSize: '0.6rem' }}>▼</span>
+                </button>
+                {isAddWidgetMenuOpen && (
+                  <div style={styles.addWidgetDropdownMenu} onClick={(e) => e.stopPropagation()}>
+                    <div style={styles.addWidgetDropdownItem}>Chart</div>
+                    <div style={styles.addWidgetDropdownItem}>Text</div>
+                  </div>
                 )}
               </div>
-              <div style={{ position: 'relative' }}>
-                <div
-                  className="option-sub-item"
-                  style={{ ...styles.optionSubItem, backgroundColor: isSortDropdownOpen ? '#EEF2F6' : 'transparent', fontWeight: isSortDropdownOpen ? '700' : '500' }}
-                  onClick={(e) => { document.body.click(); e.stopPropagation(); setIsSortDropdownOpen(!isSortDropdownOpen); }}
-                >
-                  <span style={styles.optionIcon}>⇅</span> Sort
-                  {activeSort && (
+            </div>
+          ) : (
+            <div>
+              <button style={styles.addTaskDropdownBtn} disabled={isReadOnly} onClick={handleTopAddTaskGlobal}>
+                <span style={{ fontWeight: '700' }}>+</span> Add task <span style={{ fontSize: '0.6rem' }}>▼</span>
+              </button>
+            </div>
+          )}
+
+          {currentTab !== 'Dashboard' && (
+            <div style={{ position: 'relative' }}>
+              <div style={styles.optionsRightGroup}>
+                <div className="option-sub-item" style={{ ...styles.optionSubItem, backgroundColor: activeFilters.length > 0 ? '#EEF2F6' : 'transparent', fontWeight: activeFilters.length > 0 ? '700' : '500' }} onClick={(e) => { document.body.click(); e.stopPropagation(); setIsFilterDropdownOpen(!isFilterDropdownOpen); }}>
+                  <span style={styles.optionIcon}>📊</span> Filter {activeFilters.length > 0 && `(${activeFilters.length})`}
+                  {activeFilters.length > 0 && (
                     <span
-                      onClick={(e) => { e.stopPropagation(); setActiveSort(null); }}
+                      onClick={(e) => { e.stopPropagation(); setActiveFilters([]); }}
                       style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                       onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
                       onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
                     >×</span>
                   )}
                 </div>
-                {isSortDropdownOpen && (
-                  <div style={styles.sortDropdownMenu} onClick={(e) => e.stopPropagation()}>
-                    {[
-                      { icon: '📅', label: 'Start date' },
-                      { icon: '📅', label: 'Due date' },
-                      { icon: '👤', label: 'Assignee' },
-                      { icon: '👤', label: 'Created by' },
-                      { icon: '🕒', label: 'Created on' },
-                      { icon: '🕒', label: 'Last modified on' },
-                      { icon: '🕒', label: 'Completed on' },
-                      { icon: '👍', label: 'Likes' },
-                      { icon: 'A', label: 'Alphabetical' },
-                      { icon: '⌄', label: 'Priority' },
-                      ...(Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings.map(cf => ({ icon: '⌄', label: cf.title })) : [])
-                    ].map((item, idx) => {
-                      const isActive = activeSort?.field === item.label;
-                      return (
-                        <div
-                          key={idx}
-                          style={{ ...styles.sortDropdownItem, backgroundColor: isActive ? '#EEF2F6' : 'transparent', fontWeight: isActive ? '600' : '400' }}
-                          onMouseEnter={(e) => !isActive && (e.currentTarget.style.backgroundColor = '#F3F4F6')}
-                          onMouseLeave={(e) => !isActive && (e.currentTarget.style.backgroundColor = 'transparent')}
-                          onClick={() => handleSortOptionClick(item.label)}
-                        >
-                          <span style={styles.sortDropdownIcon}>{item.icon}</span>
-                          <span style={{ flex: 1 }}>{item.label}</span>
-                          {isActive && <span style={{ fontSize: '0.8rem', color: '#4F46E5' }}>{activeSort.direction === 'asc' ? '↑' : '↓'}</span>}
-                        </div>
-                      )
-                    })}
+                <div style={{ position: 'relative' }}>
+                  <div
+                    className="option-sub-item"
+                    style={{ ...styles.optionSubItem, backgroundColor: isSortDropdownOpen ? '#EEF2F6' : 'transparent', fontWeight: isSortDropdownOpen ? '700' : '500' }}
+                    onClick={(e) => { document.body.click(); e.stopPropagation(); setIsSortDropdownOpen(!isSortDropdownOpen); }}
+                  >
+                    <span style={styles.optionIcon}>⇅</span> Sort
                     {activeSort && (
-                      <>
-                        <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
-                        <div
-                          style={{ ...styles.sortDropdownItem, color: '#EF4444', justifyContent: 'center' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FEF2F2'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                          onClick={() => { setActiveSort(null); setIsSortDropdownOpen(false); }}
-                        >
-                          Clear sort
-                        </div>
-                      </>
+                      <span
+                        onClick={(e) => { e.stopPropagation(); setActiveSort(null); }}
+                        style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                      >×</span>
                     )}
                   </div>
-                )}
-              </div>
-
-              <div style={{ position: 'relative' }}>
-                <div
-                  className="option-sub-item"
-                  style={{ ...styles.optionSubItem, backgroundColor: isGroupDropdownOpen ? '#EEF2F6' : 'transparent', fontWeight: isGroupDropdownOpen ? '700' : '500' }}
-                  onClick={(e) => { document.body.click(); e.stopPropagation(); setIsGroupDropdownOpen(!isGroupDropdownOpen); }}
-                >
-                  <span style={styles.optionIcon}>⊞</span> Group
-                  {activeGroup && activeGroup !== 'Sections' && (
-                    <span
-                      onClick={(e) => { e.stopPropagation(); setActiveGroup('Sections'); }}
-                      style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                    >×</span>
+                  {isSortDropdownOpen && (
+                    <div style={styles.sortDropdownMenu} onClick={(e) => e.stopPropagation()}>
+                      {[
+                        { icon: '📅', label: 'Start date' },
+                        { icon: '📅', label: 'Due date' },
+                        { icon: '👤', label: 'Assignee' },
+                        { icon: '👤', label: 'Created by' },
+                        { icon: '🕒', label: 'Created on' },
+                        { icon: '🕒', label: 'Last modified on' },
+                        { icon: '🕒', label: 'Completed on' },
+                        { icon: '👍', label: 'Likes' },
+                        { icon: 'A', label: 'Alphabetical' },
+                        { icon: '⌄', label: 'Priority' },
+                        ...(Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings.map(cf => ({ icon: '⌄', label: cf.title })) : [])
+                      ].map((item, idx) => {
+                        const isActive = activeSort?.field === item.label;
+                        return (
+                          <div
+                            key={idx}
+                            style={{ ...styles.sortDropdownItem, backgroundColor: isActive ? '#EEF2F6' : 'transparent', fontWeight: isActive ? '600' : '400' }}
+                            onMouseEnter={(e) => !isActive && (e.currentTarget.style.backgroundColor = '#F3F4F6')}
+                            onMouseLeave={(e) => !isActive && (e.currentTarget.style.backgroundColor = 'transparent')}
+                            onClick={() => handleSortOptionClick(item.label)}
+                          >
+                            <span style={styles.sortDropdownIcon}>{item.icon}</span>
+                            <span style={{ flex: 1 }}>{item.label}</span>
+                            {isActive && <span style={{ fontSize: '0.8rem', color: '#4F46E5' }}>{activeSort.direction === 'asc' ? '↑' : '↓'}</span>}
+                          </div>
+                        )
+                      })}
+                      {activeSort && (
+                        <>
+                          <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
+                          <div
+                            style={{ ...styles.sortDropdownItem, color: '#EF4444', justifyContent: 'center' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FEF2F2'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            onClick={() => { setActiveSort(null); setIsSortDropdownOpen(false); }}
+                          >
+                            Clear sort
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
 
-                {isGroupDropdownOpen && (
-                  <div style={styles.groupDropdownPanel} onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '12px 16px', borderBottom: '1px solid #E5E7EB' }}>
-                      <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.9rem' }}>Groups</span>
-                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textDecoration: 'underline', cursor: 'pointer' }}>Send feedback</span>
-                    </div>
+                <div style={{ position: 'relative' }}>
+                  <div
+                    className="option-sub-item"
+                    style={{ ...styles.optionSubItem, backgroundColor: isGroupDropdownOpen ? '#EEF2F6' : 'transparent', fontWeight: isGroupDropdownOpen ? '700' : '500' }}
+                    onClick={(e) => { document.body.click(); e.stopPropagation(); setIsGroupDropdownOpen(!isGroupDropdownOpen); }}
+                  >
+                    <span style={styles.optionIcon}>⊞</span> Group
+                    {activeGroup && activeGroup !== 'Sections' && (
+                      <span
+                        onClick={(e) => { e.stopPropagation(); setActiveGroup('Sections'); }}
+                        style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                      >×</span>
+                    )}
+                  </div>
 
-                    <div style={{ padding: '16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ color: '#9CA3AF', cursor: 'grab', userSelect: 'none' }}>⋮⋮</span>
-                        <div style={{ position: 'relative', flex: 1 }}>
-                          <div
-                            style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }}
-                            onClick={(e) => { e.stopPropagation(); setIsGroupInnerDropdownOpen(!isGroupInnerDropdownOpen); setIsGroupMoreMenuOpen(false); setIsGroupOrderMenuOpen(false); }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>≡</span> {activeGroup || 'Sections'}
-                            </div>
-                            <span style={{ color: '#9CA3AF' }}>⌄</span>
-                          </div>
+                  {isGroupDropdownOpen && (
+                    <div style={styles.groupDropdownPanel} onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '12px 16px', borderBottom: '1px solid #E5E7EB' }}>
+                        <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.9rem' }}>Groups</span>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textDecoration: 'underline', cursor: 'pointer' }}>Send feedback</span>
+                      </div>
 
-                          {isGroupInnerDropdownOpen && (
-                            <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '4px', maxHeight: '250px', overflowY: 'auto' }}>
-                              {[
-                                { icon: '≡', label: 'Sections' },
-                                { icon: '📅', label: 'Start date' },
-                                { icon: '📅', label: 'Due date' },
-                                { icon: '👤', label: 'Assignee' },
-                                { icon: '👤', label: 'Created by' },
-                                { icon: '🕒', label: 'Created on' },
-                                { icon: '🕒', label: 'Last modified on' },
-                                { icon: '🕒', label: 'Completed on' },
-                                { icon: '📋', label: 'Project' },
-                                ...(Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings.map(cf => ({ icon: 'A', label: cf.title })) : [])
-                              ].map((item, idx) => (
-                                <div
-                                  key={idx}
-                                  style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                  onClick={() => {
-                                    setActiveGroup(item.label);
-                                    setIsGroupInnerDropdownOpen(false);
-                                    if (item.label === 'Sections') {
-                                      setGroupOrder('Custom order');
-                                    } else if (groupOrder === 'Custom order') {
-                                      setGroupOrder('Ascending');
-                                    }
-                                  }}
-                                >
-                                  <span style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>{item.icon}</span>
-                                  {item.label}
-                                </div>
-                              ))}
-                              <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
-                              <div
-                                style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#4F46E5', fontWeight: '500' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                onClick={() => { setShowAddFieldMenu(true); setIsGroupDropdownOpen(false); setIsGroupInnerDropdownOpen(false); }}
-                              >
-                                + Add Custom Field
+                      <div style={{ padding: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: '#9CA3AF', cursor: 'grab', userSelect: 'none' }}>⋮⋮</span>
+                          <div style={{ position: 'relative', flex: 1 }}>
+                            <div
+                              style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }}
+                              onClick={(e) => { e.stopPropagation(); setIsGroupInnerDropdownOpen(!isGroupInnerDropdownOpen); setIsGroupMoreMenuOpen(false); setIsGroupOrderMenuOpen(false); }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>≡</span> {activeGroup || 'Sections'}
                               </div>
+                              <span style={{ color: '#9CA3AF' }}>⌄</span>
                             </div>
-                          )}
-                        </div>
 
-                        <div style={{ position: 'relative' }}>
-                          <div
-                            style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: (!activeGroup || activeGroup === 'Sections') ? 'not-allowed' : 'pointer', fontSize: '0.9rem', color: (!activeGroup || activeGroup === 'Sections') ? '#9CA3AF' : 'var(--text-primary)', width: '130px', backgroundColor: (!activeGroup || activeGroup === 'Sections') ? '#F9FAFB' : '#FFF' }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!activeGroup || activeGroup === 'Sections') return;
-                              setIsGroupOrderMenuOpen(!isGroupOrderMenuOpen);
-                              setIsGroupInnerDropdownOpen(false);
-                              setIsGroupMoreMenuOpen(false);
-                            }}
-                          >
-                            {(!activeGroup || activeGroup === 'Sections') ? 'Custom order' : groupOrder} <span style={{ color: '#9CA3AF' }}>⌄</span>
-                          </div>
-                          {isGroupOrderMenuOpen && (
-                            <div style={{ position: 'absolute', top: '100%', right: 0, width: '150px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
-                              {['Ascending', 'Descending'].map((opt) => (
+                            {isGroupInnerDropdownOpen && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '4px', maxHeight: '250px', overflowY: 'auto' }}>
+                                {[
+                                  { icon: '≡', label: 'Sections' },
+                                  { icon: '📅', label: 'Start date' },
+                                  { icon: '📅', label: 'Due date' },
+                                  { icon: '👤', label: 'Assignee' },
+                                  { icon: '👤', label: 'Created by' },
+                                  { icon: '🕒', label: 'Created on' },
+                                  { icon: '🕒', label: 'Last modified on' },
+                                  { icon: '🕒', label: 'Completed on' },
+                                  { icon: '📋', label: 'Project' },
+                                  ...(Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings.map(cf => ({ icon: 'A', label: cf.title })) : [])
+                                ].map((item, idx) => (
+                                  <div
+                                    key={idx}
+                                    style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    onClick={() => {
+                                      setActiveGroup(item.label);
+                                      setIsGroupInnerDropdownOpen(false);
+                                      if (item.label === 'Sections') {
+                                        setGroupOrder('Custom order');
+                                      } else if (groupOrder === 'Custom order') {
+                                        setGroupOrder('Ascending');
+                                      }
+                                    }}
+                                  >
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>{item.icon}</span>
+                                    {item.label}
+                                  </div>
+                                ))}
+                                <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
                                 <div
-                                  key={opt}
+                                  style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#4F46E5', fontWeight: '500' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                  onClick={() => { setShowAddFieldMenu(true); setIsGroupDropdownOpen(false); setIsGroupInnerDropdownOpen(false); }}
+                                >
+                                  + Add Custom Field
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ position: 'relative' }}>
+                            <div
+                              style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: (!activeGroup || activeGroup === 'Sections') ? 'not-allowed' : 'pointer', fontSize: '0.9rem', color: (!activeGroup || activeGroup === 'Sections') ? '#9CA3AF' : 'var(--text-primary)', width: '130px', backgroundColor: (!activeGroup || activeGroup === 'Sections') ? '#F9FAFB' : '#FFF' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!activeGroup || activeGroup === 'Sections') return;
+                                setIsGroupOrderMenuOpen(!isGroupOrderMenuOpen);
+                                setIsGroupInnerDropdownOpen(false);
+                                setIsGroupMoreMenuOpen(false);
+                              }}
+                            >
+                              {(!activeGroup || activeGroup === 'Sections') ? 'Custom order' : groupOrder} <span style={{ color: '#9CA3AF' }}>⌄</span>
+                            </div>
+                            {isGroupOrderMenuOpen && (
+                              <div style={{ position: 'absolute', top: '100%', right: 0, width: '150px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
+                                {['Ascending', 'Descending'].map((opt) => (
+                                  <div
+                                    key={opt}
+                                    style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    onClick={() => { setGroupOrder(opt); setIsGroupOrderMenuOpen(false); }}
+                                  >
+                                    <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
+                                      {groupOrder === opt && <span style={{ color: '#4F46E5' }}>✓</span>}
+                                    </div>
+                                    {opt}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ position: 'relative' }}>
+                            <span
+                              style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 4px', fontWeight: 'bold' }}
+                              onClick={(e) => { e.stopPropagation(); setIsGroupMoreMenuOpen(!isGroupMoreMenuOpen); setIsGroupInnerDropdownOpen(false); setIsGroupOrderMenuOpen(false); }}
+                            >
+                              ...
+                            </span>
+                            {isGroupMoreMenuOpen && (
+                              <div style={{ position: 'absolute', top: '100%', right: 0, width: '200px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
+                                <div
                                   style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
                                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
                                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                  onClick={() => { setGroupOrder(opt); setIsGroupOrderMenuOpen(false); }}
+                                  onClick={() => { setShowEmptyGroups(false); setIsGroupMoreMenuOpen(false); }}
                                 >
                                   <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                                    {groupOrder === opt && <span style={{ color: '#4F46E5' }}>✓</span>}
+                                    {!showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
                                   </div>
-                                  {opt}
+                                  Hide empty groups
                                 </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ position: 'relative' }}>
-                          <span
-                            style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 4px', fontWeight: 'bold' }}
-                            onClick={(e) => { e.stopPropagation(); setIsGroupMoreMenuOpen(!isGroupMoreMenuOpen); setIsGroupInnerDropdownOpen(false); setIsGroupOrderMenuOpen(false); }}
-                          >
-                            ...
-                          </span>
-                          {isGroupMoreMenuOpen && (
-                            <div style={{ position: 'absolute', top: '100%', right: 0, width: '200px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
-                              <div
-                                style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                onClick={() => { setShowEmptyGroups(false); setIsGroupMoreMenuOpen(false); }}
-                              >
-                                <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                                  {!showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
+                                <div
+                                  style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                  onClick={() => { setShowEmptyGroups(true); setIsGroupMoreMenuOpen(false); }}
+                                >
+                                  <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
+                                    {showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
+                                  </div>
+                                  Show empty groups
                                 </div>
-                                Hide empty groups
                               </div>
-                              <div
-                                style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                onClick={() => { setShowEmptyGroups(true); setIsGroupMoreMenuOpen(false); }}
-                              >
-                                <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                                  {showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
-                                </div>
-                                Show empty groups
-                              </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
-                      </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '16px', color: 'var(--text-secondary)', fontSize: '0.9rem', cursor: 'pointer', fontWeight: '500' }}>
-                        + Add subgroup <span style={{ fontSize: '0.8rem' }}>⌄</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '16px', color: 'var(--text-secondary)', fontSize: '0.9rem', cursor: 'pointer', fontWeight: '500' }}>
+                          + Add subgroup <span style={{ fontSize: '0.8rem' }}>⌄</span>
+                        </div>
                       </div>
                     </div>
+                  )}
+                </div>
+
+                <div style={styles.dividerVertical}></div>
+                <div className="option-sub-item" style={styles.optionSubItem}><span style={styles.optionIcon}>⚙️</span> Options</div>
+                {isSearchOpen ? (
+                  <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '2px 8px', backgroundColor: 'var(--bg-primary)', marginLeft: '8px' }}>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginRight: '6px' }}>🔍</span>
+                    <input
+                      type="text"
+                      placeholder="Search tasks..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      style={{ border: 'none', outline: 'none', fontSize: '0.85rem', width: '130px', color: 'var(--text-primary)', backgroundColor: 'transparent' }}
+                      autoFocus
+                    />
+                    <span
+                      style={{ cursor: 'pointer', color: '#9CA3AF', fontSize: '0.8rem', marginLeft: '4px' }}
+                      onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }}
+                    >
+                      ✕
+                    </span>
                   </div>
+                ) : (
+                  <div style={styles.searchIconBtn} onClick={() => setIsSearchOpen(true)}>🔍</div>
                 )}
               </div>
 
-              <div style={styles.dividerVertical}></div>
-              <div className="option-sub-item" style={styles.optionSubItem}><span style={styles.optionIcon}>⚙️</span> Options</div>
-              {isSearchOpen ? (
-                <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '2px 8px', backgroundColor: 'var(--bg-primary)', marginLeft: '8px' }}>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginRight: '6px' }}>🔍</span>
-                  <input
-                    type="text"
-                    placeholder="Search tasks..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    style={{ border: 'none', outline: 'none', fontSize: '0.85rem', width: '130px', color: 'var(--text-primary)', backgroundColor: 'transparent' }}
-                    autoFocus
-                  />
-                  <span
-                    style={{ cursor: 'pointer', color: '#9CA3AF', fontSize: '0.8rem', marginLeft: '4px' }}
-                    onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }}
-                  >
-                    ✕
-                  </span>
+              {/* Filtre Panel Kutusu */}
+              {isFilterDropdownOpen && (
+                <div style={styles.filterPanelBox} onClick={(e) => e.stopPropagation()}>
+                  <div style={styles.filterPanelHeader}>
+                    <span style={styles.filterPanelTitle}>Filters</span>
+                    <span style={styles.filterClearLink} onClick={() => setActiveFilters([])}>Clear</span>
+                  </div>
+                  <div style={styles.quickFiltersSection}>
+                    <div style={styles.quickFiltersLabel}>Quick filters</div>
+                    <div style={styles.filterPillsContainer}>
+                      <div onClick={() => handleToggleFilter('incomplete')} style={{ ...styles.filterPill, ...(activeFilters.includes('incomplete') ? styles.activeFilterPill : {}) }}>⭕ Incomplete tasks</div>
+                      <div onClick={() => handleToggleFilter('completed')} style={{ ...styles.filterPill, ...(activeFilters.includes('completed') ? styles.activeFilterPill : {}) }}>✅ Completed tasks</div>
+                      <div onClick={() => handleToggleFilter('my-tasks')} style={{ ...styles.filterPill, ...(activeFilters.includes('my-tasks') ? styles.activeFilterPill : {}) }}>👤 Just my tasks</div>
+                      <div onClick={() => handleToggleFilter('this-week')} style={{ ...styles.filterPill, ...(activeFilters.includes('this-week') ? styles.activeFilterPill : {}) }}>📅 Due this week</div>
+                      <div onClick={() => handleToggleFilter('next-week')} style={{ ...styles.filterPill, ...(activeFilters.includes('next-week') ? styles.activeFilterPill : {}) }}>📅 Due next week</div>
+                    </div>
+                  </div>
+                  <div style={styles.addFilterFooterRow}><span style={styles.addFilterBtnLink}>+ Add filter</span></div>
                 </div>
-              ) : (
-                <div style={styles.searchIconBtn} onClick={() => setIsSearchOpen(true)}>🔍</div>
               )}
             </div>
-
-            {/* Filtre Panel Kutusu */}
-            {isFilterDropdownOpen && (
-              <div style={styles.filterPanelBox} onClick={(e) => e.stopPropagation()}>
-                <div style={styles.filterPanelHeader}>
-                  <span style={styles.filterPanelTitle}>Filters</span>
-                  <span style={styles.filterClearLink} onClick={() => setActiveFilters([])}>Clear</span>
-                </div>
-                <div style={styles.quickFiltersSection}>
-                  <div style={styles.quickFiltersLabel}>Quick filters</div>
-                  <div style={styles.filterPillsContainer}>
-                    <div onClick={() => handleToggleFilter('incomplete')} style={{ ...styles.filterPill, ...(activeFilters.includes('incomplete') ? styles.activeFilterPill : {}) }}>⭕ Incomplete tasks</div>
-                    <div onClick={() => handleToggleFilter('completed')} style={{ ...styles.filterPill, ...(activeFilters.includes('completed') ? styles.activeFilterPill : {}) }}>✅ Completed tasks</div>
-                    <div onClick={() => handleToggleFilter('my-tasks')} style={{ ...styles.filterPill, ...(activeFilters.includes('my-tasks') ? styles.activeFilterPill : {}) }}>👤 Just my tasks</div>
-                    <div onClick={() => handleToggleFilter('this-week')} style={{ ...styles.filterPill, ...(activeFilters.includes('this-week') ? styles.activeFilterPill : {}) }}>📅 Due this week</div>
-                    <div onClick={() => handleToggleFilter('next-week')} style={{ ...styles.filterPill, ...(activeFilters.includes('next-week') ? styles.activeFilterPill : {}) }}>📅 Due next week</div>
-                  </div>
-                </div>
-                <div style={styles.addFilterFooterRow}><span style={styles.addFilterBtnLink}>+ Add filter</span></div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* --- GÖRÜNÜM SEÇİM ALANI --- */}
       {activeViewObj.type === 'Overview' ? (
-        <ProjectOverviewView selectedProject={selectedProject} projectRole={projectRole} isReadOnly={isReadOnly} token={token} onUpdate={syncProjectStates} />
+        <ProjectOverviewView selectedProject={selectedProject} projectRole={projectRole} isReadOnly={isReadOnly} token={token} onUpdate={syncProjectStates} onOpenShareModal={() => setIsShareModalOpen(true)} />
       ) : activeViewObj.type === 'Board' ? (
         /* ================= BOARD (KART) GÖRÜNÜMÜ ================= */
         <div style={styles.columnsWrapper}>
@@ -1514,7 +1617,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
                 style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
               >
-                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} priorityFieldSettings={selectedProject?.priorityFieldSettings || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id })} onOpenPopover={(type, task, coords) => setActivePopover({ type, task, coords })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} />
+                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} priorityFieldSettings={selectedProject?.priorityFieldSettings || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenPopover={(type, task, coords) => setActivePopover({ type, task, coords })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} />
               </div>
             )
           })}
@@ -1553,7 +1656,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           handleToggleTaskCompleteInline={handleToggleTaskCompleteInline}
           handleOpenPopoverInline={handleOpenPopoverInline}
           formatFriendlyDate={formatFriendlyDate}
-          onTaskContextMenu={(e, id) => setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id })}
+          onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }}
           onRenameSection={handleRenameSection}
           onDeleteSection={handleDeleteSection}
           onOpenTaskPane={setActiveTaskPaneId}
@@ -1579,6 +1682,24 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           handleLiveSectionSwap={handleLiveSectionSwap}
           handleFinalSectionMove={handleFinalSectionMove}
         />
+      ) : activeViewObj.type === 'Workload' ? (
+        <ProjectWorkloadView
+          selectedProject={selectedProject}
+          handleTaskUpdate={handleTaskUpdate}
+          onOpenTaskPane={setActiveTaskPaneId}
+          token={token}
+          isReadOnly={isReadOnly}
+        />
+      ) : activeViewObj.type === 'Gantt' ? (
+        <ProjectGanttView
+          selectedProject={selectedProject}
+          handleTaskUpdate={handleTaskUpdate}
+          onOpenTaskPane={setActiveTaskPaneId}
+          token={token}
+          isReadOnly={isReadOnly}
+          applyTaskFilter={applyTaskFilter}
+          applyTaskSort={applyTaskSort}
+        />
       ) : null}
 
       {/* Sürükleme Ghost Önizleme Taslağı */}
@@ -1587,7 +1708,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       {/* Popover ve Modallar */}
       {contextMenu.visible && (
         <div style={{ ...styles.contextMenu, top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-          <button onClick={handleDeleteTask} style={styles.contextMenuItemDelete}>🗑️ Görevi Sil</button>
+          <button onClick={handleDuplicateTask} style={styles.contextMenuItem}>📄 Duplicate Task</button>
+          <button onClick={handleDeleteTask} style={styles.contextMenuItemDelete}>🗑️ Delete Task</button>
         </div>
       )}
       {isShareModalOpen && <ShareProjectModal project={selectedProject} token={token} currentUser={user} onClose={() => setIsShareModalOpen(false)} onProjectUpdated={(updatedProj) => syncProjectStates(updatedProj)} />}
@@ -1623,7 +1745,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         />
       )}
       {activePopover && activePopover.type === 'date' && <DatePickerPopover task={activePopover.task} token={token} coords={activePopover.coords} onDatesUpdated={(id, updated) => { handleTaskUpdate(id, updated); setActivePopover(null); }} />}
-      {activePopover && activePopover.type === 'assignee' && <AssigneePopover task={activePopover.task} token={token} coords={activePopover.coords} projectId={selectedProject.id} onAssigneeUpdated={(id, updated) => { handleTaskUpdate(id, updated); setActivePopover(null); }} />}
+      {activePopover && activePopover.type === 'assignee' && <AssigneePopover task={activePopover.task} token={token} coords={activePopover.coords} project={selectedProject} onAssigneeUpdated={(id, updated) => { handleTaskUpdate(id, updated); setActivePopover(null); }} />}
 
       {/* Global Task Detail Pane */}
       {activeTaskPaneId && (
@@ -1639,6 +1761,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             selectedProject={selectedProject}
             token={token}
             projectRole={projectRole}
+            currentUser={user}
             onClose={() => setActiveTaskPaneId(null)}
             onTaskUpdate={handleTaskUpdate}
             customFieldSettings={selectedProject.customFieldSettings}
@@ -1909,7 +2032,6 @@ const styles = {
   dropdownOptionItem: { padding: '0.5rem 0.75rem', fontSize: '0.85rem', color: 'var(--text-primary)', borderRadius: '6px', cursor: 'pointer' },
   dropdownDivider: { height: '1px', backgroundColor: 'var(--border-color)', margin: '0.3rem 0' },
   starIconStyle: { color: 'var(--text-tertiary)', fontSize: '1.1rem', cursor: 'pointer' },
-  privacyCircleStyle: { fontSize: '0.65rem', opacity: 0.4 },
   setStatusDummyBtn: { backgroundColor: 'transparent', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '3px 10px', fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' },
   statusDropdownMenu: { position: 'absolute', top: '100%', left: 0, marginTop: '4px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', borderRadius: '6px', border: '1px solid var(--border-color)', padding: '4px 0', minWidth: '150px', zIndex: 50, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' },
   addWidgetDropdownMenu: { position: 'absolute', top: '100%', left: 0, marginTop: '4px', backgroundColor: 'var(--bg-primary)', borderRadius: '6px', border: '1px solid var(--border-color)', padding: '4px 0', minWidth: '120px', zIndex: 50, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' },
@@ -1948,12 +2070,13 @@ const styles = {
   input: { padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', outline: 'none', color: 'var(--text-primary)' },
   button: { padding: '0.5rem', backgroundColor: 'var(--accent-primary)', color: '#FFF', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600', width: '100%' },
   contextMenu: { position: 'fixed', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 100, padding: '0.4rem', minWidth: '150px' },
+  contextMenuItem: { width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', marginBottom: '2px' },
   contextMenuItemDelete: { width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left' },
   listSpreadsheetWrapper: { flex: 1, overflowY: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
   ghostDragCardTemplate: { position: 'fixed', top: '-1000px', left: '-1000px', width: '180px', padding: '8px 12px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.8rem', fontWeight: '600', borderRadius: '6px', border: '1px solid var(--accent-primary)', boxShadow: '0 10px 15px -3px rgba(79,70,229,0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', zIndex: -99999 },
 
-  customizePanelOverlay: { position: 'fixed', top: '109px', left: 0, right: 0, bottom: 0, zIndex: 100000 },
-  customizePanel: { position: 'fixed', top: '109px', right: 0, bottom: 0, width: '380px', backgroundColor: 'var(--bg-primary)', borderLeft: '1px solid var(--border-color)', zIndex: 100001, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 15px rgba(0,0,0,0.05)' },
+  customizePanelOverlay: { position: 'fixed', top: '99px', left: 0, right: 0, bottom: 0, zIndex: 100000 },
+  customizePanel: { position: 'fixed', top: '99px', right: 0, bottom: 0, width: '380px', backgroundColor: 'var(--bg-primary)', borderLeft: '1px solid var(--border-color)', zIndex: 100001, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 15px rgba(0,0,0,0.05)' },
   customizeHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-color)' },
   customizeTitle: { margin: 0, fontSize: '1.25rem', fontWeight: '500', color: 'var(--text-primary)' },
   customizeCloseBtn: { background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer' },

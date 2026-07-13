@@ -1,28 +1,16 @@
 import { useState, useEffect } from 'react'
 
-export default function AssigneePopover({ task, token, coords, projectId, onAssigneeUpdated }) {
-  const [users, setUsers] = useState([])
+export default function AssigneePopover({ task, token, coords, project, onAssigneeUpdated }) {
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Doğrudan projenin yetkili atama endpoint'ine istek atıyoruz
-  useEffect(() => {
-    if (projectId) {
-      fetch(`http://localhost:5001/api/projects/${projectId}/assignees`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          // Çift görünme koruması: Owner üye listesinde de varsa listede iki kere çıkmasını engeller
-          const uniqueUsers = data.filter((user, index, self) =>
-            user && self.findIndex(u => u.id === user.id) === index
-          )
-          setUsers(uniqueUsers)
-        }
-      })
-      .catch(err => console.error("Atanabilir kişiler yüklenemedi:", err))
+  const users = (() => {
+    if (!project) return [];
+    const members = project.members?.map(m => m.user) || [];
+    if (project.owner && !members.find(u => u.id === project.owner.id)) {
+      members.push(project.owner);
     }
-  }, [token, projectId])
+    return members;
+  })();
 
   const getInitials = (name) => {
     if (!name) return '?'
