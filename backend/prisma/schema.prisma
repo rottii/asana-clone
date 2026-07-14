@@ -30,6 +30,58 @@ model User {
   ownedGoals    Goal[]            @relation("OwnedGoals")
   uploadedAttachments Attachment[] @relation("UploadedAttachments")
   activities    TaskActivity[]
+  workspaceMembers WorkspaceMember[]
+  teamMembers   TeamMember[]
+  commentReactions CommentReaction[]
+}
+
+model Workspace {
+  id          String   @id @default(uuid())
+  name        String
+  createdAt   DateTime @default(now())
+
+  members     WorkspaceMember[]
+  teams       Team[]
+  projects    Project[]
+}
+
+model WorkspaceMember {
+  id          String   @id @default(uuid())
+  role        String   @default("MEMBER")
+  createdAt   DateTime @default(now())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  members     TeamMember[]
+  projects    Project[]
+}
+
+model TeamMember {
+  id          String   @id @default(uuid())
+  role        String   @default("MEMBER")
+  createdAt   DateTime @default(now())
+
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
 }
 
 model Project {
@@ -38,6 +90,7 @@ model Project {
   description String?
   status      String              @default("NONE")
   isArchived  Boolean             @default(false)
+  isTemplate  Boolean             @default(false)
   startDate   DateTime?
   dueDate     DateTime?
   createdAt   DateTime            @default(now())
@@ -47,6 +100,13 @@ model Project {
 
   ownerId     String
   owner       User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  workspaceId String?
+  workspace   Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  teamId      String?
+  team        Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
   sections    Section[]
   secondaryTasks TaskProject[]
   members     ProjectMembership[] // ← DEĞİŞEN SATIR: Rol içeren proje üyeleri
@@ -98,6 +158,7 @@ model Task {
   dueDate     DateTime?
   priority    String    @default("MEDIUM") 
   type        String    @default("TASK") // "TASK", "MILESTONE", "APPROVAL" vb.
+  approvalStatus String? @default("PENDING") // "PENDING", "APPROVED", "CHANGES_REQUESTED", "REJECTED"
   order       Int       
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -131,6 +192,11 @@ model Task {
   reminderSent1Day    Boolean @default(false)
   reminderSent1Hour   Boolean @default(false)
   reminderSentOverdue Boolean @default(false)
+
+  isRecurring          Boolean   @default(false)
+  recurrenceRule       String?   // 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY', 'CUSTOM'
+  recurrenceCustom     Json?     // { frequency, interval, days }
+  nextRecurrenceTaskId String?
 }
 
 // --- YENİ MODEL: TAGS ---
@@ -192,6 +258,8 @@ model Comment {
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  reactions CommentReaction[]
 }
 
 // --- YENİ MODEL: GÖREV AKTİVİTELERİ (ACTIVITY FEED) ---
@@ -318,6 +386,19 @@ model GoalProject {
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([goalId, projectId])
+}
+
+model CommentReaction {
+  id        String   @id @default(uuid())
+  emoji     String
+  createdAt DateTime @default(now())
+
+  commentId String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId, emoji])
 }
 
 // --- YENİ MODEL: YILDIZLANMIŞ PROJELER ---

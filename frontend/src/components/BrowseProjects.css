@@ -88,6 +88,20 @@
   color: var(--text-secondary);
 }
 
+.bp-filter-chip.active-filter {
+  background-color: #E8F0FE;
+  border-color: #4573D2;
+  color: #4573D2;
+}
+
+.bp-filter-chip.active-filter span {
+  color: #4573D2;
+}
+
+.bp-filter-dropdown div:hover {
+  background-color: var(--bg-secondary);
+}
+
 /* Table */
 .bp-table {
   width: 100%;

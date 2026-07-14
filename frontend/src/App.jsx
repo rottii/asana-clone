@@ -10,6 +10,7 @@ import Portfolios from './components/Portfolios'
 import PortfolioDetail from './components/PortfolioDetail'
 import CreateProject from './components/CreateProject'
 import Inbox from './components/Inbox'
+import ProfileView from './components/ProfileView'
 import Goals from './components/Goals'
 import Reporting from './components/Reporting'
 import PublicForm from './components/PublicForm'
@@ -23,6 +24,8 @@ export default function App() {
   const [portfolios, setPortfolios] = useState([])
   const [selectedPortfolio, setSelectedPortfolio] = useState(null)
   const [portfolioCreationParent, setPortfolioCreationParent] = useState(null)
+  const [workspaces, setWorkspaces] = useState([])
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(localStorage.getItem('activeWorkspaceId') || null)
 
   const [activeView, setActiveView] = useState(() => localStorage.getItem('activeView') || 'home') // 'home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'project', 'projects'
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -30,6 +33,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('activeView', activeView)
   }, [activeView])
+
+  useEffect(() => {
+    if (activeWorkspaceId) {
+      localStorage.setItem('activeWorkspaceId', activeWorkspaceId)
+    }
+  }, [activeWorkspaceId])
 
   useEffect(() => {
     if (isDarkMode) {
@@ -85,6 +94,21 @@ export default function App() {
           }
         })
         .catch(err => console.error("Portföyler yüklenemedi", err))
+
+      // Workspaces (Teams) çek
+      fetch('http://localhost:5001/api/workspaces', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setWorkspaces(data)
+            if (data.length > 0 && !activeWorkspaceId) {
+              setActiveWorkspaceId(data[0].id)
+            }
+          } else {
+            setWorkspaces([])
+          }
+        })
+        .catch(err => console.error("Workspaces yüklenemedi", err))
     }
   }, [token])
 
@@ -119,12 +143,17 @@ export default function App() {
     return <Auth setToken={setToken} setUser={setUser} />
   }
 
+  // Yalnızca aktif workspace'e ait olanları filtrele
+  const filteredProjects = projects.filter(p => p.workspaceId === activeWorkspaceId)
+  const filteredPortfolios = portfolios.filter(p => true) // TODO: If portfolios belong to workspaces, filter them too. Assuming global for now or implicitly linked.
+  const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <TopNav 
         isSidebarCollapsed={isSidebarCollapsed} 
         setIsSidebarCollapsed={setIsSidebarCollapsed} 
-        projects={projects}
+        projects={filteredProjects}
         setProjects={setProjects}
         selectedProject={selectedProject}
         setActiveView={setActiveView}
@@ -134,12 +163,15 @@ export default function App() {
         handleLogout={handleLogout}
         isDarkMode={isDarkMode}
         setIsDarkMode={setIsDarkMode}
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        setActiveWorkspaceId={setActiveWorkspaceId}
       />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <Sidebar 
           isSidebarCollapsed={isSidebarCollapsed}
           setIsSidebarCollapsed={setIsSidebarCollapsed}
-          projects={projects} 
+          projects={filteredProjects} 
           setProjects={setProjects}
           selectedProject={selectedProject}
           handleSelectProject={handleSelectProject}
@@ -147,37 +179,53 @@ export default function App() {
           setActiveView={setActiveView}
           user={user}
           token={token}
-          portfolios={portfolios}
+          portfolios={filteredPortfolios}
+          workspaces={workspaces}
+          activeWorkspace={activeWorkspace}
           selectedPortfolio={selectedPortfolio}
           setSelectedPortfolio={setSelectedPortfolio}
         />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {activeView === 'project' && selectedProject ? (
+        <div style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-secondary)', position: 'relative' }}>
+          {activeView === 'home' ? (
+            <Dashboard 
+              user={user}
+              projects={filteredProjects}
+              setProjects={setProjects}
+              setSelectedProject={handleSelectProject}
+              portfolios={filteredPortfolios}
+              workspaces={workspaces}
+              activeWorkspace={activeWorkspace}
+              handleSelectProject={handleSelectProject}
+              handleLogout={handleLogout}
+              activeView={activeView}
+              setActiveView={setActiveView}
+              setSelectedPortfolio={setSelectedPortfolio}
+              setWorkspaces={setWorkspaces}
+              token={token}
+            />
+          ) : activeView === 'project' && selectedProject ? (
             <KanbanBoard 
               selectedProject={selectedProject} 
               setSelectedProject={handleSelectProject} 
-              projects={projects} 
+              projects={filteredProjects} 
               setProjects={setProjects} 
               token={token} 
               user={user} 
               handleLogout={handleLogout} 
             />
           ) : activeView === 'my-tasks' ? (
-            <MyTasks 
-              user={user} 
-              projects={projects} 
-              token={token} 
-            />
+            <MyTasks token={token} user={user} projects={filteredProjects} />
           ) : activeView === 'projects' ? (
             <BrowseProjects 
-              projects={projects} 
-              user={user} 
-              handleSelectProject={handleSelectProject} 
+              projects={filteredProjects}
+              setProjects={setProjects}
               setActiveView={setActiveView}
+              handleSelectProject={handleSelectProject}
+              token={token}
             />
           ) : activeView === 'portfolios' ? (
             <Portfolios 
-              portfolios={portfolios}
+              portfolios={filteredPortfolios}
               setPortfolios={setPortfolios}
               token={token}
               setActiveView={setActiveView}
@@ -189,9 +237,9 @@ export default function App() {
             <PortfolioDetail
               portfolio={selectedPortfolio}
               setPortfolio={setSelectedPortfolio}
-              portfolios={portfolios}
+              portfolios={filteredPortfolios}
               setPortfolios={setPortfolios}
-              projects={projects}
+              projects={filteredProjects}
               setProjects={setProjects}
               token={token}
               user={user}
@@ -201,6 +249,8 @@ export default function App() {
             />
           ) : activeView === 'inbox' ? (
             <Inbox token={token} user={user} />
+          ) : activeView === 'profile' ? (
+            <ProfileView user={user} projects={filteredProjects} activeWorkspace={activeWorkspace} setActiveView={setActiveView} handleSelectProject={handleSelectProject} token={token} />
           ) : activeView === 'goals' ? (
             <Goals token={token} user={user} setActiveView={setActiveView} />
           ) : activeView === 'reporting' ? (
@@ -213,17 +263,24 @@ export default function App() {
               setSelectedProject={setSelectedProject}
               portfolioCreationParent={portfolioCreationParent}
               setPortfolioCreationParent={setPortfolioCreationParent}
+              activeWorkspace={activeWorkspace}
             />
           ) : (
             <Dashboard 
-              user={user} 
-              projects={projects} 
-              setProjects={setProjects} 
-              setSelectedProject={handleSelectProject} 
-              token={token} 
-              handleLogout={handleLogout} 
+              user={user}
+              projects={filteredProjects}
+              setProjects={setProjects}
+              setSelectedProject={handleSelectProject}
+              portfolios={filteredPortfolios}
+              workspaces={workspaces}
+              activeWorkspace={activeWorkspace}
+              handleSelectProject={handleSelectProject}
+              handleLogout={handleLogout}
               activeView={activeView}
               setActiveView={setActiveView}
+              setSelectedPortfolio={setSelectedPortfolio}
+              setWorkspaces={setWorkspaces}
+              token={token}
             />
           )}
         </div>

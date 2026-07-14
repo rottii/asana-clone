@@ -3,7 +3,7 @@ import AddFieldModal from './AddFieldModal'
 
 let globalLastDragY = 0;
 
-export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, onTaskUpdate, onTaskContextMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId }) {
+export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId }) {
   const [openFieldMenuId, setOpenFieldMenuId] = useState(null)
   const [isHovered, setIsHovered] = useState(false)
   const [isEditingMode, setIsEditingMode] = useState(false)
@@ -98,6 +98,25 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
       if (!response.ok) { alert(data.error || "Yetki yok."); return; }
       onTaskUpdate(task.id, data)
     } catch (err) { console.error(err) }
+  }
+
+  const handleApprovalStatusChange = async (e, status) => {
+    e.stopPropagation();
+    if (isReadOnly) return;
+    try {
+      const isCompleted = status === 'APPROVED' || status === 'REJECTED';
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ approvalStatus: status, isCompleted })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        onTaskUpdate(task.id, data);
+      } else {
+        alert(data.error || "Update failed.");
+      }
+    } catch (err) { console.error(err); }
   }
 
   useEffect(() => {
@@ -226,12 +245,12 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
           }
         }
       }}
-      // --- TARAYICI SAĞ TIK MENÜSÜNÜ ENGELLEYEN SİHİRLİ DÜZELTME ---
       onContextMenu={(e) => {
-        e.preventDefault(); // Tarayıcı menüsünü tamamen kapatır
-        onTaskContextMenu(e, task.id); // Bizim yazdığımız özel silme menüsünü açar
+        e.preventDefault();
+        onTaskContextMenu(e, task.id);
       }}
       style={{
+        ...styles.cardContainer,
         ...styles.taskCard,
         backgroundColor: 'var(--bg-primary)',
         border: '1px solid var(--border-color)',
@@ -247,13 +266,61 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
         if (!e.defaultPrevented && !isEditingMode) {
           onOpenTaskPane(task.id);
         }
-        setOpenFieldMenuId(null); // Click outside closes menu
+        setOpenFieldMenuId(null);
       }}
     >
 
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1, minWidth: 0 }}>
-          <input type="checkbox" checked={task.isCompleted || false} onChange={handleToggleComplete} disabled={isReadOnly} onClick={(e) => e.stopPropagation()} style={styles.checkbox} />
+          {task.type === 'APPROVAL' ? (
+            <div style={{ position: 'relative' }}>
+              <div 
+                style={{
+                  width: '18px', height: '18px', borderRadius: '4px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px',
+                  cursor: isReadOnly ? 'default' : 'pointer',
+                  backgroundColor: task.approvalStatus === 'APPROVED' ? 'var(--accent-success)' : task.approvalStatus === 'REJECTED' ? 'var(--accent-danger)' : task.approvalStatus === 'CHANGES_REQUESTED' ? '#F59E0B' : 'transparent',
+                  border: task.approvalStatus === 'PENDING' || !task.approvalStatus ? '1px dashed var(--text-tertiary)' : 'none',
+                  color: task.approvalStatus === 'PENDING' || !task.approvalStatus ? 'var(--text-secondary)' : '#fff',
+                }}
+                title={task.approvalStatus || 'PENDING'}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  e.preventDefault(); 
+                  if (!isReadOnly && onOpenApprovalMenu) {
+                    onOpenApprovalMenu(e, task);
+                  }
+                }}
+              >
+                {task.approvalStatus === 'APPROVED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> : task.approvalStatus === 'REJECTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> : task.approvalStatus === 'CHANGES_REQUESTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"></path></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>}
+              </div>
+            </div>
+          ) : task.type === 'MILESTONE' ? (
+            <div
+              onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleComplete(); }}
+              style={{
+                width: '12px', height: '12px', flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer',
+                transform: 'rotate(45deg)', marginTop: '4px',
+                backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent',
+                border: task.isCompleted ? '2px solid var(--accent-success)' : '2px solid #6366F1',
+              }}
+              title="Milestone"
+            />
+          ) : (
+            <div
+              onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleComplete(); }}
+              style={{
+                width: '18px', height: '18px', borderRadius: '50%', border: '1px solid',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: isReadOnly ? 'default' : 'pointer', flexShrink: 0, marginTop: '2px',
+                borderColor: task.isCompleted ? 'var(--accent-success)' : 'var(--text-tertiary)',
+                backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent',
+                color: '#fff',
+              }}
+            >
+              {task.isCompleted && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+            </div>
+          )}
           <div style={{ flex: 1, minWidth: 0 }}>
             {isEditingMode ? (
               <input
@@ -383,6 +450,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
           </div>
           <div onClick={handleOpenDatePicker} style={{ ...styles.dateBadgeTrigger, backgroundColor: (task.startDate || task.dueDate) ? ((task.dueDate && new Date(task.dueDate).setHours(0,0,0,0) < new Date().setHours(0,0,0,0) && !task.isCompleted) ? 'var(--accent-danger)' : 'var(--bg-tertiary)') : 'transparent', color: (task.startDate || task.dueDate) ? ((task.dueDate && new Date(task.dueDate).setHours(0,0,0,0) < new Date().setHours(0,0,0,0) && !task.isCompleted) ? '#FFF' : 'var(--accent-primary)') : 'var(--text-secondary)', border: '1px dashed var(--border-color)', cursor: isReadOnly ? 'default' : 'pointer' }}>
             {formatFriendlyDateRange(task.startDate, task.dueDate)}
+            {task.isRecurring && <span style={{ marginLeft: '4px' }} title="Recurring Task">🔁</span>}
           </div>
         </div>
 

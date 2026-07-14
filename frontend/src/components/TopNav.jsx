@@ -14,7 +14,10 @@ export default function TopNav({
   user,
   handleLogout,
   isDarkMode,
-  setIsDarkMode
+  setIsDarkMode,
+  workspaces,
+  activeWorkspaceId,
+  setActiveWorkspaceId
 }) {
   const [showOmniCreate, setShowOmniCreate] = useState(false);
   const [showQuickAddTask, setShowQuickAddTask] = useState(false);
@@ -254,6 +257,38 @@ export default function TopNav({
                 <div style={{ fontWeight: '600', color: 'var(--text-primary-dark, #E8E8E8)' }}>{user?.name || 'User'}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary-dark, var(--text-tertiary))' }}>{user?.email || 'email@example.com'}</div>
               </div>
+
+              {workspaces && workspaces.length > 0 && (
+                <>
+                  <div className="profile-divider"></div>
+                  <div style={{ padding: '8px 16px' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginBottom: '8px', fontWeight: 'bold', textTransform: 'uppercase' }}>Workspaces</div>
+                    {workspaces.map(ws => (
+                      <div 
+                        key={ws.id} 
+                        style={{ 
+                          padding: '6px 8px', 
+                          borderRadius: '4px', 
+                          cursor: 'pointer', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between',
+                          backgroundColor: activeWorkspaceId === ws.id ? 'var(--hover-bg)' : 'transparent',
+                          color: activeWorkspaceId === ws.id ? 'var(--text-primary)' : 'var(--text-secondary-dark, var(--text-secondary))'
+                        }}
+                        onClick={() => {
+                          setActiveWorkspaceId(ws.id);
+                          setShowProfileMenu(false);
+                        }}
+                      >
+                        <span>{ws.name}</span>
+                        {activeWorkspaceId === ws.id && <span style={{ color: 'var(--accent-primary)' }}>✓</span>}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
               <div className="profile-divider"></div>
               <div className="profile-menu-item" onClick={toggleDarkMode}>
                 <span>{isDarkMode ? '🌙 Dark Mode' : '☀️ Light Mode'}</span>

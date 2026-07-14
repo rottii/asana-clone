@@ -1,13 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './BrowseProjects.css';
 
-export default function BrowseProjects({ projects, user, handleSelectProject, setActiveView }) {
+export default function BrowseProjects({ projects, user, handleSelectProject, setActiveView, token, setProjects }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [templates, setTemplates] = useState([]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch('http://localhost:5001/api/projects/templates', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setTemplates(data))
+      .catch(console.error);
+  }, [token]);
+
+  const handleUseTemplate = async (template) => {
+    const newName = window.prompt("Yeni proje adını girin:", template.name.replace(' Template', ''));
+    if (!newName) return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/${template.id}/duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: newName, isTemplate: false })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        if (setProjects) {
+          setProjects(prev => [data, ...prev]);
+        }
+        handleSelectProject(data);
+      } else {
+        alert("Proje oluşturulamadı: " + data.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const [activeOwner, setActiveOwner] = useState(null);
+  const [activeMember, setActiveMember] = useState(null);
+  const [activeStatus, setActiveStatus] = useState(null);
+  const [openDropdown, setOpenDropdown] = useState(null);
+  const [showTemplates, setShowTemplates] = useState(true);
 
   const safeProjects = Array.isArray(projects) ? projects : [];
-  const filteredProjects = safeProjects.filter(p => 
-    !p.isArchived && p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  
+  // Extract unique values for filters
+  const uniqueOwners = [...new Set(safeProjects.map(p => p.owner?.name).filter(Boolean))];
+  const uniqueMembers = [...new Set(safeProjects.flatMap(p => p.members?.map(m => m.user?.name)).filter(Boolean))];
+  const uniqueStatuses = ['ON_TRACK', 'AT_RISK', 'OFF_TRACK', 'ON_HOLD', 'NONE'];
+  const statusLabels = { ON_TRACK: 'On track', AT_RISK: 'At risk', OFF_TRACK: 'Off track', ON_HOLD: 'On hold', NONE: 'No status' };
+
+  const filteredProjects = safeProjects.filter(p => {
+    if (p.isTemplate) return false;
+    if (searchTerm && !p.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    if (activeOwner && p.owner?.name !== activeOwner) return false;
+    if (activeMember && !p.members?.some(m => m.user?.name === activeMember)) return false;
+    if (activeStatus && p.status !== activeStatus && !(activeStatus === 'NONE' && !p.status)) return false;
+    return true;
+  });
 
   return (
     <div className="browse-projects-container">
@@ -27,11 +79,50 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
         />
       </div>
 
-      <div className="bp-filters">
-        <button className="bp-filter-chip">Owner <span>⌄</span></button>
-        <button className="bp-filter-chip">Members <span>⌄</span></button>
+      <div className="bp-filters" style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <button className={`bp-filter-chip ${activeOwner ? 'active-filter' : ''}`} onClick={() => setOpenDropdown(openDropdown === 'owner' ? null : 'owner')}>
+            Owner: {activeOwner || 'Any'} <span>⌄</span>
+          </button>
+          {openDropdown === 'owner' && (
+            <div className="bp-filter-dropdown" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', zIndex: 10, minWidth: '150px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+              <div style={{ padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => { setActiveOwner(null); setOpenDropdown(null); }}>Any</div>
+              {uniqueOwners.map(o => (
+                <div key={o} style={{ padding: '8px', cursor: 'pointer' }} onClick={() => { setActiveOwner(o); setOpenDropdown(null); }}>{o}</div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <button className={`bp-filter-chip ${activeMember ? 'active-filter' : ''}`} onClick={() => setOpenDropdown(openDropdown === 'member' ? null : 'member')}>
+            Member: {activeMember || 'Any'} <span>⌄</span>
+          </button>
+          {openDropdown === 'member' && (
+            <div className="bp-filter-dropdown" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', zIndex: 10, minWidth: '150px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+              <div style={{ padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => { setActiveMember(null); setOpenDropdown(null); }}>Any</div>
+              {uniqueMembers.map(m => (
+                <div key={m} style={{ padding: '8px', cursor: 'pointer' }} onClick={() => { setActiveMember(m); setOpenDropdown(null); }}>{m}</div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <button className="bp-filter-chip">Portfolios <span>⌄</span></button>
-        <button className="bp-filter-chip">Status <span>⌄</span></button>
+
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <button className={`bp-filter-chip ${activeStatus ? 'active-filter' : ''}`} onClick={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}>
+            Status: {activeStatus ? statusLabels[activeStatus] : 'Any'} <span>⌄</span>
+          </button>
+          {openDropdown === 'status' && (
+            <div className="bp-filter-dropdown" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', zIndex: 10, minWidth: '150px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+              <div style={{ padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => { setActiveStatus(null); setOpenDropdown(null); }}>Any</div>
+              {uniqueStatuses.map(s => (
+                <div key={s} style={{ padding: '8px', cursor: 'pointer' }} onClick={() => { setActiveStatus(s); setOpenDropdown(null); }}>{statusLabels[s]}</div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bp-table">
@@ -79,42 +170,33 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
         </div>
       </div>
 
-      <div className="bp-templates-section">
-        <div className="bp-templates-header">
-          <h2>Explore ready-made templates to jumpstart your next project</h2>
-          <button className="bp-close-templates">✕</button>
-        </div>
-        
-        <div className="bp-templates-grid">
-          <div className="bp-template-card">
-            <div className="bp-template-icon bg-green">
-              <span>✓</span>
-            </div>
-            <h3>Engineering project plan</h3>
-            <p>Break down work into tasks with due dates, organized by priority and stage to keep your team aligned.</p>
+      {showTemplates && (
+        <div className="bp-templates-section">
+          <div className="bp-templates-header">
+            <h2>Explore ready-made templates to jumpstart your next project</h2>
+            <button className="bp-close-templates" onClick={() => setShowTemplates(false)}>✕</button>
           </div>
           
-          <div className="bp-template-card">
-            <div className="bp-template-icon bg-purple">
-              <span>📋</span>
-            </div>
-            <h3>Kanban board</h3>
-            <p>Track responsibility and progress of critical work in boards to hit your deadlines.</p>
+          <div className="bp-templates-grid">
+            {templates.map(template => (
+              <div key={template.id} className="bp-template-card" onClick={() => handleUseTemplate(template)} style={{ cursor: 'pointer' }}>
+                <div className="bp-template-icon" style={{ backgroundColor: template.color || '#4F46E5', color: '#fff' }}>
+                  <span>{template.icon || '📋'}</span>
+                </div>
+                <h3>{template.name}</h3>
+                <p>{template.description || "Start your project efficiently using this pre-made template."}</p>
+              </div>
+            ))}
+            {templates.length === 0 && (
+              <div className="bp-empty-state" style={{ gridColumn: '1 / -1', padding: '2rem' }}>No templates available. Save a project as a template to see it here!</div>
+            )}
           </div>
-          
-          <div className="bp-template-card">
-            <div className="bp-template-icon bg-teal">
-              <span>🎫</span>
-            </div>
-            <h3>Ticketing</h3>
-            <p>Collect, prioritize, and resolve tickets to keep your service goals on track.</p>
-          </div>
-        </div>
 
-        <div className="bp-templates-footer">
-          <button className="bp-gallery-btn">View the template gallery</button>
+          <div className="bp-templates-footer">
+            <button className="bp-gallery-btn">View the template gallery</button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

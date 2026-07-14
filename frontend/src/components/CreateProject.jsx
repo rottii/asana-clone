@@ -1,13 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import IconColorPicker from './IconColorPicker';
 
-export default function CreateProject({ token, setProjects, setActiveView, setSelectedProject, portfolioCreationParent, setPortfolioCreationParent }) {
+export default function CreateProject({ token, setProjects, setActiveView, setSelectedProject, portfolioCreationParent, setPortfolioCreationParent, activeWorkspace }) {
   const [step, setStep] = useState(1);
   const [projectName, setProjectName] = useState('new project');
   const [privacy, setPrivacy] = useState('My workspace');
+  const [teamId, setTeamId] = useState('');
   const [color, setColor] = useState('#4F46E5');
   const [icon, setIcon] = useState('📋');
   const [showPicker, setShowPicker] = useState(false);
+  const [templates, setTemplates] = useState([]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch('http://localhost:5001/api/projects/templates', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setTemplates(data))
+      .catch(console.error);
+  }, [token]);
+
+  const handleUseTemplate = async (template) => {
+    try {
+      const finalName = (!projectName || projectName === 'new project') ? template.name.replace(' Template', '') : projectName;
+      const response = await fetch(`http://localhost:5001/api/projects/${template.id}/duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ 
+          name: finalName, 
+          isTemplate: false,
+          workspaceId: activeWorkspace ? activeWorkspace.id : undefined,
+          teamId: teamId || undefined
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        if (setProjects) {
+          setProjects(prev => [data, ...prev]);
+        }
+        setSelectedProject(data);
+        if (setPortfolioCreationParent) setPortfolioCreationParent(null);
+        setActiveView('project');
+      } else {
+        alert("Proje oluşturulamadı: " + data.error);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
   
   // Step 2 states
   const [views, setViews] = useState({
@@ -38,10 +79,8 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
   };
 
   const handleCreate = () => {
-    let finalDefaultView = '';
     const activeViewsArray = Object.keys(views).filter(k => views[k]).map(k => {
       const id = crypto.randomUUID();
-      if (k === defaultView) finalDefaultView = id;
       return { id, name: k, type: k };
     });
     
@@ -53,10 +92,12 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
       },
       body: JSON.stringify({
         name: projectName,
-        defaultView: finalDefaultView,
-        activeViews: activeViewsArray,
         color,
-        icon
+        icon,
+        workspaceId: activeWorkspace ? activeWorkspace.id : undefined,
+        teamId: teamId || undefined,
+        defaultView,
+        activeViews: activeViewsArray
       })
     })
     .then(res => res.json())
@@ -111,8 +152,25 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
                 style={styles.formInput} 
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
+                autoFocus
               />
             </div>
+
+            {activeWorkspace && activeWorkspace.teams && activeWorkspace.teams.length > 0 && (
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>Team</label>
+                <select 
+                  style={styles.formSelect}
+                  value={teamId}
+                  onChange={(e) => setTeamId(e.target.value)}
+                >
+                  <option value="">No Team (Personal Project)</option>
+                  {activeWorkspace.teams.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div style={styles.formGroup}>
               <label style={styles.formLabel}>Project icon & color</label>
@@ -159,7 +217,42 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
               </select>
             </div>
 
-            <button style={styles.continueBtn} onClick={() => setStep(2)}>Continue</button>
+            <button style={styles.continueBtn} onClick={() => setStep(2)}>Continue to set up views</button>
+
+            {templates.length > 0 && (
+              <>
+                <div style={{ margin: '32px 0 16px', borderTop: '1px solid #E8ECEE', paddingTop: '24px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 500, marginBottom: '12px' }}>Or start from a template</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
+                    {templates.map(template => (
+                      <div 
+                        key={template.id} 
+                        onClick={() => handleUseTemplate(template)}
+                        style={{
+                          border: '1px solid #E8ECEE',
+                          borderRadius: '8px',
+                          padding: '16px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                          transition: 'box-shadow 0.2s',
+                          backgroundColor: '#fff'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'}
+                        onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
+                      >
+                        <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: template.color || '#4F46E5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {template.icon || '📋'}
+                        </div>
+                        <div style={{ fontWeight: 500, fontSize: '14px' }}>{template.name}</div>
+                        <div style={{ fontSize: '12px', color: '#6B7280' }}>Click to use this template</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </>
         ) : (
           <>

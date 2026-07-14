@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import RichTextEditor from './RichTextEditor';
 
-export default function TaskDetailPane({ task, selectedProject, onClose, onTaskUpdate, token, projectRole, customFieldSettings, onOpenPopover, currentUser }) {
+export default function TaskDetailPane({ task, selectedProject, onClose, onTaskUpdate, onDeleteTask, onConvertTask, token, projectRole, customFieldSettings, onOpenPopover, currentUser }) {
   const [editForm, setEditForm] = useState({
     title: '',
     description: '',
@@ -22,6 +22,11 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   const [isDragOver, setIsDragOver] = useState(false);
   const [activeTab, setActiveTab] = useState('comments');
   const [openSectionMenuId, setOpenSectionMenuId] = useState(null);
+  const [hoveredCommentId, setHoveredCommentId] = useState(null);
+  const [reactionPickerId, setReactionPickerId] = useState(null);
+  
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isConvertMenuOpen, setIsConvertMenuOpen] = useState(false);
 
   const getCustomFieldSettingsForProject = (proj) => {
     if (!proj || !proj.customFieldSettings) return [];
@@ -88,15 +93,17 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   }, [showProjectInput, token, availableProjects.length]);
 
   useEffect(() => {
-    if (!openFieldMenuId && !openSectionMenuId) return;
+    if (!openFieldMenuId && !openSectionMenuId && !isMoreMenuOpen) return;
     const handleClickOutside = (e) => {
-      if (e.target.closest('.dropdownMenu') || e.target.closest('[class*="popover"]')) return;
+      if (e.target.closest('.dropdownMenu') || e.target.closest('[class*="popover"]') || e.target.closest('.more-menu-container')) return;
       setOpenFieldMenuId(null);
       setOpenSectionMenuId(null);
+      setIsMoreMenuOpen(false);
+      setIsConvertMenuOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [openFieldMenuId, openSectionMenuId]);
+  }, [openFieldMenuId, openSectionMenuId, isMoreMenuOpen]);
 
   if (!task) return null;
 
@@ -151,6 +158,26 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     }
   };
 
+  const handleApproval = async (status) => {
+    if (isReadOnly) return;
+    try {
+      const isCompleted = status === 'APPROVED' || status === 'REJECTED';
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ approvalStatus: status, isCompleted })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        onTaskUpdate(task.id, data);
+      } else {
+        alert(data.error || 'Failed to update approval status');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const getParsedCustomFields = (fields) => {
     if (!fields) return {};
     if (typeof fields === 'string') {
@@ -186,7 +213,13 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     if (isReadOnly || !onOpenPopover) return;
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    onOpenPopover('date', task, { left: rect.left, top: rect.bottom + 5 });
+    let coords = { left: rect.left };
+    if (rect.bottom > window.innerHeight - 300) {
+      coords.bottom = window.innerHeight - rect.top;
+    } else {
+      coords.top = rect.bottom + 5;
+    }
+    onOpenPopover('date', task, coords);
   };
 
   const handleOpenAssignee = (e) => {
@@ -249,6 +282,21 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
       if (response.ok) {
         setNewCommentText('');
         const updatedTask = { ...task, comments: [...(task.comments || []), data] };
+        onTaskUpdate(task.id, updatedTask);
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleToggleReaction = async (commentId, emoji) => {
+    if (projectRole === 'VIEWER') return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/comments/${commentId}/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ emoji })
+      });
+      if (response.ok) {
+        const updatedTask = await response.json();
         onTaskUpdate(task.id, updatedTask);
       }
     } catch (err) { console.error(err); }
@@ -478,17 +526,117 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     <>
       <div style={styles.pane}>
         <div style={styles.header}>
-          <button
-            style={{ ...styles.completeBtn, backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent', color: task.isCompleted ? '#FFF' : 'var(--text-primary)' }}
-            onClick={handleToggleComplete}
-            disabled={isReadOnly}
-          >
-            {task.isCompleted ? '✓ Completed' : '✓ Mark complete'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {task.type === 'APPROVAL' ? (
+              <div 
+                style={{
+                  ...styles.completeBtn, 
+                  backgroundColor: task.approvalStatus === 'APPROVED' ? 'var(--accent-success)' : task.approvalStatus === 'REJECTED' ? 'var(--accent-danger)' : task.approvalStatus === 'CHANGES_REQUESTED' ? '#F59E0B' : 'transparent', 
+                  color: task.approvalStatus === 'PENDING' || !task.approvalStatus ? 'var(--text-primary)' : '#FFF',
+                  border: task.approvalStatus === 'PENDING' || !task.approvalStatus ? '1px dashed var(--border-color)' : '1px solid transparent',
+                  cursor: 'default'
+                }}
+              >
+                {task.approvalStatus === 'APPROVED' ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}><polyline points="20 6 9 17 4 12"></polyline></svg> Approved</> : task.approvalStatus === 'REJECTED' ? '✕ Rejected' : task.approvalStatus === 'CHANGES_REQUESTED' ? '⟳ Changes Requested' : '⚖️ Approval Pending'}
+              </div>
+            ) : task.type === 'MILESTONE' ? (
+              <button
+                style={{ 
+                  ...styles.completeBtn, 
+                  backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent', 
+                  color: task.isCompleted ? '#FFF' : '#6366F1',
+                  border: task.isCompleted ? '1px solid var(--accent-success)' : '1px solid #6366F1',
+                  display: 'flex', alignItems: 'center', gap: '6px'
+                }}
+                onClick={handleToggleComplete}
+                disabled={isReadOnly}
+              >
+                <span style={{ display: 'inline-block', width: '10px', height: '10px', transform: 'rotate(45deg)', backgroundColor: task.isCompleted ? '#FFF' : '#6366F1', border: 'none', flexShrink: 0 }} />
+                {task.isCompleted ? 'Completed' : 'Milestone'}
+              </button>
+            ) : (
+              <button
+                style={{ ...styles.completeBtn, backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent', color: task.isCompleted ? '#FFF' : 'var(--text-primary)' }}
+                onClick={handleToggleComplete}
+                disabled={isReadOnly}
+              >
+                {task.isCompleted ? '✓ Completed' : '✓ Mark complete'}
+              </button>
+            )}
+          </div>
           <div style={styles.headerActions}>
-            <button style={styles.iconBtn} onClick={onClose}>×</button>
+            <div className="more-menu-container" style={{ position: 'relative' }}>
+              <button 
+                style={{ ...styles.iconBtn, fontSize: '1.2rem', paddingBottom: '0.2rem' }} 
+                onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                title="More actions"
+              >
+                ⋯
+              </button>
+              
+              {isMoreMenuOpen && (
+                <div style={{ position: 'absolute', top: '100%', right: '0', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 100, padding: '0.4rem', minWidth: '150px', marginTop: '4px' }}>
+                  <div 
+                    style={{ position: 'relative' }} 
+                    onMouseEnter={() => setIsConvertMenuOpen(true)}
+                    onMouseLeave={() => setIsConvertMenuOpen(false)}
+                  >
+                    <button style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: isConvertMenuOpen ? 'var(--bg-secondary)' : 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 8h16M4 16h16"></path><circle cx="6" cy="8" r="2"></circle><circle cx="18" cy="16" r="2"></circle></svg> 
+                        Convert to
+                      </span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', transform: 'rotate(180deg)' }}>›</span>
+                    </button>
+                    
+                    {isConvertMenuOpen && (
+                      <div style={{ position: 'absolute', top: '-5px', right: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 101, padding: '0.4rem', minWidth: '150px' }}>
+                        <button onClick={() => { onConvertTask('TASK', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>✓</span> Task</button>
+                        <button onClick={() => { onConvertTask('MILESTONE', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>◇</span> Milestone</button>
+                        <button onClick={() => { onConvertTask('APPROVAL', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>⚖️</span> Approval</button>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }}></div>
+                  <button onClick={() => { onDeleteTask(task.id); setIsMoreMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: 'var(--accent-danger)' }}>🗑️</span> Delete Task
+                  </button>
+                </div>
+              )}
+            </div>
+            <button style={styles.iconBtn} onClick={onClose} title="Close details">×</button>
           </div>
         </div>
+
+        {task.type === 'APPROVAL' && (
+          <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: task.approvalStatus === 'APPROVED' ? 'var(--accent-success)' : task.approvalStatus === 'REJECTED' ? 'var(--accent-danger)' : task.approvalStatus === 'CHANGES_REQUESTED' ? '#F59E0B' : 'transparent', border: task.approvalStatus === 'PENDING' || !task.approvalStatus ? '2px dashed var(--text-tertiary)' : 'none', color: task.approvalStatus === 'PENDING' || !task.approvalStatus ? 'var(--text-secondary)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {task.approvalStatus === 'APPROVED' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> : task.approvalStatus === 'REJECTED' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> : task.approvalStatus === 'CHANGES_REQUESTED' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"></path></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                  {task.approvalStatus === 'APPROVED' ? 'Approved' : task.approvalStatus === 'REJECTED' ? 'Rejected' : task.approvalStatus === 'CHANGES_REQUESTED' ? 'Changes Requested' : 'Approval Pending'}
+                </span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Assignee must approve
+                </span>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {(!task.assigneeId || (currentUser && task.assigneeId === currentUser.id)) ? (
+                <>
+                  <button onClick={() => handleApproval('APPROVED')} style={{ ...styles.approvalBtn, backgroundColor: task.approvalStatus === 'APPROVED' ? 'var(--accent-success)' : 'transparent', color: task.approvalStatus === 'APPROVED' ? '#fff' : 'var(--text-primary)', borderColor: 'var(--accent-success)' }}>Approve</button>
+                  <button onClick={() => handleApproval('CHANGES_REQUESTED')} style={{ ...styles.approvalBtn, backgroundColor: task.approvalStatus === 'CHANGES_REQUESTED' ? '#F59E0B' : 'transparent', color: task.approvalStatus === 'CHANGES_REQUESTED' ? '#fff' : 'var(--text-primary)', borderColor: '#F59E0B' }}>Request Changes</button>
+                  <button onClick={() => handleApproval('REJECTED')} style={{ ...styles.approvalBtn, backgroundColor: task.approvalStatus === 'REJECTED' ? 'var(--accent-danger)' : 'transparent', color: task.approvalStatus === 'REJECTED' ? '#fff' : 'var(--text-primary)', borderColor: 'var(--accent-danger)' }}>Reject</button>
+                </>
+              ) : (
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Waiting on assignee...</span>
+              )}
+            </div>
+          </div>
+        )}
 
         <div style={styles.body}>
           <input
@@ -517,6 +665,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                 <span style={{ color: (task.startDate || task.dueDate) ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                   {formatFriendlyDateRange(task.startDate, task.dueDate)}
                 </span>
+                {task.isRecurring && <span style={{ fontSize: '0.85rem' }} title="Recurring Task">🔁</span>}
               </div>
             </div>
 
@@ -902,10 +1051,21 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
                 return combinedFeed.map(item => {
                   if (item.type === 'comment') {
+                    const reactionGroups = item.reactions ? item.reactions.reduce((acc, r) => {
+                      acc[r.emoji] = acc[r.emoji] || [];
+                      acc[r.emoji].push(r);
+                      return acc;
+                    }, {}) : {};
+
                     return (
-                      <div key={`comment-${item.id}`} style={styles.commentItem}>
+                      <div 
+                        key={`comment-${item.id}`} 
+                        style={styles.commentItem}
+                        onMouseEnter={() => setHoveredCommentId(item.id)}
+                        onMouseLeave={() => setHoveredCommentId(null)}
+                      >
                         <div style={styles.commentAvatar}>{item.user?.name?.charAt(0).toUpperCase() || '?'}</div>
-                        <div style={styles.commentContent}>
+                        <div style={{...styles.commentContent, position: 'relative'}}>
                           <div style={styles.commentHeader}>
                             <span style={styles.commentAuthor}>{item.user?.name || 'Unknown'}</span>
                             <span style={styles.commentTime}>
@@ -913,10 +1073,55 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                             </span>
                           </div>
                           <div className="rich-text-content" style={styles.commentText} dangerouslySetInnerHTML={{ __html: item.text }} />
+                          
+                          {/* Reactions Display */}
+                          {Object.keys(reactionGroups).length > 0 && (
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '6px' }}>
+                              {Object.entries(reactionGroups).map(([emoji, reacts]) => {
+                                const hasReacted = currentUser && reacts.some(r => r.userId === currentUser.id);
+                                return (
+                                  <button
+                                    key={emoji}
+                                    onClick={() => handleToggleReaction(item.id, emoji)}
+                                    style={{
+                                      ...styles.reactionPill,
+                                      backgroundColor: hasReacted ? 'var(--accent-primary-light)' : 'var(--bg-tertiary)',
+                                      borderColor: hasReacted ? 'var(--accent-primary)' : 'transparent',
+                                      color: hasReacted ? 'var(--accent-primary)' : 'var(--text-primary)'
+                                    }}
+                                    title={reacts.map(r => r.user.name).join(', ')}
+                                  >
+                                    {emoji} {reacts.length}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                        {projectRole !== 'VIEWER' && (projectRole === 'ADMIN' || (currentUser && item.userId === currentUser.id)) && (
-                          <button onClick={() => handleDeleteComment(item.id)} style={styles.commentDeleteBtn} title="Delete comment">×</button>
-                        )}
+
+                        <div style={{ display: 'flex', gap: '4px', opacity: hoveredCommentId === item.id || reactionPickerId === item.id ? 1 : 0, transition: 'opacity 0.15s', alignSelf: 'flex-start' }}>
+                          <div style={{ position: 'relative' }}>
+                            <button 
+                              onClick={() => setReactionPickerId(reactionPickerId === item.id ? null : item.id)}
+                              style={styles.reactionBtn}
+                              title="Like"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                            </button>
+                            {reactionPickerId === item.id && (
+                              <div style={styles.reactionPicker}>
+                                {['👍', '❤️', '😂', '🎉', '👀'].map(emj => (
+                                  <button key={emj} style={styles.reactionPickerEmoji} onClick={() => { handleToggleReaction(item.id, emj); setReactionPickerId(null); }}>
+                                    {emj}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {projectRole !== 'VIEWER' && (projectRole === 'ADMIN' || (currentUser && item.userId === currentUser.id)) && (
+                            <button onClick={() => handleDeleteComment(item.id)} style={styles.commentDeleteBtn} title="Delete comment">×</button>
+                          )}
+                        </div>
                       </div>
                     );
                   } else {
@@ -1025,5 +1230,12 @@ const styles = {
   attachmentInfo: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' },
   attachmentName: { fontSize: '0.85rem', fontWeight: '500', color: 'var(--accent-primary)', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' },
   attachmentMeta: { fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '0.4rem' },
-  attachmentDeleteBtn: { background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 0.4rem', flexShrink: 0, transition: 'color 0.15s' }
+  attachmentDeleteBtn: { background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 0.4rem', flexShrink: 0, transition: 'color 0.15s' },
+
+  reactionPill: { display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', border: '1px solid transparent', fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.15s' },
+  reactionBtn: { background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' },
+  reactionPicker: { position: 'absolute', top: '100%', right: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: '4px 8px', display: 'flex', gap: '4px', zIndex: 100, marginTop: '4px' },
+  reactionPickerEmoji: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', padding: '4px', borderRadius: '50%', transition: 'background-color 0.15s', ':hover': { backgroundColor: 'var(--bg-secondary)' } },
+
+  approvalBtn: { padding: '0.4rem 0.8rem', border: '1px solid', borderRadius: '6px', cursor: 'pointer', fontWeight: '500', fontSize: '0.8rem', transition: 'all 0.15s' }
 };

@@ -84,6 +84,8 @@ function hasRole(userRole, minimumRole) {
 
 // ─── Shared include for full project data ──────────────────────────────────────
 const fullProjectInclude = {
+    workspace: true,
+    team: true,
     owner: { select: { id: true, name: true, email: true } },
     members: {
         include: {
@@ -107,7 +109,8 @@ const fullProjectInclude = {
                     comments: {
                         orderBy: { createdAt: 'asc' },
                         include: {
-                            user: { select: { id: true, name: true, email: true } }
+                            user: { select: { id: true, name: true, email: true } },
+                            reactions: { include: { user: { select: { id: true, name: true, email: true } } } }
                         }
                     },
                     collaborators: {
@@ -163,7 +166,10 @@ const fullProjectInclude = {
                             },
                             comments: {
                                 orderBy: { createdAt: 'asc' },
-                                include: { user: { select: { id: true, name: true, email: true } } }
+                                include: { 
+                                    user: { select: { id: true, name: true, email: true } },
+                                    reactions: { include: { user: { select: { id: true, name: true, email: true } } } }
+                                }
                             },
                             collaborators: {
                                 include: { user: { select: { id: true, name: true, email: true } } }
@@ -211,7 +217,8 @@ const fullTaskInclude = {
     comments: {
         orderBy: { createdAt: 'asc' },
         include: {
-            user: { select: { id: true, name: true, email: true } }
+            user: { select: { id: true, name: true, email: true } },
+            reactions: { include: { user: { select: { id: true, name: true, email: true } } } }
         }
     },
     collaborators: {
@@ -260,11 +267,45 @@ const fullTaskInclude = {
 //  PROJECT CRUD
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// GET /api/projects/templates — List all projects marked as templates
+router.get('/templates', authenticateToken, async (req, res) => {
+    try {
+        const templates = await prisma.project.findMany({
+            where: { isTemplate: true },
+            include: fullProjectInclude,
+            orderBy: { createdAt: 'desc' }
+        });
+
+        // Merge secondary tasks into the sections
+        templates.forEach(project => {
+            if (project.sections) {
+                project.sections.forEach(section => {
+                    const primaryTasks = section.tasks || [];
+                    const secondaryTasks = (section.secondaryTasks || []).map(st => ({
+                        ...st.task,
+                        order: st.order,
+                        sectionId: st.sectionId,
+                        isSecondary: true
+                    }));
+                    section.tasks = [...primaryTasks, ...secondaryTasks].sort((a, b) => a.order - b.order);
+                    delete section.secondaryTasks;
+                });
+            }
+        });
+
+        res.json(templates);
+    } catch (error) {
+        console.error('Error fetching templates:', error);
+        res.status(500).json({ error: 'Şablonlar yüklenirken hata oluştu.', details: error.message });
+    }
+});
+
 // GET /api/projects — List all projects the user owns or is a member of
 router.get('/', authenticateToken, async (req, res) => {
     try {
         const projects = await prisma.project.findMany({
             where: {
+                isTemplate: false,
                 OR: [
                     { ownerId: req.user.userId },
                     { members: { some: { userId: req.user.userId } } }
@@ -332,7 +373,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // POST /api/projects — Create a new project
 router.post('/', authenticateToken, async (req, res) => {
     try {
-        const { name, description, defaultView, activeViews, color, icon } = req.body;
+        const { name, description, defaultView, activeViews, color, icon, workspaceId, teamId } = req.body;
         if (!name || !name.trim()) {
             return res.status(400).json({ error: 'Proje adı zorunludur.' });
         }
@@ -342,6 +383,8 @@ router.post('/', authenticateToken, async (req, res) => {
                 name: name.trim(),
                 description: description || null,
                 ownerId: req.user.userId,
+                workspaceId: workspaceId || null,
+                teamId: teamId || null,
                 defaultView: defaultView || 'List',
                 activeViews: activeViews || undefined,
                 color: color || '#4F46E5',
@@ -364,6 +407,184 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 });
 
+// POST /api/projects/:id/duplicate — Deep copy a project (for templates or regular copying)
+router.post('/:id/duplicate', authenticateToken, async (req, res) => {
+    try {
+        const { name, isTemplate, workspaceId, teamId } = req.body;
+        const sourceProjectId = req.params.id;
+
+        const sourceProject = await prisma.project.findUnique({
+            where: { id: sourceProjectId },
+            include: {
+                sections: {
+                    include: {
+                        tasks: true
+                    }
+                }
+            }
+        });
+
+        if (!sourceProject) {
+            return res.status(404).json({ error: 'Kaynak proje bulunamadı.' });
+        }
+
+        // 1. Create new project
+        const newProject = await prisma.project.create({
+            data: {
+                name: name || `${sourceProject.name} (Kopya)`,
+                description: sourceProject.description,
+                ownerId: req.user.userId,
+                defaultView: sourceProject.defaultView,
+                activeViews: sourceProject.activeViews,
+                color: sourceProject.color,
+                icon: sourceProject.icon,
+                isTemplate: !!isTemplate,
+                workspaceId: workspaceId || sourceProject.workspaceId,
+                teamId: teamId || sourceProject.teamId,
+                customFieldSettings: sourceProject.customFieldSettings,
+                priorityFieldSettings: sourceProject.priorityFieldSettings,
+                formSettings: sourceProject.formSettings
+            }
+        });
+
+        // 2. Add owner as member with ADMIN role
+        await prisma.projectMembership.create({
+            data: {
+                projectId: newProject.id,
+                userId: req.user.userId,
+                role: 'ADMIN'
+            }
+        });
+
+        // 3. Copy Sections and Tasks
+        for (const section of sourceProject.sections) {
+            const newSection = await prisma.section.create({
+                data: {
+                    name: section.name,
+                    order: section.order,
+                    projectId: newProject.id
+                }
+            });
+
+            // 4. Copy Tasks in Section
+            for (const task of section.tasks) {
+                await prisma.task.create({
+                    data: {
+                        title: task.title,
+                        description: task.description,
+                        priority: task.priority,
+                        type: task.type,
+                        order: task.order,
+                        customFields: task.customFields,
+                        sectionId: newSection.id,
+                        creatorId: req.user.userId,
+                        assigneeId: task.assigneeId,
+                        startDate: task.startDate,
+                        dueDate: task.dueDate
+                    }
+                });
+            }
+        }
+
+        const projectWithIncludes = await prisma.project.findUnique({
+            where: { id: newProject.id },
+            include: fullProjectInclude
+        });
+
+        res.status(201).json(projectWithIncludes);
+    } catch (error) {
+        console.error('Error duplicating project:', error);
+        res.status(500).json({ error: 'Proje kopyalanırken hata oluştu.', details: error.message });
+    }
+});
+
+// POST /api/projects/:id/save-as-template — Save current project as a template
+router.post('/:id/save-as-template', authenticateToken, async (req, res) => {
+    try {
+        const sourceProjectId = req.params.id;
+        
+        const sourceProject = await prisma.project.findUnique({
+            where: { id: sourceProjectId },
+            include: {
+                sections: {
+                    include: {
+                        tasks: true
+                    }
+                }
+            }
+        });
+
+        if (!sourceProject) {
+            return res.status(404).json({ error: 'Kaynak proje bulunamadı.' });
+        }
+
+        // 1. Create new template project
+        const newProject = await prisma.project.create({
+            data: {
+                name: `${sourceProject.name} Template`,
+                description: sourceProject.description,
+                ownerId: req.user.userId,
+                defaultView: sourceProject.defaultView,
+                activeViews: sourceProject.activeViews,
+                color: sourceProject.color,
+                icon: sourceProject.icon,
+                isTemplate: true,
+                customFieldSettings: sourceProject.customFieldSettings,
+                priorityFieldSettings: sourceProject.priorityFieldSettings,
+                formSettings: sourceProject.formSettings
+            }
+        });
+
+        // 2. Add owner as member with ADMIN role
+        await prisma.projectMembership.create({
+            data: {
+                projectId: newProject.id,
+                userId: req.user.userId,
+                role: 'ADMIN'
+            }
+        });
+
+        // 3. Copy Sections and Tasks
+        for (const section of sourceProject.sections) {
+            const newSection = await prisma.section.create({
+                data: {
+                    name: section.name,
+                    order: section.order,
+                    projectId: newProject.id
+                }
+            });
+
+            for (const task of section.tasks) {
+                await prisma.task.create({
+                    data: {
+                        title: task.title,
+                        description: task.description,
+                        priority: task.priority,
+                        type: task.type,
+                        order: task.order,
+                        customFields: task.customFields,
+                        sectionId: newSection.id,
+                        creatorId: req.user.userId,
+                        assigneeId: task.assigneeId,
+                        startDate: task.startDate,
+                        dueDate: task.dueDate
+                    }
+                });
+            }
+        }
+
+        const projectWithIncludes = await prisma.project.findUnique({
+            where: { id: newProject.id },
+            include: fullProjectInclude
+        });
+
+        res.status(201).json(projectWithIncludes);
+    } catch (error) {
+        console.error('Error saving as template:', error);
+        res.status(500).json({ error: 'Şablon olarak kaydedilirken hata oluştu.', details: error.message });
+    }
+});
+
 // PATCH /api/projects/:id — Update project settings (EDITOR+)
 router.patch('/:id', authenticateToken, async (req, res) => {
     try {
@@ -372,7 +593,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
 
-        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, priorityFieldSettings, formSettings, startDate, dueDate, color, icon } = req.body;
+        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, priorityFieldSettings, formSettings, startDate, dueDate, color, icon, workspaceId, teamId } = req.body;
 
         const updateData = {};
         if (name !== undefined) updateData.name = name;
@@ -384,6 +605,8 @@ router.patch('/:id', authenticateToken, async (req, res) => {
         if (customFieldSettings !== undefined) updateData.customFieldSettings = customFieldSettings;
         if (priorityFieldSettings !== undefined) updateData.priorityFieldSettings = priorityFieldSettings;
         if (formSettings !== undefined) updateData.formSettings = formSettings;
+        if (workspaceId !== undefined) updateData.workspaceId = workspaceId;
+        if (teamId !== undefined) updateData.teamId = teamId;
         if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
         if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
         if (color !== undefined) updateData.color = color;
@@ -718,7 +941,7 @@ router.delete('/sections/:sectionId', authenticateToken, async (req, res) => {
 // POST /api/projects/tasks — Create a task
 router.post('/tasks', authenticateToken, async (req, res) => {
     try {
-        const { title, sectionId, parentId, assigneeId, dueDate, startDate, description, priority, type } = req.body;
+        const { title, sectionId, parentId, assigneeId, dueDate, startDate, description, priority, type, approvalStatus } = req.body;
         if (!title || !sectionId) return res.status(400).json({ error: 'title ve sectionId zorunludur.' });
 
         const role = await getProjectRoleFromSection(req.user.userId, sectionId);
@@ -733,6 +956,7 @@ router.post('/tasks', authenticateToken, async (req, res) => {
         });
         const nextOrder = lastTask ? lastTask.order + 1 : 0;
 
+        const taskType = type || 'TASK';
         const newTask = await prisma.task.create({
             data: {
                 title: title.trim(),
@@ -744,7 +968,8 @@ router.post('/tasks', authenticateToken, async (req, res) => {
                 startDate: startDate ? new Date(startDate) : null,
                 description: description || null,
                 priority: priority || 'MEDIUM',
-                type: type || 'TASK',
+                type: taskType,
+                approvalStatus: taskType === 'APPROVAL' ? (approvalStatus || 'PENDING') : null,
                 order: nextOrder,
                 activities: {
                     create: {
@@ -913,7 +1138,7 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
 
-        const { title, description, isCompleted, assigneeId, dueDate, startDate, priority, type, customFields, sectionId, order, likes } = req.body;
+        const { title, description, isCompleted, assigneeId, dueDate, startDate, priority, type, customFields, sectionId, order, likes, isRecurring, recurrenceRule, recurrenceCustom, approvalStatus } = req.body;
 
         const currentTask = await prisma.task.findUnique({
             where: { id: req.params.taskId },
@@ -932,16 +1157,79 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
         if (sectionId !== undefined) updateData.sectionId = sectionId;
         if (order !== undefined) updateData.order = order;
         if (likes !== undefined) updateData.likes = likes;
+        if (approvalStatus !== undefined) updateData.approvalStatus = approvalStatus;
 
         // Handle customFields — accept both string and object
         if (customFields !== undefined) {
             updateData.customFields = typeof customFields === 'string' ? customFields : JSON.stringify(customFields);
         }
 
+        if (isRecurring !== undefined) updateData.isRecurring = isRecurring;
+        if (recurrenceRule !== undefined) updateData.recurrenceRule = recurrenceRule;
+        if (recurrenceCustom !== undefined) {
+            updateData.recurrenceCustom = typeof recurrenceCustom === 'string' ? recurrenceCustom : JSON.stringify(recurrenceCustom);
+        }
+
         // Handle completion toggle
+        let nextTaskToSpawn = null;
         if (isCompleted !== undefined) {
             updateData.isCompleted = isCompleted;
             updateData.completedAt = isCompleted ? new Date() : null;
+
+            // Recurrence spawning logic
+            if (isCompleted === true && currentTask.isRecurring && !currentTask.nextRecurrenceTaskId) {
+                let currentDueDate = currentTask.dueDate ? new Date(currentTask.dueDate) : new Date();
+                let nextDueDate = new Date(currentDueDate);
+                const rule = currentTask.recurrenceRule || 'DAILY';
+                
+                if (rule === 'DAILY') {
+                    nextDueDate.setDate(nextDueDate.getDate() + 1);
+                } else if (rule === 'WEEKLY') {
+                    nextDueDate.setDate(nextDueDate.getDate() + 7);
+                } else if (rule === 'MONTHLY') {
+                    nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+                } else if (rule === 'YEARLY') {
+                    nextDueDate.setFullYear(nextDueDate.getFullYear() + 1);
+                } else if (rule === 'CUSTOM') {
+                    let customObj = {};
+                    try {
+                        customObj = typeof currentTask.recurrenceCustom === 'string' ? JSON.parse(currentTask.recurrenceCustom || '{}') : (currentTask.recurrenceCustom || {});
+                    } catch(e) {}
+                    const interval = customObj.interval || 1;
+                    if (customObj.frequency === 'weekly' || customObj.frequency === 'week') {
+                        nextDueDate.setDate(nextDueDate.getDate() + 7 * interval);
+                    } else if (customObj.frequency === 'monthly' || customObj.frequency === 'month') {
+                        nextDueDate.setMonth(nextDueDate.getMonth() + interval);
+                    } else if (customObj.frequency === 'yearly' || customObj.frequency === 'year') {
+                        nextDueDate.setFullYear(nextDueDate.getFullYear() + interval);
+                    } else {
+                        nextDueDate.setDate(nextDueDate.getDate() + interval);
+                    }
+                }
+
+                let nextStartDate = null;
+                if (currentTask.startDate && currentTask.dueDate) {
+                    const duration = currentDueDate.getTime() - new Date(currentTask.startDate).getTime();
+                    nextStartDate = new Date(nextDueDate.getTime() - duration);
+                }
+
+                nextTaskToSpawn = {
+                    title: currentTask.title,
+                    description: currentTask.description,
+                    priority: currentTask.priority,
+                    type: currentTask.type,
+                    order: currentTask.order,
+                    sectionId: currentTask.sectionId,
+                    assigneeId: currentTask.assigneeId,
+                    creatorId: currentTask.creatorId || req.user.userId,
+                    customFields: currentTask.customFields,
+                    dueDate: nextDueDate,
+                    startDate: nextStartDate,
+                    isRecurring: true,
+                    recurrenceRule: currentTask.recurrenceRule,
+                    recurrenceCustom: currentTask.recurrenceCustom
+                };
+            }
         }
 
         const activitiesToLog = [];
@@ -986,6 +1274,17 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
             };
         }
 
+        let newSpawnedTaskId = null;
+        if (nextTaskToSpawn) {
+            try {
+                const spawnedTask = await prisma.task.create({ data: nextTaskToSpawn });
+                newSpawnedTaskId = spawnedTask.id;
+                updateData.nextRecurrenceTaskId = newSpawnedTaskId;
+            } catch (err) {
+                console.error("Failed to spawn recurring task", err);
+            }
+        }
+
         const updatedTask = await prisma.task.update({
             where: { id: req.params.taskId },
             data: updateData,
@@ -1000,6 +1299,10 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
                 updatedTask.secondaryProjects.forEach(sp => {
                     io.to(sp.projectId).emit('task_updated', updatedTask);
                 });
+            }
+            if (newSpawnedTaskId) {
+                 const fullNewTask = await prisma.task.findUnique({ where: { id: newSpawnedTaskId }, include: fullTaskInclude });
+                 if (projectId && fullNewTask) io.to(projectId).emit('task_created', fullNewTask);
             }
         }
 
@@ -1224,6 +1527,52 @@ router.delete('/tasks/:taskId/comments/:commentId', authenticateToken, async (re
         res.status(500).json({ error: 'Yorum silinirken hata oluştu.', details: error.message });
     }
 });
+
+// POST /api/projects/tasks/:taskId/comments/:commentId/reactions — Toggle a reaction
+router.post('/tasks/:taskId/comments/:commentId/reactions', authenticateToken, async (req, res) => {
+    try {
+        const { emoji } = req.body;
+        if (!emoji) return res.status(400).json({ error: 'Emoji zorunludur.' });
+
+        const comment = await prisma.comment.findUnique({ where: { id: req.params.commentId } });
+        if (!comment) return res.status(404).json({ error: 'Yorum bulunamadı.' });
+
+        const existingReaction = await prisma.commentReaction.findFirst({
+            where: {
+                commentId: req.params.commentId,
+                userId: req.user.userId,
+                emoji: emoji
+            }
+        });
+
+        if (existingReaction) {
+            await prisma.commentReaction.delete({ where: { id: existingReaction.id } });
+        } else {
+            await prisma.commentReaction.create({
+                data: {
+                    emoji,
+                    commentId: req.params.commentId,
+                    userId: req.user.userId
+                }
+            });
+        }
+
+        const taskForSocket = await prisma.task.findUnique({
+            where: { id: req.params.taskId },
+            include: { ...fullTaskInclude, section: true }
+        });
+        const io = req.app.get('io');
+        if (io && taskForSocket?.section?.projectId) {
+            io.to(taskForSocket.section.projectId).emit('task_updated', taskForSocket);
+        }
+
+        res.json(taskForSocket);
+    } catch (error) {
+        console.error('Error toggling comment reaction:', error);
+        res.status(500).json({ error: 'Reaksiyon güncellenirken hata oluştu.', details: error.message });
+    }
+});
+
 
 
 // ═══════════════════════════════════════════════════════════════════════════════

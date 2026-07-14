@@ -65,10 +65,11 @@ export default function ProjectTimelineView({
         const offsetMs = tStart.getTime() - start.getTime();
         let offsetDays = offsetMs / (1000 * 60 * 60 * 24);
         const durationMs = tEnd.getTime() - tStart.getTime();
-        let durationDays = Math.max(1, Math.round(durationMs / (1000 * 60 * 60 * 24)) + 1);
+        let durationDays = task.type === 'MILESTONE' ? 1 : Math.max(1, Math.round(durationMs / (1000 * 60 * 60 * 24)) + 1);
 
         const taskData = {
           ...task,
+          isMilestone: task.type === 'MILESTONE',
           left: offsetDays * DAY_WIDTH,
           width: durationDays * DAY_WIDTH,
           color: getSectionColor(sec.id),
@@ -310,19 +311,46 @@ export default function ProjectTimelineView({
             {/* SVG Overlay directly aligned with tasks Track, using absolute positioning relative to bodyRows offset by 200px left */}
             <svg ref={svgRef} style={{ ...styles.svgLayer, width: TRACK_WIDTH, height: totalHeight }}>
               {dependencyLines.map(line => {
-                const midX = (line.x1 + line.x2) / 2;
-                const midY = (line.y1 + line.y2) / 2;
+                const generateOrthogonalPath = (x1, y1, x2, y2) => {
+                  const r = 5;
+                  const dirY = y2 > y1 ? 1 : -1;
+                  const midX = x1 + 10;
+                  
+                  if (x2 >= midX) {
+                    const rX = Math.min(r, (x2 - midX));
+                    const rY = Math.min(r, Math.abs(y2 - y1) / 2);
+                    return `M ${x1} ${y1} L ${midX - r} ${y1} Q ${midX} ${y1}, ${midX} ${y1 + rY * dirY} L ${midX} ${y2 - rY * dirY} Q ${midX} ${y2}, ${midX + rX} ${y2} L ${x2} ${y2}`;
+                  } else {
+                    const midX1 = x1 + 10;
+                    const midY = (y1 + y2) / 2;
+                    const midX2 = x2 - 10;
+                    const r1 = Math.min(r, Math.abs(midY - y1) / 2);
+                    const r2 = Math.min(r, Math.abs(midY - y2) / 2);
+                    return `M ${x1} ${y1} L ${midX1 - r} ${y1} Q ${midX1} ${y1}, ${midX1} ${y1 + r1 * dirY} L ${midX1} ${midY - r1 * dirY} Q ${midX1} ${midY}, ${midX1 - r} ${midY} L ${midX2 + r} ${midY} Q ${midX2} ${midY}, ${midX2} ${midY + r2 * dirY} L ${midX2} ${y2 - r2 * dirY} Q ${midX2} ${y2}, ${midX2 + r} ${y2} L ${x2} ${y2}`;
+                  }
+                };
+
+                const pathData = generateOrthogonalPath(line.x1, line.y1, line.x2, line.y2);
+                let btnX, btnY;
+                if (line.x2 >= line.x1 + 10) {
+                  btnX = (line.x1 + 10 + line.x2) / 2;
+                  btnY = line.y2;
+                } else {
+                  btnX = (line.x1 + line.x2) / 2;
+                  btnY = (line.y1 + line.y2) / 2;
+                }
+                
                 return (
                   <g key={line.id} className="dependency-line-group" style={{ cursor: 'pointer', pointerEvents: 'auto' }}>
                     <path 
-                      d={`M ${line.x1} ${line.y1} C ${line.x1 + 30} ${line.y1}, ${line.x2 - 30} ${line.y2}, ${line.x2} ${line.y2}`} 
+                      d={pathData} 
                       stroke="transparent" 
                       strokeWidth="15" 
                       fill="none" 
                     />
                     <path 
                       className="line-path"
-                      d={`M ${line.x1} ${line.y1} C ${line.x1 + 30} ${line.y1}, ${line.x2 - 30} ${line.y2}, ${line.x2} ${line.y2}`} 
+                      d={pathData} 
                       stroke="#9CA3AF" 
                       strokeWidth="2" 
                       fill="none" 
@@ -331,11 +359,11 @@ export default function ProjectTimelineView({
                     />
                     <g 
                       className="delete-btn" 
-                      style={{ transition: 'opacity 0.2s', transformOrigin: `${midX}px ${midY}px` }}
+                      style={{ transition: 'opacity 0.2s', transformOrigin: `${btnX}px ${btnY}px` }}
                       onClick={(e) => { e.stopPropagation(); handleDeleteDependency(line.taskId, line.id); }}
                     >
-                      <circle cx={midX} cy={midY} r="8" fill="#EF4444" />
-                      <text x={midX} y={midY + 1} fill="white" fontSize="10" fontWeight="bold" textAnchor="middle" dominantBaseline="central">×</text>
+                      <circle cx={btnX} cy={btnY} r="8" fill="#EF4444" />
+                      <text x={btnX} y={btnY + 1} fill="white" fontSize="10" fontWeight="bold" textAnchor="middle" dominantBaseline="central">×</text>
                     </g>
                   </g>
                 );
@@ -487,30 +515,49 @@ export default function ProjectTimelineView({
                             <div style={styles.connectorLineLeft} />
                           </div>
 
-                          <div
-                            className="drag-handle"
-                            onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'LEFT', startX: e.clientX, deltaX: 0 }); }}
-                            style={{ ...styles.dragHandleLeft, opacity: hoveredTaskId === t.id ? 1 : 0 }}
-                          >||</div>
+                          {!t.isMilestone && (
+                            <div
+                              className="drag-handle"
+                              onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'LEFT', startX: e.clientX, deltaX: 0 }); }}
+                              style={{ ...styles.dragHandleLeft, opacity: hoveredTaskId === t.id ? 1 : 0 }}
+                            >||</div>
+                          )}
                           
-                          <div 
-                            onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'MOVE', startX: e.clientX, deltaX: 0 }); }}
-                            style={{
-                              ...styles.taskBar,
-                              backgroundColor: t.isCompleted ? '#F3F4F6' : t.color, // Match section color
-                              color: t.isCompleted ? '#9CA3AF' : 'var(--text-primary)',
-                              textDecoration: t.isCompleted ? 'line-through' : 'none',
-                              border: '1px solid rgba(0,0,0,0.1)', // Subtle border instead of distinct left border
-                            }}
-                          >
-                            {t.title}
-                          </div>
+                          {t.isMilestone ? (
+                            <div 
+                              onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'MOVE', startX: e.clientX, deltaX: 0 }); }}
+                              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'grab', flex: 1, height: '100%', paddingLeft: '4px' }}
+                            >
+                              <div style={{
+                                width: '14px', height: '14px', flexShrink: 0,
+                                transform: 'rotate(45deg)',
+                                backgroundColor: t.isCompleted ? '#10B981' : t.color,
+                                border: '2px solid rgba(0,0,0,0.15)',
+                              }} />
+                              <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: t.isCompleted ? 'line-through' : 'none' }}>{t.title}</span>
+                            </div>
+                          ) : (
+                            <div 
+                              onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'MOVE', startX: e.clientX, deltaX: 0 }); }}
+                              style={{
+                                ...styles.taskBar,
+                                backgroundColor: t.isCompleted ? '#F3F4F6' : t.color,
+                                color: t.isCompleted ? '#9CA3AF' : 'var(--text-primary)',
+                                textDecoration: t.isCompleted ? 'line-through' : 'none',
+                                border: '1px solid rgba(0,0,0,0.1)',
+                              }}
+                            >
+                              {t.title}
+                            </div>
+                          )}
 
-                          <div
-                            className="drag-handle"
-                            onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'RIGHT', startX: e.clientX, deltaX: 0 }); }}
-                            style={{ ...styles.dragHandleRight, opacity: hoveredTaskId === t.id ? 1 : 0 }}
-                          >||</div>
+                          {!t.isMilestone && (
+                            <div
+                              className="drag-handle"
+                              onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'RIGHT', startX: e.clientX, deltaX: 0 }); }}
+                              style={{ ...styles.dragHandleRight, opacity: hoveredTaskId === t.id ? 1 : 0 }}
+                            >||</div>
+                          )}
                           
                           {/* Connector node RIGHT (for creating dependencies) */}
                           <div 
@@ -578,8 +625,8 @@ const styles = {
   sectionLabel: { fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', height: '100%' },
   tasksTrack: { position: 'relative', display: 'flex', flexShrink: 0, boxSizing: 'border-box' },
   gridLineVertical: { position: 'absolute', top: 0, bottom: 0, width: '1px', backgroundColor: 'var(--bg-tertiary)', zIndex: 0 },
-  tasksArea: { position: 'relative', width: '100%', height: '100%', zIndex: 1 },
-  taskBarWrapper: { position: 'absolute', height: '28px', display: 'flex', alignItems: 'stretch', cursor: 'pointer', '&:hover .dependency-node': { opacity: 1 }, '&:hover .drag-handle': { opacity: 1 } },
+  tasksArea: { position: 'relative', width: '100%', height: '100%', zIndex: 3, pointerEvents: 'none' },
+  taskBarWrapper: { position: 'absolute', height: '28px', display: 'flex', alignItems: 'stretch', cursor: 'pointer', '&:hover .dependency-node': { opacity: 1 }, '&:hover .drag-handle': { opacity: 1 }, zIndex: 5, pointerEvents: 'auto' },
   taskBar: { flex: 1, borderRadius: '4px', padding: '0 20px', fontSize: '0.75rem', fontWeight: '500', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: '1px solid rgba(0,0,0,0.05)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', userSelect: 'none', position: 'relative' },
   dragHandleLeft: { width: '12px', cursor: 'ew-resize', position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 2, backgroundColor: 'rgba(79, 70, 229, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', fontSize: '8px', opacity: 0, transition: 'opacity 0.2s', borderTopLeftRadius: '4px', borderBottomLeftRadius: '4px' },
   dragHandleRight: { width: '12px', cursor: 'ew-resize', position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 2, backgroundColor: 'rgba(79, 70, 229, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', fontSize: '8px', opacity: 0, transition: 'opacity 0.2s', borderTopRightRadius: '4px', borderBottomRightRadius: '4px' },

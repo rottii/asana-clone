@@ -58,10 +58,11 @@ export default function ProjectGanttView({
         const offsetMs = tStart.getTime() - startDate.getTime();
         const offsetDays = Math.round(offsetMs / (1000 * 60 * 60 * 24));
         const durationMs = tEnd.getTime() - tStart.getTime();
-        const durationDays = Math.max(1, Math.round(durationMs / (1000 * 60 * 60 * 24)) + 1);
+        const durationDays = task.type === 'MILESTONE' ? 1 : Math.max(1, Math.round(durationMs / (1000 * 60 * 60 * 24)) + 1);
 
         const taskData = {
           ...task,
+          isMilestone: task.type === 'MILESTONE',
           left: offsetDays * DAY_WIDTH,
           width: durationDays * DAY_WIDTH,
           formattedDueDate: task.dueDate ? new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '-'
@@ -287,11 +288,16 @@ export default function ProjectGanttView({
                       <span 
                         onClick={(e) => handleToggleComplete(e, task)}
                         style={{ 
-                          color: task.isCompleted ? '#10B981' : '#D1D5DB',
-                          cursor: isReadOnly ? 'default' : 'pointer'
+                          color: task.isCompleted ? '#10B981' : task.isMilestone ? '#6366F1' : '#D1D5DB',
+                          cursor: isReadOnly ? 'default' : 'pointer',
+                          display: 'inline-flex', alignItems: 'center'
                         }}
                       >
-                        ✓
+                        {task.isMilestone ? (
+                          <span style={{ display: 'inline-block', width: '10px', height: '10px', transform: 'rotate(45deg)', backgroundColor: task.isCompleted ? '#10B981' : 'transparent', border: task.isCompleted ? '2px solid #10B981' : '2px solid #6366F1' }} />
+                        ) : (
+                          '✓'
+                        )}
                       </span>
                       <span style={{ 
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -338,15 +344,42 @@ export default function ProjectGanttView({
               
               <svg ref={svgRef} style={{ position: 'absolute', top: 0, left: 0, width: days.length * DAY_WIDTH, height: totalHeight, pointerEvents: 'none', zIndex: 4 }}>
                 {dependencyLines.map(line => {
-                  const midX = (line.x1 + line.x2) / 2;
-                  const midY = (line.y1 + line.y2) / 2;
+                  const generateOrthogonalPath = (x1, y1, x2, y2) => {
+                    const r = 5;
+                    const dirY = y2 > y1 ? 1 : -1;
+                    const midX = x1 + 10;
+                    
+                    if (x2 >= midX) {
+                      const rX = Math.min(r, (x2 - midX));
+                      const rY = Math.min(r, Math.abs(y2 - y1) / 2);
+                      return `M ${x1} ${y1} L ${midX - r} ${y1} Q ${midX} ${y1}, ${midX} ${y1 + rY * dirY} L ${midX} ${y2 - rY * dirY} Q ${midX} ${y2}, ${midX + rX} ${y2} L ${x2} ${y2}`;
+                    } else {
+                      const midX1 = x1 + 10;
+                      const midY = (y1 + y2) / 2;
+                      const midX2 = x2 - 10;
+                      const r1 = Math.min(r, Math.abs(midY - y1) / 2);
+                      const r2 = Math.min(r, Math.abs(midY - y2) / 2);
+                      return `M ${x1} ${y1} L ${midX1 - r} ${y1} Q ${midX1} ${y1}, ${midX1} ${y1 + r1 * dirY} L ${midX1} ${midY - r1 * dirY} Q ${midX1} ${midY}, ${midX1 - r} ${midY} L ${midX2 + r} ${midY} Q ${midX2} ${midY}, ${midX2} ${midY + r2 * dirY} L ${midX2} ${y2 - r2 * dirY} Q ${midX2} ${y2}, ${midX2 + r} ${y2} L ${x2} ${y2}`;
+                    }
+                  };
+
+                  const pathData = generateOrthogonalPath(line.x1, line.y1, line.x2, line.y2);
+                  let btnX, btnY;
+                  if (line.x2 >= line.x1 + 10) {
+                    btnX = (line.x1 + 10 + line.x2) / 2;
+                    btnY = line.y2;
+                  } else {
+                    btnX = (line.x1 + line.x2) / 2;
+                    btnY = (line.y1 + line.y2) / 2;
+                  }
+                  
                   return (
                     <g key={line.id} className="dependency-line-group" style={{ cursor: 'pointer', pointerEvents: 'auto' }}>
-                      <path d={`M ${line.x1} ${line.y1} C ${line.x1 + 30} ${line.y1}, ${line.x2 - 30} ${line.y2}, ${line.x2} ${line.y2}`} stroke="transparent" strokeWidth="15" fill="none" />
-                      <path className="line-path" d={`M ${line.x1} ${line.y1} C ${line.x1 + 30} ${line.y1}, ${line.x2 - 30} ${line.y2}, ${line.x2} ${line.y2}`} stroke="#9CA3AF" strokeWidth="2" fill="none" markerEnd="url(#arrowhead)" style={{ transition: 'stroke 0.2s' }} />
-                      <g className="delete-btn" style={{ transition: 'opacity 0.2s', transformOrigin: `${midX}px ${midY}px` }} onClick={(e) => { e.stopPropagation(); handleDeleteDependency(line.taskId, line.id); }}>
-                        <circle cx={midX} cy={midY} r="8" fill="#EF4444" />
-                        <text x={midX} y={midY + 1} fill="white" fontSize="10" fontWeight="bold" textAnchor="middle" dominantBaseline="central">×</text>
+                      <path d={pathData} stroke="transparent" strokeWidth="15" fill="none" />
+                      <path className="line-path" d={pathData} stroke="#9CA3AF" strokeWidth="2" fill="none" markerEnd="url(#arrowhead)" style={{ transition: 'stroke 0.2s' }} />
+                      <g className="delete-btn" style={{ transition: 'opacity 0.2s', transformOrigin: `${btnX}px ${btnY}px` }} onClick={(e) => { e.stopPropagation(); handleDeleteDependency(line.taskId, line.id); }}>
+                        <circle cx={btnX} cy={btnY} r="8" fill="#EF4444" />
+                        <text x={btnX} y={btnY + 1} fill="white" fontSize="10" fontWeight="bold" textAnchor="middle" dominantBaseline="central">×</text>
                       </g>
                     </g>
                   );
@@ -370,51 +403,94 @@ export default function ProjectGanttView({
               {sectionData.map((section, sIdx) => (
                 <React.Fragment key={section.id}>
                   {/* Section Spacer in Grid */}
-                  <div style={{ height: '36px', borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' }}></div>
+                  <div style={{ height: '36px', borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB', boxSizing: 'border-box' }}></div>
                   
                   {/* Task Bars */}
                   {section.tasks.map(task => (
                     <div key={task.id} style={styles.taskBarRow} onMouseEnter={() => setHoveredTaskId(task.id)} onMouseLeave={() => setHoveredTaskId(null)}>
-                      <div 
-                        style={{ ...styles.taskBar, left: task.left, width: Math.max(task.width, 10), backgroundColor: task.isCompleted ? '#D1D5DB' : '#6366F1' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (hasDraggedRef.current) return;
-                          if (onOpenTaskPane) onOpenTaskPane(task.id);
-                        }}
-                        onMouseUp={(e) => {
-                          if (connectingTask && connectingTask.id !== task.id) {
-                            e.stopPropagation();
-                            handleCreateDependency(task.id, connectingTask.id);
-                            setConnectingTask(null);
-                          }
-                        }}
-                      >
-                        {/* Connector node LEFT */}
-                        <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => e.stopPropagation()}>
-                          <div style={styles.connectorLineLeft} />
-                        </div>
-
-                        {!isReadOnly && (
-                          <div style={{ ...styles.dragHandle, left: 0 }} onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: task.id, type: 'LEFT', startX: e.clientX, deltaX: 0 }); }} />
-                        )}
-                        
+                      {task.isMilestone ? (
+                        /* Milestone diamond */
                         <div 
-                          style={styles.taskBarContent} 
-                          onMouseDown={(e) => { if(!isReadOnly){ e.stopPropagation(); setDragState({ taskId: task.id, type: 'MOVE', startX: e.clientX, deltaX: 0 });} }}
+                          style={{ ...styles.taskBar, left: task.left, width: DAY_WIDTH, backgroundColor: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '6px', paddingLeft: '4px' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (hasDraggedRef.current) return;
+                            if (onOpenTaskPane) onOpenTaskPane(task.id);
+                          }}
+                          onMouseUp={(e) => {
+                            if (connectingTask && connectingTask.id !== task.id) {
+                              e.stopPropagation();
+                              handleCreateDependency(task.id, connectingTask.id);
+                              setConnectingTask(null);
+                            }
+                          }}
                         >
-                          <span style={styles.taskTitleTruncated}>{task.title}</span>
-                        </div>
+                          {/* Connector node LEFT */}
+                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => e.stopPropagation()}>
+                            <div style={styles.connectorLineLeft} />
+                          </div>
 
-                        {!isReadOnly && (
-                          <div style={{ ...styles.dragHandle, right: 0 }} onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: task.id, type: 'RIGHT', startX: e.clientX, deltaX: 0 }); }} />
-                        )}
+                          <div 
+                            onMouseDown={(e) => { if(!isReadOnly){ e.stopPropagation(); setDragState({ taskId: task.id, type: 'MOVE', startX: e.clientX, deltaX: 0 });} }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'grab', flex: 1 }}
+                          >
+                            <div style={{
+                              width: '14px', height: '14px', flexShrink: 0,
+                              transform: 'rotate(45deg)',
+                              backgroundColor: task.isCompleted ? '#D1D5DB' : '#6366F1',
+                              border: '2px solid rgba(0,0,0,0.15)',
+                            }} />
+                            <span style={{ ...styles.taskTitleTruncated, textDecoration: task.isCompleted ? 'line-through' : 'none' }}>{task.title}</span>
+                          </div>
 
-                        {/* Connector node RIGHT */}
-                        <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { e.stopPropagation(); setConnectingTask(task); }}>
-                          <div style={styles.connectorLineRight} />
+                          {/* Connector node RIGHT */}
+                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { e.stopPropagation(); setConnectingTask(task); }}>
+                            <div style={styles.connectorLineRight} />
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        /* Normal task bar */
+                        <div 
+                          style={{ ...styles.taskBar, left: task.left, width: Math.max(task.width, 10), backgroundColor: task.isCompleted ? '#D1D5DB' : '#6366F1' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (hasDraggedRef.current) return;
+                            if (onOpenTaskPane) onOpenTaskPane(task.id);
+                          }}
+                          onMouseUp={(e) => {
+                            if (connectingTask && connectingTask.id !== task.id) {
+                              e.stopPropagation();
+                              handleCreateDependency(task.id, connectingTask.id);
+                              setConnectingTask(null);
+                            }
+                          }}
+                        >
+                          {/* Connector node LEFT */}
+                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => e.stopPropagation()}>
+                            <div style={styles.connectorLineLeft} />
+                          </div>
+
+                          {!isReadOnly && (
+                            <div style={{ ...styles.dragHandle, left: 0 }} onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: task.id, type: 'LEFT', startX: e.clientX, deltaX: 0 }); }} />
+                          )}
+                          
+                          <div 
+                            style={styles.taskBarContent} 
+                            onMouseDown={(e) => { if(!isReadOnly){ e.stopPropagation(); setDragState({ taskId: task.id, type: 'MOVE', startX: e.clientX, deltaX: 0 });} }}
+                          >
+                            <span style={styles.taskTitleTruncated}>{task.title}</span>
+                          </div>
+
+                          {!isReadOnly && (
+                            <div style={{ ...styles.dragHandle, right: 0 }} onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: task.id, type: 'RIGHT', startX: e.clientX, deltaX: 0 }); }} />
+                          )}
+
+                          {/* Connector node RIGHT */}
+                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { e.stopPropagation(); setConnectingTask(task); }}>
+                            <div style={styles.connectorLineRight} />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </React.Fragment>
@@ -500,7 +576,8 @@ const styles = {
     alignItems: 'center',
     backgroundColor: 'var(--bg-secondary)',
     borderBottom: '1px solid var(--border-color)',
-    padding: '0 0.75rem'
+    padding: '0 0.75rem',
+    boxSizing: 'border-box'
   },
   sectionTitle: {
     fontWeight: '600',
@@ -514,7 +591,8 @@ const styles = {
     borderBottom: '1px solid var(--border-color)',
     fontSize: '0.85rem',
     cursor: 'pointer',
-    backgroundColor: 'var(--bg-primary)'
+    backgroundColor: 'var(--bg-primary)',
+    boxSizing: 'border-box'
   },
   timelineScrollArea: {
     flex: 1,
@@ -529,7 +607,7 @@ const styles = {
     borderBottom: '1px solid var(--border-color)',
     position: 'sticky',
     top: 0,
-    zIndex: 5
+    zIndex: 20
   },
   dayHeaderCell: {
     display: 'flex',
@@ -560,7 +638,8 @@ const styles = {
   taskBarRow: {
     position: 'relative',
     height: '36px',
-    borderBottom: '1px solid var(--border-color)'
+    borderBottom: '1px solid var(--border-color)',
+    boxSizing: 'border-box'
   },
   taskBar: {
     position: 'absolute',
@@ -571,7 +650,8 @@ const styles = {
     alignItems: 'center',
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     cursor: 'pointer',
-    userSelect: 'none'
+    userSelect: 'none',
+    zIndex: 5
   },
   taskBarContent: {
     flex: 1,

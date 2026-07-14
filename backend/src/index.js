@@ -12,6 +12,7 @@ const notificationsRoutes = require('./routes/notifications');
 const goalsRoutes = require('./routes/goals');
 const tagsRoutes = require('./routes/tags');
 const reportingRoutes = require('./routes/reporting');
+const workspacesRoutes = require('./routes/workspaces');
 const { startCronScheduler } = require('./utils/cronScheduler');
 const { startReminderCron } = require('./utils/reminders');
 
@@ -71,6 +72,7 @@ app.use('/api/goals', goalsRoutes);
 app.use('/api/tags', tagsRoutes);
 app.use('/api/reporting', reportingRoutes);
 app.use('/api/search', require('./routes/search'));
+app.use('/api/workspaces', workspacesRoutes);
 
 // Health Check
 app.get('/api/health', async (req, res) => {
@@ -82,8 +84,60 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-httpServer.listen(PORT, () => {
+// --- Data Migration / Bootstrap for Workspaces & Teams ---
+async function bootstrapData() {
+  try {
+    const usersWithoutWorkspace = await prisma.user.findMany({
+      where: {
+        workspaceMembers: {
+          none: {}
+        }
+      }
+    });
+
+    for (const user of usersWithoutWorkspace) {
+      console.log(`Creating default workspace and team for user: ${user.email}`);
+      const workspace = await prisma.workspace.create({
+        data: {
+          name: `${user.name}'s Workspace`,
+          members: {
+            create: { userId: user.id, role: 'ADMIN' }
+          },
+          teams: {
+            create: {
+              name: 'Work',
+              description: 'Default team',
+              members: {
+                create: { userId: user.id, role: 'ADMIN' }
+              }
+            }
+          }
+        },
+        include: { teams: true }
+      });
+
+      const teamId = workspace.teams[0].id;
+
+      // Assign all projects owned by this user to this workspace and team
+      await prisma.project.updateMany({
+        where: { ownerId: user.id, workspaceId: null },
+        data: { workspaceId: workspace.id, teamId: teamId }
+      });
+    }
+
+    // Migration to rename existing "General" default teams to "Work"
+    await prisma.team.updateMany({
+      where: { name: 'General', description: 'Default team' },
+      data: { name: 'Work' }
+    });
+  } catch (error) {
+    console.error('Error during bootstrap:', error);
+  }
+}
+
+httpServer.listen(PORT, async () => {
   console.log(`Server ${PORT} portunda başarıyla başlatıldı (HTTP & WebSocket).`);
+  await bootstrapData();
   startCronScheduler();
   startReminderCron(io);
 });

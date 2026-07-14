@@ -13,6 +13,8 @@ export default function Sidebar({
   isSidebarCollapsed,
   setIsSidebarCollapsed,
   portfolios,
+  workspaces,
+  activeWorkspace,
   selectedPortfolio,
   setSelectedPortfolio
 }) {
@@ -81,7 +83,7 @@ export default function Sidebar({
   }, [token, activeView]); // Re-fetch when activeView changes (e.g. they visit inbox)
 
   const safeProjects = Array.isArray(projects) ? projects : [];
-  const activeProjects = safeProjects.filter(p => !p.isArchived);
+  const activeProjects = safeProjects.filter(p => !p.isArchived && !p.isTemplate);
 
   const toggleSection = (section) => {
     setCollapsed(prev => ({ ...prev, [section]: !prev[section] }));
@@ -132,7 +134,7 @@ export default function Sidebar({
               <span className="icon-wrapper">⎎</span>
               <span className="icon-label">Workflow</span>
             </div>
-            <div className="sidebar-icon-item">
+            <div className={`sidebar-icon-item ${narrowTab === 'People' ? 'active' : ''}`} onClick={() => setNarrowTab('People')}>
               <span className="icon-wrapper">👥</span>
               <span className="icon-label">People</span>
             </div>
@@ -220,43 +222,108 @@ export default function Sidebar({
                 </div>
               )}
 
-              <div className="sidebar-section">
-                <div className="sidebar-section-header">
-                  <div className="sidebar-section-label-group" onClick={() => toggleSection('projects')}>
-                    <span className="sidebar-section-arrow">{collapsed.projects ? '▶' : '▼'}</span>
-                    <span className="sidebar-section-label">Work</span>
+              {/* Teams Rendering for Active Workspace */}
+              {activeWorkspace && (activeWorkspace.teams || []).map(team => (
+                <div key={team.id} className="sidebar-section">
+                  <div className="sidebar-section-header">
+                    <div className="sidebar-section-label-group" onClick={() => toggleSection(`team-${team.id}`)}>
+                      <span className="sidebar-section-arrow">{collapsed[`team-${team.id}`] ? '▶' : '▼'}</span>
+                      <span className="sidebar-section-label" style={{ textTransform: 'none' }}>{team.name}</span>
+                    </div>
+                    <button className="sidebar-add-btn" onClick={(e) => { e.stopPropagation(); setActiveView('create_project'); }}>+</button>
                   </div>
-                  <button className="sidebar-add-btn" onClick={(e) => { e.stopPropagation(); setActiveView('create_project'); }}>+</button>
+                  
+                  {!collapsed[`team-${team.id}`] && (
+                    <ul className="sidebar-project-list">
+                      {activeProjects.filter(p => p.teamId === team.id).map(renderProjectItem)}
+                    </ul>
+                  )}
                 </div>
+              ))}
 
-                {!collapsed.projects && (
+              {/* Personal / Unassigned Projects */}
+              {activeProjects.filter(p => !p.teamId).length > 0 && (
+                <div className="sidebar-section">
+                  <div className="sidebar-section-header">
+                    <div className="sidebar-section-label-group" onClick={() => toggleSection('projects')}>
+                      <span className="sidebar-section-arrow">{collapsed.projects ? '▶' : '▼'}</span>
+                      <span className="sidebar-section-label">Personal Projects</span>
+                    </div>
+                    <button className="sidebar-add-btn" onClick={(e) => { e.stopPropagation(); setActiveView('create_project'); }}>+</button>
+                  </div>
+
+                  {!collapsed.projects && (
+                    <ul className="sidebar-project-list">
+                      {activeProjects.filter(p => !p.teamId).map(renderProjectItem)}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* Portfolios Section */}
+              {(portfolios || []).length > 0 && (
+                <div className="sidebar-section">
+                  <div className="sidebar-section-header">
+                    <div className="sidebar-section-label-group" onClick={() => toggleSection('portfolios')}>
+                      <span className="sidebar-section-arrow">{collapsed.portfolios ? '▶' : '▼'}</span>
+                      <span className="sidebar-section-label">Portfolios</span>
+                    </div>
+                  </div>
+                  {!collapsed.portfolios && (
+                    <ul className="sidebar-project-list">
+                      {(portfolios || []).map(portfolio => {
+                        const isActive = activeView === 'portfolio_detail' && selectedPortfolio?.id === portfolio.id;
+                        return (
+                          <li 
+                            key={portfolio.id} 
+                            className={`sidebar-project-item ${isActive ? 'active' : ''}`}
+                            onClick={() => {
+                              handleSelectProject(null);
+                              setSelectedPortfolio(portfolio);
+                              setActiveView('portfolio_detail');
+                            }}
+                          >
+                            <div className="sidebar-project-icon-box" style={{ backgroundColor: 'transparent', color: 'var(--text-tertiary)' }}>📁</div>
+                            <span className="sidebar-project-name">{portfolio.name}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {narrowTab === 'People' && (
+            <>
+              <div className="sidebar-section-title-small" style={{ marginTop: '20px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>People</div>
+              
+              <nav className="sidebar-nav" style={{ marginTop: '8px' }}>
+                <button className="sidebar-nav-item active" style={{ padding: '6px 12px', borderRadius: '8px' }} onClick={() => { handleSelectProject(null); setActiveView('profile'); }}>
+                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#FBCFE8', color: '#BE185D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.85rem', marginRight: '12px' }}>
+                    {user?.name?.[0]?.toUpperCase() || 'A'}
+                  </div>
+                  <span style={{ fontWeight: '500' }}>Profile</span>
+                </button>
+              </nav>
+
+              <div className="sidebar-section" style={{ marginTop: '24px' }}>
+                <div className="sidebar-section-header" style={{ padding: '0 8px', height: '28px' }}>
+                  <div className="sidebar-section-label-group" onClick={() => toggleSection('team-people')}>
+                    <span className="sidebar-section-arrow" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{collapsed['team-people'] ? '▶' : '▼'}</span>
+                    <span className="sidebar-section-label" style={{ textTransform: 'none', fontWeight: 'normal', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Team</span>
+                  </div>
+                </div>
+                {!collapsed['team-people'] && (
                   <ul className="sidebar-project-list">
-                    {activeProjects.map(renderProjectItem)}
-                    
-                    {activeProjects.length === 0 && (
-                      <li className="sidebar-project-item">
-                        <div className="sidebar-project-icon-box" style={{ backgroundColor: '#2dd4bf', color: 'var(--text-primary)' }}>🚀</div>
-                        <span className="sidebar-project-name">Asana implementation...</span>
-                      </li>
-                    )}
-
-                    {(portfolios || []).map(portfolio => {
-                      const isActive = activeView === 'portfolio_detail' && selectedPortfolio?.id === portfolio.id;
-                      return (
-                        <li 
-                          key={portfolio.id} 
-                          className={`sidebar-project-item ${isActive ? 'active' : ''}`}
-                          onClick={() => {
-                            handleSelectProject(null);
-                            setSelectedPortfolio(portfolio);
-                            setActiveView('portfolio_detail');
-                          }}
-                        >
-                          <div className="sidebar-project-icon-box" style={{ backgroundColor: 'transparent', color: 'var(--text-tertiary)' }}>📁</div>
-                          <span className="sidebar-project-name">{portfolio.name}</span>
-                        </li>
-                      );
-                    })}
+                    <li className="sidebar-project-item" style={{ padding: '6px 8px', borderRadius: '8px', cursor: 'pointer' }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#E5E7EB', color: '#4B5563', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '500', fontSize: '0.85rem', marginRight: '12px' }}>
+                        {activeWorkspace?.name?.[0]?.toUpperCase() || 'M'}
+                      </div>
+                      <span className="sidebar-project-name" style={{ flex: 1, fontWeight: '500', fontSize: '0.9rem' }}>{activeWorkspace?.name || 'My workspace'}</span>
+                      <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{'>'}</span>
+                    </li>
                   </ul>
                 )}
               </div>

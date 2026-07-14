@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import TaskCard from './TaskCard'
 
-export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, priorityFieldSettings, onTaskUpdate, onTaskContextMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection }) {
+export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, priorityFieldSettings, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [isEditingName, setIsEditingName] = useState(false)
@@ -50,7 +50,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
         onDragEnd={onDragEndSection}
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', position: 'relative', cursor: isReadOnly || isEditingName || isVirtualGrouping ? 'default' : 'move', flexShrink: 0 }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
           {isEditingName ? (
             <input 
               autoFocus 
@@ -63,7 +63,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
           ) : (
             <h3 
               onClick={() => { if (!isReadOnly && !isVirtualGrouping) setIsEditingName(true); }}
-              style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 'bold', cursor: (!isReadOnly && !isVirtualGrouping) ? 'text' : 'inherit' }}
+              style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 'bold', cursor: (!isReadOnly && !isVirtualGrouping) ? 'text' : 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
             >
               {section.name}
             </h3>
@@ -93,6 +93,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
             token={token} 
             onTaskUpdate={onTaskUpdate} 
             onTaskContextMenu={onTaskContextMenu} 
+            onOpenApprovalMenu={onOpenApprovalMenu}
             onOpenPopover={onOpenPopover}
             onOpenTaskPane={onOpenTaskPane}
             isVirtualGrouping={isVirtualGrouping}

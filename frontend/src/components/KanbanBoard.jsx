@@ -21,6 +21,7 @@ import './KanbanBoard.css'
 export default function KanbanBoard({ selectedProject, setSelectedProject, projects, setProjects, token, user, handleLogout }) {
   const [newSectionName, setNewSectionName] = useState('')
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, taskId: null })
+  const [approvalMenu, setApprovalMenu] = useState({ visible: false, x: 0, y: 0, task: null })
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false)
   const [isCustomizePanelOpen, setIsCustomizePanelOpen] = useState(false)
@@ -174,6 +175,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       if (e && e.target.closest && (e.target.closest('.task-pane-ignore-click') || e.target.closest('.view-context-menu'))) return;
 
       setContextMenu({ visible: false, x: 0, y: 0, taskId: null })
+      setApprovalMenu({ visible: false, x: 0, y: 0, task: null })
       setTabContextMenu({ visible: false, x: 0, y: 0, view: null })
       setActivePopover(null)
       setIsHeaderDropdownOpen(false)
@@ -614,12 +616,27 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   const handleArchiveProject = async () => {
     if (projectRole !== 'ADMIN' && projectRole !== 'EDITOR') return;
-    if (!window.confirm("Proje arşivlensin mi?")) return;
+    const isCurrentlyArchived = selectedProject.isArchived;
+    if (!window.confirm(`Proje ${isCurrentlyArchived ? 'arşivden çıkarılsın' : 'arşivlensin'} mi?`)) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ isArchived: true }) })
+      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ isArchived: !isCurrentlyArchived }) })
       const data = await response.json()
       setProjects(projects.map(p => p.id === selectedProject.id ? data : p));
-      setSelectedProject(null);
+      syncProjectStates(data);
+    } catch (err) { console.error(err) }
+  }
+
+  const handleSaveAsTemplate = async () => {
+    if (projectRole !== 'ADMIN' && projectRole !== 'EDITOR') return;
+    if (!window.confirm("Bu projeyi şablon olarak kaydetmek istediğinize emin misiniz?")) return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/save-as-template`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+      if (response.ok) {
+        alert('Proje başarıyla şablon olarak kaydedildi.');
+      } else {
+        alert('Şablon kaydedilirken bir hata oluştu.');
+      }
+      setIsHeaderDropdownOpen(false);
     } catch (err) { console.error(err) }
   }
 
@@ -801,6 +818,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleDuplicateTask = async () => {
     const taskIdToDuplicate = contextMenu.taskId;
     setContextMenu({ visible: false, x: 0, y: 0, taskId: null });
+    setApprovalMenu({ visible: false, x: 0, y: 0, task: null });
     if (isReadOnly) return;
     try {
       const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToDuplicate}/duplicate`, {
@@ -816,13 +834,59 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     } catch (err) { console.error(err) }
   }
 
-  const handleDeleteTask = async () => {
-    const taskIdToDelete = contextMenu.taskId;
+  const handleDeleteTask = async (taskId) => {
+    const taskIdToDelete = taskId || contextMenu.taskId;
     setContextMenu({ visible: false, x: 0, y: 0, taskId: null });
     try {
       await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToDelete}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
       const updatedSections = selectedProject.sections.map(sec => ({ ...sec, tasks: (sec.tasks || []).filter(t => t.id !== taskIdToDelete) }))
       syncProjectStates({ ...selectedProject, sections: updatedSections })
+    } catch (err) { console.error(err) }
+  }
+
+  const handleConvertTask = async (newType, taskId) => {
+    const taskIdToConvert = taskId || contextMenu.taskId;
+    setContextMenu({ visible: false, x: 0, y: 0, taskId: null });
+    if (isReadOnly) return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToConvert}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ type: newType })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        handleTaskUpdate(taskIdToConvert, data);
+      } else {
+        alert(data.error || "Görevi dönüştürürken hata oluştu.");
+      }
+    } catch (err) { console.error(err); }
+  }
+
+  const handleOpenApprovalMenu = (e, task) => {
+    if (isReadOnly) return;
+    if (task.assigneeId && (!user || task.assigneeId !== user.id)) {
+      return;
+    }
+    setApprovalMenu({ visible: true, x: e.clientX, y: e.clientY, task });
+  };
+
+  const handleApprovalStatusChange = async (status) => {
+    const taskIdToUpdate = approvalMenu.task?.id;
+    setApprovalMenu({ visible: false, x: 0, y: 0, task: null });
+    if (!taskIdToUpdate || isReadOnly) return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToUpdate}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ approvalStatus: status === 'PENDING' ? null : status })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        handleTaskUpdate(taskIdToUpdate, data);
+      } else {
+        alert(data.error || "Error updating approval status.");
+      }
     } catch (err) { console.error(err) }
   }
 
@@ -1112,7 +1176,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 {projectRole === 'ADMIN' ? (
                   <>
                     <div onClick={() => { setIsEditingName(true); setIsHeaderDropdownOpen(false); }} style={styles.dropdownOptionItem}>✏️ Rename Project</div>
-                    <div onClick={handleArchiveProject} style={styles.dropdownOptionItem}>📦 Archive Project</div>
+                    <div onClick={handleArchiveProject} style={styles.dropdownOptionItem}>📦 {selectedProject?.isArchived ? 'Unarchive Project' : 'Archive Project'}</div>
+                    <div onClick={handleSaveAsTemplate} style={styles.dropdownOptionItem}>💾 Save as Template</div>
                     <div style={styles.dropdownDivider}></div>
                     <div onClick={handleDeleteProject} style={{ ...styles.dropdownOptionItem, color: '#EF4444' }}>🗑️ Delete Project</div>
                   </>
@@ -1617,7 +1682,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
                 style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
               >
-                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} priorityFieldSettings={selectedProject?.priorityFieldSettings || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenPopover={(type, task, coords) => setActivePopover({ type, task, coords })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} />
+                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} priorityFieldSettings={selectedProject?.priorityFieldSettings || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords) => setActivePopover({ type, task, coords })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} />
               </div>
             )
           })}
@@ -1657,6 +1722,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           handleOpenPopoverInline={handleOpenPopoverInline}
           formatFriendlyDate={formatFriendlyDate}
           onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }}
+          onOpenApprovalMenu={handleOpenApprovalMenu}
           onRenameSection={handleRenameSection}
           onDeleteSection={handleDeleteSection}
           onOpenTaskPane={setActiveTaskPaneId}
@@ -1707,11 +1773,44 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
       {/* Popover ve Modallar */}
       {contextMenu.visible && (
-        <div style={{ ...styles.contextMenu, top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-          <button onClick={handleDuplicateTask} style={styles.contextMenuItem}>📄 Duplicate Task</button>
-          <button onClick={handleDeleteTask} style={styles.contextMenuItemDelete}>🗑️ Delete Task</button>
+        <div style={{ ...styles.contextMenu, top: `${contextMenu.y}px`, left: `${contextMenu.x}px`, overflow: 'visible' }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+          <div
+            style={{ position: 'relative' }}
+            onMouseEnter={() => setContextMenu({ ...contextMenu, convertMode: true })}
+            onMouseLeave={() => setContextMenu({ ...contextMenu, convertMode: false })}
+          >
+            <button style={{ ...styles.contextMenuItem, display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: contextMenu.convertMode ? 'var(--bg-secondary)' : 'transparent' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 8h16M4 16h16"></path><circle cx="6" cy="8" r="2"></circle><circle cx="18" cy="16" r="2"></circle></svg>
+                Convert to
+              </span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>›</span>
+            </button>
+
+            {contextMenu.convertMode && (
+              <div style={{ ...styles.contextMenu, top: '-5px', left: '100%', position: 'absolute', marginLeft: '2px', minWidth: '150px' }}>
+                <button onClick={() => handleConvertTask('TASK')} style={{ ...styles.contextMenuItem, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>✓</span> Task</button>
+                <button onClick={() => handleConvertTask('MILESTONE')} style={{ ...styles.contextMenuItem, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>◇</span> Milestone</button>
+                <button onClick={() => handleConvertTask('APPROVAL')} style={{ ...styles.contextMenuItem, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>⚖️</span> Approval</button>
+              </div>
+            )}
+          </div>
+          <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }}></div>
+          <button onClick={() => handleDuplicateTask()} style={{ ...styles.contextMenuItem, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>📄</span> Duplicate Task</button>
+          <button onClick={() => handleDeleteTask()} style={{ ...styles.contextMenuItemDelete, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>🗑️</span> Delete Task</button>
         </div>
       )}
+
+      {approvalMenu.visible && (
+        <div style={{ ...styles.contextMenu, top: `${approvalMenu.y}px`, left: `${approvalMenu.x}px`, overflow: 'visible', width: '150px', minWidth: '150px' }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+          <button onClick={() => handleApprovalStatusChange('APPROVED')} style={{ ...styles.contextMenuItem, padding: '0.3rem 0.5rem', fontSize: '0.8rem', color: 'var(--accent-success)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: 'var(--accent-success)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div> Approve</button>
+          <button onClick={() => handleApprovalStatusChange('CHANGES_REQUESTED')} style={{ ...styles.contextMenuItem, padding: '0.3rem 0.5rem', fontSize: '0.8rem', color: '#F59E0B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: '#F59E0B', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"></path></svg></div> Request Changes</button>
+          <button onClick={() => handleApprovalStatusChange('REJECTED')} style={{ ...styles.contextMenuItem, padding: '0.3rem 0.5rem', fontSize: '0.8rem', color: 'var(--accent-danger)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: 'var(--accent-danger)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></div> Reject</button>
+          <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+          <button onClick={() => handleApprovalStatusChange('PENDING')} style={{ ...styles.contextMenuItem, padding: '0.3rem 0.5rem', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: 'transparent', border: '1px dashed var(--text-tertiary)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></div> Clear</button>
+        </div>
+      )}
+
       {isShareModalOpen && <ShareProjectModal project={selectedProject} token={token} currentUser={user} onClose={() => setIsShareModalOpen(false)} onProjectUpdated={(updatedProj) => syncProjectStates(updatedProj)} />}
       {isRulesModalOpen && <RulesModal projectId={selectedProject.id} token={token} onClose={() => { setIsRulesModalOpen(false); setRuleToEdit(null); fetchProjectRules(); }} editRule={ruleToEdit} />}
       {isFormsModalOpen && (
@@ -1765,6 +1864,11 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             onClose={() => setActiveTaskPaneId(null)}
             onTaskUpdate={handleTaskUpdate}
             customFieldSettings={selectedProject.customFieldSettings}
+            onDeleteTask={(taskId) => {
+              handleDeleteTask(taskId);
+              setActiveTaskPaneId(null);
+            }}
+            onConvertTask={handleConvertTask}
             onOpenPopover={(type, task, coords) => setActivePopover({ type, task, coords })}
           />
         </div>
