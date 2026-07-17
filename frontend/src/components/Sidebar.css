@@ -264,6 +264,7 @@
   cursor: pointer;
   font-size: 0.9rem;
   color: var(--nav-text);
+  overflow: hidden;
 }
 
 .sidebar-project-item:hover {
@@ -283,6 +284,13 @@
   align-items: center;
   justify-content: center;
   font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.sidebar-project-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-wide-bottom {

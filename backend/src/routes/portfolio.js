@@ -21,8 +21,16 @@ const authenticateToken = (req, res, next) => {
 // 1. Kullanıcının tüm portföylerini getir
 router.get('/', authenticateToken, async (req, res) => {
   try {
+    const { workspaceId } = req.query;
+    
+    // Filtreyi duruma göre oluştur
+    const filter = { ownerId: req.user.userId };
+    if (workspaceId) {
+      filter.workspaceId = workspaceId;
+    }
+
     const portfolios = await prisma.portfolio.findMany({
-      where: { ownerId: req.user.userId },
+      where: filter,
       include: {
         projects: {
           include: {
@@ -89,10 +97,14 @@ router.get('/', authenticateToken, async (req, res) => {
 // 2. Yeni portföy oluştur
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { name, privacy, defaultView } = req.body;
+    const { name, privacy, defaultView, workspaceId } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Portföy adı gereklidir.' });
+    }
+    
+    if (!workspaceId) {
+      return res.status(400).json({ error: 'Çalışma alanı (workspaceId) gereklidir.' });
     }
 
     const newPortfolio = await prisma.portfolio.create({
@@ -100,8 +112,8 @@ router.post('/', authenticateToken, async (req, res) => {
         name,
         privacy: privacy || 'Public to My workspace',
         defaultView: defaultView || 'List',
-        status: 'On track',
-        ownerId: req.user.userId
+        ownerId: req.user.userId,
+        workspaceId
       },
       include: {
         projects: true,

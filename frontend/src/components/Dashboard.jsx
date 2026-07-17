@@ -303,7 +303,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
 }
 
 const styles = {
-  container: { backgroundColor: 'var(--bg-secondary)', minHeight: '100vh', padding: '2rem 3rem 6rem 3rem', fontFamily: 'system-ui', boxSizing: 'border-box', overflowY: 'auto' },
+  container: { backgroundColor: 'var(--bg-secondary)', height: '100%', padding: '2rem 3rem 6rem 3rem', fontFamily: 'system-ui', boxSizing: 'border-box', overflowY: 'auto' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' },
   headerDate: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' },
   headerGreeting: { fontSize: '2rem', fontWeight: '400', margin: 0, color: 'var(--text-primary)' },

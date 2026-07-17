@@ -25,7 +25,7 @@ router.get('/', authenticateToken, async (req, res) => {
       where: {
         members: {
           some: {
-            userId: req.user.id
+            userId: req.user.userId
           }
         }
       },
@@ -56,8 +56,20 @@ router.post('/', authenticateToken, async (req, res) => {
         name: name || 'My Workspace',
         members: {
           create: {
-            userId: req.user.id,
+            userId: req.user.userId,
             role: 'ADMIN'
+          }
+        },
+        teams: {
+          create: {
+            name: 'Work',
+            description: 'Default team',
+            members: {
+              create: {
+                userId: req.user.userId,
+                role: 'ADMIN'
+              }
+            }
           }
         }
       }

@@ -11,10 +11,10 @@ export default function ProjectListView({
   setLastInteractedSectionId,
   draggingTaskId,
   setDraggingTaskId,
-  draggingSectionId,       // YENİ
-  setDraggingSectionId,    // YENİ
-  handleLiveSectionSwap,   // YENİ
-  handleFinalSectionMove,  // YENİ
+  draggingSectionId,       // YENÄ°
+  setDraggingSectionId,    // YENÄ°
+  handleLiveSectionSwap,   // YENÄ°
+  handleFinalSectionMove,  // YENÄ°
   handleLiveTaskSwap,
   applyTaskFilter,
   applyTaskSort,
@@ -367,23 +367,23 @@ export default function ProjectListView({
             if (cf) setFieldOptionsList(cf.options || []);
             setEditingFieldOptions(true);
             setOpenColumnMenuName(null);
-          }} style={styles.dropdownItem}>✏️ Edit field</button>
+          }} style={styles.dropdownItem}>âœï¸ Edit field</button>
         )}
-        <button style={styles.dropdownItem}>⚯ Field access and permissions <span style={{ float: 'right' }}>{'>'}</span></button>
+        <button style={styles.dropdownItem}>âš¯ Field access and permissions <span style={{ float: 'right' }}>{'>'}</span></button>
         <div style={styles.menuDivider}></div>
-        <button style={styles.dropdownItem}>↑↓ Sort <span style={{ float: 'right' }}>{'>'}</span></button>
-        <button style={styles.dropdownItem}>≡ Filter</button>
-        <button style={styles.dropdownItem}>⊞ Group <span style={{ float: 'right' }}>{'>'}</span></button>
+        <button style={styles.dropdownItem}>â†‘â†“ Sort <span style={{ float: 'right' }}>{'>'}</span></button>
+        <button style={styles.dropdownItem}>â‰¡ Filter</button>
+        <button style={styles.dropdownItem}>âŠ Group <span style={{ float: 'right' }}>{'>'}</span></button>
         <div style={styles.menuDivider}></div>
         <button onClick={() => { setShowAddFieldMenu(true); setOpenColumnMenuName(null); }} style={styles.dropdownItem}>+ Add column</button>
-        <button style={styles.dropdownItem}>↔ Move column <span style={{ float: 'right' }}>{'>'}</span></button>
-        <button style={styles.dropdownItem}>👁 Hide column</button>
+        <button style={styles.dropdownItem}>â†” Move column <span style={{ float: 'right' }}>{'>'}</span></button>
+        <button style={styles.dropdownItem}>ğŸ‘ Hide column</button>
         <div style={styles.menuDivider}></div>
         <button style={styles.dropdownItem}>Add rule to field</button>
-        <button style={styles.dropdownItem}>✨ AI auto-fill</button>
+        <button style={styles.dropdownItem}>âœ¨ AI auto-fill</button>
         <div style={styles.menuDivider}></div>
         {(colName !== 'name' && colName !== 'assignee' && colName !== 'dueDate') && (
-          <button onClick={(e) => { e.stopPropagation(); handleDeleteField(titles[colName] || colName); }} style={{ ...styles.dropdownItemDelete, padding: '0.5rem 0.75rem', marginTop: 0 }}>🗑 Delete field</button>
+          <button onClick={(e) => { e.stopPropagation(); handleDeleteField(titles[colName] || colName); }} style={{ ...styles.dropdownItemDelete, padding: '0.5rem 0.75rem', marginTop: 0 }}>ğŸ—‘ Delete field</button>
         )}
       </div>
     );
@@ -410,7 +410,7 @@ export default function ProjectListView({
   };
 
   const handleAddOption = () => {
-    setFieldOptionsList([...fieldOptionsList, { id: Date.now().toString(), label: '', color: '#FDBA74', icon: '⌄' }]);
+    setFieldOptionsList([...fieldOptionsList, { id: Date.now().toString(), label: '', color: '#FDBA74', icon: 'âŒ„' }]);
   };
 
   const handleRemoveOption = (id) => {
@@ -422,295 +422,19 @@ export default function ProjectListView({
   };
 
   return (
-    <div style={styles.listSpreadsheetWrapper}>
-      {editingFieldOptions && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)', fontWeight: '500' }}>✏️ Edit field</h2>
-                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>Created by Iboro, 8 Jul</p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <button style={{ padding: '0.3rem 0.6rem', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
-                  <span style={{ fontSize: '1rem' }}>👥</span> Manage access
-                </button>
-                <button onClick={() => setEditingFieldOptions(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>✕</button>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Field title <span style={{ color: 'var(--accent-danger)' }}>*</span></label>
-                <input
-                  type="text"
-                  value={fieldTitle}
-                  onChange={(e) => setFieldTitle(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)', boxSizing: 'border-box', outlineColor: 'var(--accent-primary)' }}
-                />
-              </div>
-              <div style={{ width: '150px' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Field type</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--text-secondary)', fontSize: '0.9rem', paddingTop: '0.4rem' }}>
-                  <span>⊖</span> Single-select
-                </div>
-              </div>
-            </div>
-
-            <button style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', padding: 0, fontSize: '0.85rem', cursor: 'pointer', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <span style={{ fontSize: '1rem' }}>+</span> Add description
-            </button>
-
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Options <span style={{ color: 'var(--accent-danger)' }}>*</span></label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {fieldOptionsList.map((opt) => (
-                  <div
-                    key={opt.id}
-                    draggable
-                    onDragStart={(e) => handleDragStartOption(e, opt.id)}
-                    onDragOver={(e) => handleDragOverOption(e, opt.id)}
-                    onDragEnd={handleDragEndOption}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: draggingOptionId === opt.id ? 0.5 : 1, padding: '0.2rem 0' }}
-                  >
-                    <div style={{ cursor: 'grab', color: 'var(--text-tertiary)', padding: '0 0.2rem', display: 'flex', alignItems: 'center', userSelect: 'none', fontSize: '1.2rem' }}>⋮⋮</div>
-                    <input
-                      type="color"
-                      value={opt.color || '#E0E7FF'}
-                      onChange={(e) => setFieldOptionsList(fieldOptionsList.map(o => o.id === opt.id ? { ...o, color: e.target.value } : o))}
-                      style={{ width: 24, height: 24, border: 'none', padding: 0, backgroundColor: 'transparent', cursor: 'pointer', flexShrink: 0 }}
-                      title="Choose color"
-                    />
-                    <input
-                      type="text"
-                      value={opt.label}
-                      onChange={(e) => handleOptionLabelChange(opt.id, e.target.value)}
-                      placeholder="Type an option name"
-                      style={{ flex: 1, border: 'none', outline: 'none', fontSize: '0.9rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' }}
-                    />
-                    <button onClick={() => handleRemoveOption(opt.id)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
-                  </div>
-                ))}
-              </div>
-              <button onClick={handleAddOption} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', padding: 0, fontSize: '0.85rem', cursor: 'pointer', marginTop: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                <span style={{ fontSize: '1rem' }}>+</span> Add an option
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                <input type="checkbox" style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-                Add to My workspace's field library
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                <input type="checkbox" defaultChecked style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-                Notify collaborators when this field's value is changed
-              </label>
-            </div>
-
-            <div style={{ borderTop: '1px solid #E5E7EB', margin: '0 -1.5rem 1rem -1.5rem' }}></div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button style={{ padding: '0.5rem 1rem', backgroundColor: 'transparent', color: '#EF4444', border: '1px solid #FCA5A5', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }} onClick={() => handleDeleteField(fieldTitle)}>Delete field</button>
-              <button style={{ padding: '0.5rem 1rem', backgroundColor: '#4F46E5', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }} onClick={() => {
-
-                const newCustomFields = customFields.map(cf => cf.title === fieldTitle ? { ...cf, options: fieldOptionsList } : cf);
-                setCustomFields(newCustomFields);
-                handleSaveProjectSettings({ customFieldSettings: newCustomFields });
-                setEditingFieldOptions(false);
-              }}>Save changes</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Grid Tablo Başlık Sütunları */}
-      <div style={styles.listTableHeaderRow}>
-        <div
-          style={{ ...styles.gridHeaderCell, width: colWidths.name, flexShrink: 0, paddingLeft: '3.5rem', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-          onMouseEnter={() => setHoveredColumnName('name')}
-          onMouseLeave={() => setHoveredColumnName(null)}
-          onClick={() => handleSortOptionClick && handleSortOptionClick('Alphabetical')}
-        >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, fontWeight: activeSort?.field === 'Alphabetical' ? '700' : '500' }}>
-            Name {activeSort?.field === 'Alphabetical' && (activeSort.direction === 'asc' ? '↑' : '↓')}
-          </span>
-          {(hoveredColumnName === 'name' || openColumnMenuName === 'name') && (
-            <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>▼</button>
-          )}
-          {openColumnMenuName === 'name' && renderColumnDropdownMenu('name')}
-          <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, 'name')} />
-        </div>
-        {columnOrder.map(colId => {
-          let title = '';
-          let menuName = colId;
-
-          if (colId === 'assignee') title = 'Assignee';
-          else if (colId === 'dueDate') title = 'Due date';
-          else {
-            const cf = customFields.find(f => f.id === colId);
-            if (cf) {
-              title = cf.title;
-              menuName = cf.title;
-            } else {
-              return null;
-            }
-          }
-
-          return (
-            <div
-              key={colId}
-              draggable
-              onDragStart={(e) => handleColDragStart(e, colId)}
-              onDragOver={(e) => handleColDragOver(e, colId)}
-              onDrop={(e) => handleColDrop(e, colId)}
-              onDragEnd={handleColDragEnd}
-              onClick={() => handleSortOptionClick && handleSortOptionClick(title)}
-              style={{ ...styles.gridHeaderCell, width: colWidths[colId] || 140, flexShrink: 0, position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: draggingColId === colId ? 0.5 : 1, cursor: draggingColId === colId ? 'grabbing' : 'pointer', boxShadow: dropTargetCol.id === colId ? (dropTargetCol.position === 'left' ? 'inset 3px 0 0 #4F46E5' : 'inset -3px 0 0 #4F46E5') : 'none' }}
-              onMouseEnter={() => setHoveredColumnName(menuName)}
-              onMouseLeave={() => setHoveredColumnName(null)}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, pointerEvents: 'none', fontWeight: activeSort?.field === title ? '700' : '500' }}>
-                {title} {activeSort?.field === title && (activeSort.direction === 'asc' ? '↑' : '↓')}
-              </span>
-              {(hoveredColumnName === menuName || openColumnMenuName === menuName) && (
-                <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === menuName; closeAllMenus(); if (!isOpen) setOpenColumnMenuName(menuName); }} style={styles.columnHeaderMenuBtn}>▼</button>
-              )}
-              {openColumnMenuName === menuName && renderColumnDropdownMenu(menuName)}
-              <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, colId)} />
-            </div>
-          );
-        })}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', flexShrink: 0, position: 'relative', borderBottom: '1px solid #E5E7EB' }}>
-          <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = showAddFieldMenu; closeAllMenus(); setShowAddFieldMenu(!isOpen); }} style={styles.addFieldButton} title="Add column">
-            +
-          </button>
-          {showAddFieldMenu && (
-            <div style={styles.addFieldMenu} onClick={(e) => e.stopPropagation()}>
-              <div style={styles.addFieldMenuHeader}>Field types</div>
-              <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>▼</span> Single-select</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>▼</span> Multi-select</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>📅</span> Date</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>👤</span> People</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🔗</span> Reference</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>A</span> Text</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>#</span> Number</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ƒ(x)</span> Formula</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🆔</span> ID</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⏱️</span> Timer</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⏱️</span> Time tracking</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🔍</span> Rollup</button>
-              <div style={styles.addFieldMenuShowMore}>Show more</div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Bölümler ve Görevler Gövdesi */}
-      <div style={styles.listSpreadsheetBody}>
-        {(groupedSections || selectedProject.sections)?.map((section, idx) => {
-          const filteredTasks = groupedSections ? section.tasks : (applyTaskSort ? applyTaskSort(applyTaskFilter(section.tasks)) : applyTaskFilter(section.tasks))
-          const isCollapsed = collapsedSections[section.id]
-          const isEditing = editingSectionId === section.id
-
-          return (
-            <div
-              key={section.id}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                opacity: draggingSectionId === section.id ? 0.4 : 1
-              }}
-              onClickCapture={() => setLastInteractedSectionId(section.id)}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (draggingSectionId && draggingSectionId !== section.id && !isVirtualGrouping) {
-                  const sortedSections = [...(selectedProject.sections || [])].sort((a, b) => a.order - b.order);
-                  handleLiveSectionSwap(draggingSectionId, section.id);
-                }
-              }}
-              onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
-            >
-              {/* BÖLÜM (SECTION) BAŞLIK SATIRI */}
-              <div style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
-                <div
-                  draggable={!isReadOnly && !isEditing && !isVirtualGrouping}
-                  onDragStart={(e) => {
-                    setDraggingSectionId(section.id);
-                    e.dataTransfer.setData('drag-type', 'section');
-                    e.dataTransfer.setData('section-id', section.id);
-
-                    const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
-                    if (ghostEl) {
-                      ghostEl.textContent = section.name;
-                      e.dataTransfer.setDragImage(ghostEl, 20, 15);
-                    }
-                  }}
-                  onDragEnd={() => {
-                    handleFinalSectionMove();
-                    setDraggingSectionId(null);
-                  }}
-                  style={styles.drag6DotHandleCell}
-                >
-                  ⋮⋮
-                </div>
-
-                <div
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: isEditing ? 'default' : 'pointer' }}
-                  onClick={() => !isEditing && setCollapsedSections({ ...collapsedSections, [section.id]: !isCollapsed })}
-                >
-                  <span style={styles.accordionArrowIcon}>{isCollapsed ? '▶' : '▼'}</span>
-
-                  {isEditing ? (
-                    <input
-                      autoFocus
-                      value={editSectionNameValue}
-                      onChange={(e) => setEditSectionNameValue(e.target.value)}
-                      onBlur={() => submitRename(section)}
-                      onKeyDown={(e) => e.key === 'Enter' && submitRename(section)}
-                      style={styles.sectionRenameInput}
-                    />
-                  ) : (
-                    <span style={styles.sectionTitleText}>{section.name}</span>
-                  )}
-
-                  {!isEditing && <span style={styles.sectionTaskCountBadge}>{filteredTasks.length}</span>}
-
-                  {/* THREE DOTS MENU */}
-                  {!isReadOnly && !isEditing && !isVirtualGrouping && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); const isOpen = openSectionMenuId === section.id; closeAllMenus(); if (!isOpen) setOpenSectionMenuId(section.id); }}
-                      style={styles.threeDotButton}
-                    >
-                      ⋮
-                    </button>
-                  )}
-                </div>
-
-                {openSectionMenuId === section.id && (
-                  <div style={{ ...styles.dropdownMenu, left: '250px', right: 'auto', top: '2rem' }} onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => { setEditingSectionId(section.id); setEditSectionNameValue(section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Yeniden Adlandır</button>
-                    <button onClick={() => { if (onDeleteSection) onDeleteSection(section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>Bölümü Sil</button>
-                  </div>
-                )}
-              </div>
-
-              {/* Görev Satırları Gövdesi */}
-              {!isCollapsed && (
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {filteredTasks.map(task => (
+  const renderTaskRow = (task, sectionId) => {
+    return (
                     <div
                       key={task.id}
-                      onClick={() => setLastInteractedSectionId(section.id)}
+                      onClick={() => setLastInteractedSectionId(sectionId)}
                       data-task-id={task.id}
                       style={{
                         ...styles.taskDataTableRow,
                         position: 'relative',
                         zIndex: openApprovalMenuTaskId === task.id ? 9999 : 0,
-                        backgroundColor: lastInteractedSectionId === section.id ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+                        backgroundColor: lastInteractedSectionId === sectionId ? 'var(--bg-secondary)' : 'var(--bg-primary)',
                         opacity: draggingTaskId === task.id ? 0.4 : 1,
-                        borderLeft: lastInteractedSectionId === section.id ? '3px solid #4F46E5' : '3px solid transparent'
+                        borderLeft: lastInteractedSectionId === sectionId ? '3px solid #4F46E5' : '3px solid transparent'
                       }}
                       onContextMenu={(e) => { e.preventDefault(); onTaskContextMenu(e, task.id); }}
                       onDragOver={(e) => {
@@ -719,7 +443,7 @@ export default function ProjectListView({
                           if (handleLiveTaskSwap) handleLiveTaskSwap(draggingTaskId, task.id);
                         }
                       }}
-                      onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id, task.id); }}
+                      onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, sectionId, task.id); }}
                     >
                       <div
                         draggable={!isReadOnly && !isVirtualGrouping}
@@ -738,10 +462,10 @@ export default function ProjectListView({
                         onDragEnd={() => setDraggingTaskId(null)}
                         style={styles.drag6DotHandleCellTask}
                       >
-                        ⋮⋮
+                        â‹®â‹®
                       </div>
 
-                      {/* Hücre 1: Checkbox & Başlık */}
+                      {/* HÃ¼cre 1: Checkbox & BaÅŸlÄ±k */}
                       <div
                         style={{ ...styles.gridBodyCell, width: colWidths.name, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '1rem', cursor: 'pointer', overflow: openApprovalMenuTaskId === task.id ? 'visible' : 'hidden', position: openApprovalMenuTaskId === task.id ? 'relative' : 'static', zIndex: openApprovalMenuTaskId === task.id ? 9999 : 'auto' }}
                         onClick={() => {
@@ -773,7 +497,7 @@ export default function ProjectListView({
                           </div>
                         ) : task.type === 'MILESTONE' ? (
                           <div
-                            onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleTaskCompleteInline(task, section.id); }}
+                            onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleTaskCompleteInline(task, sectionId); }}
                             style={{
                               width: '12px', height: '12px', flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer',
                               transform: 'rotate(45deg)',
@@ -784,7 +508,7 @@ export default function ProjectListView({
                           />
                         ) : (
                           <div
-                            onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleTaskCompleteInline(task, section.id); }}
+                            onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleTaskCompleteInline(task, sectionId); }}
                             style={{
                               width: '18px', height: '18px', borderRadius: '50%', border: '1px solid',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -805,9 +529,9 @@ export default function ProjectListView({
                             value={editTaskTitleValue}
                             autoFocus
                             onChange={(e) => setEditTaskTitleValue(e.target.value)}
-                            onBlur={() => submitTaskRename(task, section.id)}
+                            onBlur={() => submitTaskRename(task, sectionId)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') submitTaskRename(task, section.id);
+                              if (e.key === 'Enter') submitTaskRename(task, sectionId);
                               if (e.key === 'Escape') setEditingTaskId(null);
                             }}
                             style={{
@@ -861,7 +585,7 @@ export default function ProjectListView({
                       {columnOrder.map(colId => {
                         if (colId === 'assignee') {
                           return (
-                            <div key="assignee" style={{ ...styles.gridBodyCell, width: colWidths.assignee, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'assignee', task, section.id)}>
+                            <div key="assignee" style={{ ...styles.gridBodyCell, width: colWidths.assignee, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'assignee', task, sectionId)}>
                               {task.assignee ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', height: '22px' }}>
                                   <div style={styles.listAvatarIcon}>{task.assignee.name?.[0].toUpperCase()}</div>
@@ -869,14 +593,14 @@ export default function ProjectListView({
                                 </div>
                               ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', height: '22px' }}>
-                                  <span style={{ color: '#9CA3AF', fontSize: '0.8rem' }}>👤 Unassigned</span>
+                                  <span style={{ color: '#9CA3AF', fontSize: '0.8rem' }}>ğŸ‘¤ Unassigned</span>
                                 </div>
                               )}
                             </div>
                           );
                         } else if (colId === 'dueDate') {
                           return (
-                            <div key="dueDate" style={{ ...styles.gridBodyCell, width: colWidths.dueDate, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer', color: (task.dueDate && new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0) && !task.isCompleted) ? '#EF4444' : '#4F46E5', fontSize: '0.8rem', fontWeight: '500' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'date', task, section.id)}>
+                            <div key="dueDate" style={{ ...styles.gridBodyCell, width: colWidths.dueDate, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer', color: (task.dueDate && new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0) && !task.isCompleted) ? '#EF4444' : '#4F46E5', fontSize: '0.8rem', fontWeight: '500' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'date', task, sectionId)}>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatFriendlyDate(task.startDate, task.dueDate)}</span>
                             </div>
                           );
@@ -914,7 +638,7 @@ export default function ProjectListView({
                                   {(cf.type === 'SELECT' || cf.type === 'single-select') && cf.options?.map(o => (
                                     <button
                                       key={o.id}
-                                      onClick={() => { handleTaskCustomFieldUpdate(task.id, section.id, cf.id, o.label); setOpenCellMenuId(null); }}
+                                      onClick={() => { handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, o.label); setOpenCellMenuId(null); }}
                                       style={{ ...styles.dropdownItem, color: 'var(--text-primary)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                                     >
                                       <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', flexShrink: 0 }}></div>
@@ -922,11 +646,11 @@ export default function ProjectListView({
                                     </button>
                                   ))}
                                   <div style={{ borderTop: '1px solid #E5E7EB', margin: '4px 0' }}></div>
-                                  <button onClick={() => { handleTaskCustomFieldUpdate(task.id, section.id, cf.id, ''); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  <button onClick={() => { handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, ''); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                                     Clear value
                                   </button>
                                   <button onClick={() => { setFieldTitle(cf.title); setFieldOptionsList(cf.options); setEditingFieldOptions(true); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                    <span style={{ fontSize: '1rem' }}>✏️</span> Edit field
+                                    <span style={{ fontSize: '1rem' }}>âœï¸</span> Edit field
                                   </button>
                                 </div>
                               )}
@@ -935,9 +659,302 @@ export default function ProjectListView({
                         }
                       })}
                     </div>
-                  ))}
+    );
+  };
 
-                  {/* Satır İçi Hızlı Görev Ekleme */}
+    <div style={styles.listSpreadsheetWrapper}>
+      {editingFieldOptions && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)', fontWeight: '500' }}>âœï¸ Edit field</h2>
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>Created by Iboro, 8 Jul</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button style={{ padding: '0.3rem 0.6rem', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                  <span style={{ fontSize: '1rem' }}>ğŸ‘¥</span> Manage access
+                </button>
+                <button onClick={() => setEditingFieldOptions(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>âœ•</button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Field title <span style={{ color: 'var(--accent-danger)' }}>*</span></label>
+                <input
+                  type="text"
+                  value={fieldTitle}
+                  onChange={(e) => setFieldTitle(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)', boxSizing: 'border-box', outlineColor: 'var(--accent-primary)' }}
+                />
+              </div>
+              <div style={{ width: '150px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Field type</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--text-secondary)', fontSize: '0.9rem', paddingTop: '0.4rem' }}>
+                  <span>âŠ–</span> Single-select
+                </div>
+              </div>
+            </div>
+
+            <button style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', padding: 0, fontSize: '0.85rem', cursor: 'pointer', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <span style={{ fontSize: '1rem' }}>+</span> Add description
+            </button>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Options <span style={{ color: 'var(--accent-danger)' }}>*</span></label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {fieldOptionsList.map((opt) => (
+                  <div
+                    key={opt.id}
+                    draggable
+                    onDragStart={(e) => handleDragStartOption(e, opt.id)}
+                    onDragOver={(e) => handleDragOverOption(e, opt.id)}
+                    onDragEnd={handleDragEndOption}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: draggingOptionId === opt.id ? 0.5 : 1, padding: '0.2rem 0' }}
+                  >
+                    <div style={{ cursor: 'grab', color: 'var(--text-tertiary)', padding: '0 0.2rem', display: 'flex', alignItems: 'center', userSelect: 'none', fontSize: '1.2rem' }}>â‹®â‹®</div>
+                    <input
+                      type="color"
+                      value={opt.color || '#E0E7FF'}
+                      onChange={(e) => setFieldOptionsList(fieldOptionsList.map(o => o.id === opt.id ? { ...o, color: e.target.value } : o))}
+                      style={{ width: 24, height: 24, border: 'none', padding: 0, backgroundColor: 'transparent', cursor: 'pointer', flexShrink: 0 }}
+                      title="Choose color"
+                    />
+                    <input
+                      type="text"
+                      value={opt.label}
+                      onChange={(e) => handleOptionLabelChange(opt.id, e.target.value)}
+                      placeholder="Type an option name"
+                      style={{ flex: 1, border: 'none', outline: 'none', fontSize: '0.9rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' }}
+                    />
+                    <button onClick={() => handleRemoveOption(opt.id)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: '1.2rem', cursor: 'pointer' }}>âœ•</button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={handleAddOption} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', padding: 0, fontSize: '0.85rem', cursor: 'pointer', marginTop: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ fontSize: '1rem' }}>+</span> Add an option
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <input type="checkbox" style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                Add to My workspace's field library
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <input type="checkbox" defaultChecked style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                Notify collaborators when this field's value is changed
+              </label>
+            </div>
+
+            <div style={{ borderTop: '1px solid #E5E7EB', margin: '0 -1.5rem 1rem -1.5rem' }}></div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <button style={{ padding: '0.5rem 1rem', backgroundColor: 'transparent', color: '#EF4444', border: '1px solid #FCA5A5', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }} onClick={() => handleDeleteField(fieldTitle)}>Delete field</button>
+              <button style={{ padding: '0.5rem 1rem', backgroundColor: '#4F46E5', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500' }} onClick={() => {
+
+                const newCustomFields = customFields.map(cf => cf.title === fieldTitle ? { ...cf, options: fieldOptionsList } : cf);
+                setCustomFields(newCustomFields);
+                handleSaveProjectSettings({ customFieldSettings: newCustomFields });
+                setEditingFieldOptions(false);
+              }}>Save changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grid Tablo BaÅŸlÄ±k SÃ¼tunlarÄ± */}
+      <div style={styles.listTableHeaderRow}>
+        <div
+          style={{ ...styles.gridHeaderCell, width: colWidths.name, flexShrink: 0, paddingLeft: '3.5rem', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          onMouseEnter={() => setHoveredColumnName('name')}
+          onMouseLeave={() => setHoveredColumnName(null)}
+          onClick={() => handleSortOptionClick && handleSortOptionClick('Alphabetical')}
+        >
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, fontWeight: activeSort?.field === 'Alphabetical' ? '700' : '500' }}>
+            Name {activeSort?.field === 'Alphabetical' && (activeSort.direction === 'asc' ? 'â†‘' : 'â†“')}
+          </span>
+          {(hoveredColumnName === 'name' || openColumnMenuName === 'name') && (
+            <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>â–¼</button>
+          )}
+          {openColumnMenuName === 'name' && renderColumnDropdownMenu('name')}
+          <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, 'name')} />
+        </div>
+        {columnOrder.map(colId => {
+          let title = '';
+          let menuName = colId;
+
+          if (colId === 'assignee') title = 'Assignee';
+          else if (colId === 'dueDate') title = 'Due date';
+          else {
+            const cf = customFields.find(f => f.id === colId);
+            if (cf) {
+              title = cf.title;
+              menuName = cf.title;
+            } else {
+              return null;
+            }
+          }
+
+          return (
+            <div
+              key={colId}
+              draggable
+              onDragStart={(e) => handleColDragStart(e, colId)}
+              onDragOver={(e) => handleColDragOver(e, colId)}
+              onDrop={(e) => handleColDrop(e, colId)}
+              onDragEnd={handleColDragEnd}
+              onClick={() => handleSortOptionClick && handleSortOptionClick(title)}
+              style={{ ...styles.gridHeaderCell, width: colWidths[colId] || 140, flexShrink: 0, position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: draggingColId === colId ? 0.5 : 1, cursor: draggingColId === colId ? 'grabbing' : 'pointer', boxShadow: dropTargetCol.id === colId ? (dropTargetCol.position === 'left' ? 'inset 3px 0 0 #4F46E5' : 'inset -3px 0 0 #4F46E5') : 'none' }}
+              onMouseEnter={() => setHoveredColumnName(menuName)}
+              onMouseLeave={() => setHoveredColumnName(null)}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, pointerEvents: 'none', fontWeight: activeSort?.field === title ? '700' : '500' }}>
+                {title} {activeSort?.field === title && (activeSort.direction === 'asc' ? 'â†‘' : 'â†“')}
+              </span>
+              {(hoveredColumnName === menuName || openColumnMenuName === menuName) && (
+                <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === menuName; closeAllMenus(); if (!isOpen) setOpenColumnMenuName(menuName); }} style={styles.columnHeaderMenuBtn}>â–¼</button>
+              )}
+              {openColumnMenuName === menuName && renderColumnDropdownMenu(menuName)}
+              <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, colId)} />
+            </div>
+          );
+        })}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', flexShrink: 0, position: 'relative', borderBottom: '1px solid #E5E7EB' }}>
+          <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = showAddFieldMenu; closeAllMenus(); setShowAddFieldMenu(!isOpen); }} style={styles.addFieldButton} title="Add column">
+            +
+          </button>
+          {showAddFieldMenu && (
+            <div style={styles.addFieldMenu} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.addFieldMenuHeader}>Field types</div>
+              <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â–¼</span> Single-select</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â–¼</span> Multi-select</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ“…</span> Date</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ‘¤</span> People</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ”—</span> Reference</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>A</span> Text</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>#</span> Number</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>Æ’(x)</span> Formula</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ†”</span> ID</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â±ï¸</span> Timer</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â±ï¸</span> Time tracking</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ”</span> Rollup</button>
+              <div style={styles.addFieldMenuShowMore}>Show more</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* BÃ¶lÃ¼mler ve GÃ¶revler GÃ¶vdesi */}
+      <div style={styles.listSpreadsheetBody}>
+        {(groupedSections || selectedProject.sections)?.map((section, idx) => {
+          const filteredTasks = groupedSections ? section.tasks : (applyTaskSort ? applyTaskSort(applyTaskFilter(section.tasks)) : applyTaskFilter(section.tasks))
+          const isCollapsed = collapsedSections[section.id]
+          const isEditing = editingSectionId === section.id
+
+          return (
+            <div
+              key={section.id}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                opacity: draggingSectionId === section.id ? 0.4 : 1
+              }}
+              onClickCapture={() => setLastInteractedSectionId(section.id)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (draggingSectionId && draggingSectionId !== section.id && !isVirtualGrouping) {
+                  const sortedSections = [...(selectedProject.sections || [])].sort((a, b) => a.order - b.order);
+                  handleLiveSectionSwap(draggingSectionId, section.id);
+                }
+              }}
+              onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
+            >
+              {/* BÃ–LÃœM (SECTION) BAÅLIK SATIRI */}
+              <div style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
+                <div
+                  draggable={!isReadOnly && !isEditing && !isVirtualGrouping}
+                  onDragStart={(e) => {
+                    setDraggingSectionId(section.id);
+                    e.dataTransfer.setData('drag-type', 'section');
+                    e.dataTransfer.setData('section-id', section.id);
+
+                    const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
+                    if (ghostEl) {
+                      ghostEl.textContent = section.name;
+                      e.dataTransfer.setDragImage(ghostEl, 20, 15);
+                    }
+                  }}
+                  onDragEnd={() => {
+                    handleFinalSectionMove();
+                    setDraggingSectionId(null);
+                  }}
+                  style={styles.drag6DotHandleCell}
+                >
+                  â‹®â‹®
+                </div>
+
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: isEditing ? 'default' : 'pointer' }}
+                  onClick={() => !isEditing && setCollapsedSections({ ...collapsedSections, [section.id]: !isCollapsed })}
+                >
+                  <span style={styles.accordionArrowIcon}>{isCollapsed ? 'â–¶' : 'â–¼'}</span>
+
+                  {isEditing ? (
+                    <input
+                      autoFocus
+                      value={editSectionNameValue}
+                      onChange={(e) => setEditSectionNameValue(e.target.value)}
+                      onBlur={() => submitRename(section)}
+                      onKeyDown={(e) => e.key === 'Enter' && submitRename(section)}
+                      style={styles.sectionRenameInput}
+                    />
+                  ) : (
+                    <span style={styles.sectionTitleText}>{section.name}</span>
+                  )}
+
+                  {!isEditing && <span style={styles.sectionTaskCountBadge}>{filteredTasks.length}</span>}
+
+                  {/* THREE DOTS MENU */}
+                  {!isReadOnly && !isEditing && !isVirtualGrouping && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); const isOpen = openSectionMenuId === section.id; closeAllMenus(); if (!isOpen) setOpenSectionMenuId(section.id); }}
+                      style={styles.threeDotButton}
+                    >
+                      â‹®
+                    </button>
+                  )}
+                </div>
+
+                {openSectionMenuId === section.id && (
+                  <div style={{ ...styles.dropdownMenu, left: '250px', right: 'auto', top: '2rem' }} onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => { setEditingSectionId(section.id); setEditSectionNameValue(section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Yeniden AdlandÄ±r</button>
+                    <button onClick={() => { if (onDeleteSection) onDeleteSection(section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>BÃ¶lÃ¼mÃ¼ Sil</button>
+                  </div>
+                )}
+              </div>
+
+              {/* GÃ¶rev SatÄ±rlarÄ± GÃ¶vdesi */}
+              {!isCollapsed && (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {section.subgroups ? (
+                    section.subgroups.map(subgroup => (
+                      <div key={subgroup.id}>
+                        <div style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>â†³</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>{subgroup.name}</span>
+                          <span style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' }}>{subgroup.tasks.length}</span>
+                        </div>
+                        {subgroup.tasks.map(t => renderTaskRow(t, section.id))}
+                      </div>
+                    ))
+                  ) : (
+                    filteredTasks.map(t => renderTaskRow(t, section.id))
+                  )}
+                  {/* SatÄ±r Ä°Ã§i HÄ±zlÄ± GÃ¶rev Ekleme */}
                   {!isReadOnly && !isVirtualGrouping && (
                     <div style={styles.quickAddTaskRowList}>
                       <span style={{ paddingLeft: '3.5rem', color: '#9CA3AF', fontSize: '0.85rem' }}>+</span>

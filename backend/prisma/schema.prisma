@@ -29,10 +29,14 @@ model User {
   actorNotifications Notification[] @relation("ActorNotifications")
   ownedGoals    Goal[]            @relation("OwnedGoals")
   uploadedAttachments Attachment[] @relation("UploadedAttachments")
-  activities    TaskActivity[]
   workspaceMembers WorkspaceMember[]
-  teamMembers   TeamMember[]
+  teamMembers      TeamMember[]
+  
+  projectMessages  ProjectMessage[]
+  projectMessageReplies ProjectMessageReply[]
+  
   commentReactions CommentReaction[]
+  activities    TaskActivity[]
 }
 
 model Workspace {
@@ -43,6 +47,7 @@ model Workspace {
   members     WorkspaceMember[]
   teams       Team[]
   projects    Project[]
+  portfolios  Portfolio[]
 }
 
 model WorkspaceMember {
@@ -112,6 +117,8 @@ model Project {
   members     ProjectMembership[] // ← DEĞİŞEN SATIR: Rol içeren proje üyeleri
   rules       Rule[]              // Kural motoru için
   portfolios  PortfolioProject[]
+  
+  projectMessages ProjectMessage[]
 
   defaultView String              @default("List")
   activeViews Json?               @default("[\"Overview\", \"List\", \"Board\", \"Timeline\", \"Gantt\", \"Dashboard\", \"Calendar\", \"Workload\", \"Forms\"]")
@@ -301,6 +308,8 @@ model Portfolio {
 
   ownerId     String
   owner       User     @relation("OwnedPortfolios", fields: [ownerId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   projects    PortfolioProject[]
   
   childPortfolios   PortfolioPortfolio[] @relation("ParentPortfolios")
@@ -331,6 +340,35 @@ model PortfolioPortfolio {
   childPortfolio    Portfolio @relation("ChildPortfolios", fields: [childPortfolioId], references: [id], onDelete: Cascade)
 
   @@unique([parentPortfolioId, childPortfolioId])
+}
+
+// --- YENİ MODEL: PROJECT MESSAGES ---
+model ProjectMessage {
+  id        String   @id @default(uuid())
+  subject   String?
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  replies   ProjectMessageReply[]
+}
+
+model ProjectMessageReply {
+  id        String   @id @default(uuid())
+  text      String
+  createdAt DateTime @default(now())
+
+  messageId String
+  message   ProjectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // --- YENİ MODEL: BİLDİRİMLER (NOTIFICATIONS) ---

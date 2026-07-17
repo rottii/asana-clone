@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import IconColorPicker from './IconColorPicker';
 
-export default function CreateProject({ token, setProjects, setActiveView, setSelectedProject, portfolioCreationParent, setPortfolioCreationParent, activeWorkspace }) {
+export default function CreateProject({ token, setProjects, setPortfolios, setActiveView, setSelectedProject, portfolioCreationParent, setPortfolioCreationParent, activeWorkspace }) {
   const [step, setStep] = useState(1);
   const [projectName, setProjectName] = useState('new project');
   const [privacy, setPrivacy] = useState('My workspace');
@@ -10,6 +10,12 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
   const [icon, setIcon] = useState('📋');
   const [showPicker, setShowPicker] = useState(false);
   const [templates, setTemplates] = useState([]);
+
+  useEffect(() => {
+    if (activeWorkspace?.teams?.length > 0 && !teamId) {
+      setTeamId(activeWorkspace.teams[0].id);
+    }
+  }, [activeWorkspace, teamId]);
 
   useEffect(() => {
     if (!token) return;
@@ -117,6 +123,9 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
             body: JSON.stringify({ projectId: data.id })
           })
           .then(() => {
+             if (setPortfolios) {
+               setPortfolios(prev => prev.map(p => p.id === portfolioCreationParent ? { ...p, projectsCount: (p.projectsCount || 0) + 1 } : p));
+             }
              if (setPortfolioCreationParent) setPortfolioCreationParent(null);
              setActiveView('project');
           })
@@ -156,21 +165,7 @@ export default function CreateProject({ token, setProjects, setActiveView, setSe
               />
             </div>
 
-            {activeWorkspace && activeWorkspace.teams && activeWorkspace.teams.length > 0 && (
-              <div style={styles.formGroup}>
-                <label style={styles.formLabel}>Team</label>
-                <select 
-                  style={styles.formSelect}
-                  value={teamId}
-                  onChange={(e) => setTeamId(e.target.value)}
-                >
-                  <option value="">No Team (Personal Project)</option>
-                  {activeWorkspace.teams.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+
 
             <div style={styles.formGroup}>
               <label style={styles.formLabel}>Project icon & color</label>

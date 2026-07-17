@@ -145,7 +145,7 @@ export default function App() {
 
   // Yalnızca aktif workspace'e ait olanları filtrele
   const filteredProjects = projects.filter(p => p.workspaceId === activeWorkspaceId)
-  const filteredPortfolios = portfolios.filter(p => true) // TODO: If portfolios belong to workspaces, filter them too. Assuming global for now or implicitly linked.
+  const filteredPortfolios = portfolios.filter(p => p.workspaceId === activeWorkspaceId)
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
 
   return (
@@ -179,9 +179,14 @@ export default function App() {
           setActiveView={setActiveView}
           user={user}
           token={token}
-          portfolios={filteredPortfolios}
+          handleLogout={handleLogout}
+          isDarkMode={isDarkMode}
+          setIsDarkMode={setIsDarkMode}
           workspaces={workspaces}
           activeWorkspace={activeWorkspace}
+          activeWorkspaceId={activeWorkspaceId}
+          setActiveWorkspaceId={setActiveWorkspaceId}
+          portfolios={filteredPortfolios}
           selectedPortfolio={selectedPortfolio}
           setSelectedPortfolio={setSelectedPortfolio}
         />
@@ -222,6 +227,7 @@ export default function App() {
               setActiveView={setActiveView}
               handleSelectProject={handleSelectProject}
               token={token}
+              activeWorkspaceId={activeWorkspaceId}
             />
           ) : activeView === 'portfolios' ? (
             <Portfolios 
@@ -232,6 +238,7 @@ export default function App() {
               setSelectedPortfolio={setSelectedPortfolio}
               portfolioCreationParent={portfolioCreationParent}
               setPortfolioCreationParent={setPortfolioCreationParent}
+              activeWorkspaceId={activeWorkspaceId}
             />
           ) : activeView === 'portfolio_detail' && selectedPortfolio ? (
             <PortfolioDetail
@@ -259,6 +266,7 @@ export default function App() {
             <CreateProject
               token={token}
               setProjects={setProjects}
+              setPortfolios={setPortfolios}
               setActiveView={setActiveView}
               setSelectedProject={setSelectedProject}
               portfolioCreationParent={portfolioCreationParent}

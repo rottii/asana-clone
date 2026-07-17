@@ -57,12 +57,12 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
       .then(res => res.json())
       .then(data => {
         if (!data.error) {
-          // Add the returned project to details.projectsList
           setDetails(prev => ({
             ...prev,
             projectsCount: prev.projectsCount + 1,
             projectsList: [...prev.projectsList, data]
           }));
+          setPortfolios(prev => prev.map(p => p.id === portfolio.id ? { ...p, projectsCount: (p.projectsCount || 0) + 1 } : p));
           setShowAddWork(false);
         } else {
           alert(data.error);

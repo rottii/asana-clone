@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './Sidebar.css';
 
 export default function Sidebar({ 
@@ -16,7 +16,12 @@ export default function Sidebar({
   workspaces,
   activeWorkspace,
   selectedPortfolio,
-  setSelectedPortfolio
+  setSelectedPortfolio,
+  handleLogout,
+  isDarkMode,
+  setIsDarkMode,
+  activeWorkspaceId,
+  setActiveWorkspaceId
 }) {
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -33,6 +38,18 @@ export default function Sidebar({
     return parseInt(localStorage.getItem('sidebarWidth')) || 240;
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const profileRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -141,10 +158,132 @@ export default function Sidebar({
           </div>
         </div>
 
-        <div className="sidebar-narrow-bottom">
-          <div className="sidebar-user-avatar">
+        <div className="sidebar-narrow-bottom" style={{ position: 'relative' }} ref={profileRef}>
+          <div 
+            className="sidebar-user-avatar"
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+            style={{ cursor: 'pointer', backgroundColor: '#FBCFE8', color: '#BE185D', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}
+          >
             {user?.name?.[0]?.toUpperCase() || 'A'}
           </div>
+          
+          {showProfileMenu && (
+            <div className="profile-dropdown" style={{ 
+              position: 'fixed', left: '68px', bottom: '16px', top: 'auto', right: 'auto',
+              backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', 
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 99999, overflow: 'hidden', display: 'flex', flexDirection: 'row',
+              minHeight: '380px', width: '500px'
+            }}>
+              
+              {/* LEFT PANE - Accounts */}
+              <div style={{ width: '220px', backgroundColor: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-color)' }}>
+                <div style={{ padding: '16px 16px 8px 16px', fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-primary)' }}>Accounts</div>
+                
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  {workspaces && workspaces.length > 0 && workspaces.map(ws => (
+                    <div 
+                      key={ws.id} 
+                      style={{ 
+                        padding: '8px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        backgroundColor: activeWorkspaceId === ws.id ? 'var(--hover-bg)' : 'transparent',
+                        color: 'var(--text-primary)'
+                      }}
+                      onClick={() => { if(setActiveWorkspaceId) setActiveWorkspaceId(ws.id); setShowProfileMenu(false); }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = activeWorkspaceId === ws.id ? 'var(--hover-bg)' : 'transparent'}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: ws.id % 2 === 0 ? '#BFDBFE' : '#FBCFE8', color: ws.id % 2 === 0 ? '#1D4ED8' : '#BE185D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                          {ws.name?.[0]?.toUpperCase()}{ws.name?.[1]?.toLowerCase()}
+                        </div>
+                        <span style={{ fontSize: '0.85rem' }}>{ws.name}</span>
+                      </div>
+                      {activeWorkspaceId === ws.id && <span style={{ color: 'var(--text-secondary)' }}>✓</span>}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Dark mode switch (Optional addition for utility) */}
+                <div onClick={() => setIsDarkMode(!isDarkMode)} style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ fontSize: '1.1rem' }}>{isDarkMode ? '🌙' : '☀️'}</span> {isDarkMode ? 'Dark Mode' : 'Light Mode'}</span>
+                </div>
+                
+                <div onClick={() => { setShowProfileMenu(false); if(handleLogout) handleLogout(); }} style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                  <span style={{ fontSize: '1.1rem' }}>→</span> Log out all
+                </div>
+              </div>
+
+              {/* RIGHT PANE - Profile */}
+              <div style={{ width: '280px', display: 'flex', flexDirection: 'column' }}>
+                {/* Top active workspace banner */}
+                <div style={{ backgroundColor: '#FFF7ED', padding: '12px 16px', fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)' }}>
+                  {activeWorkspace?.name || 'My workspace'}
+                </div>
+
+                {/* Profile info */}
+                <div style={{ padding: '16px 16px 12px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                    <div style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: '#FBCFE8', color: '#BE185D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', fontWeight: 'bold', flexShrink: 0 }}>
+                      {user?.name?.[0]?.toUpperCase() || 'A'}
+                    </div>
+                    <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user?.name || 'User'}
+                    </div>
+                  </div>
+                  
+                  {/* Out of office */}
+                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <span>📅</span> Set out of office
+                  </div>
+                </div>
+
+                <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
+                
+                {/* Admin block */}
+                <div style={{ padding: '4px 0' }}>
+                  <div onClick={() => { setShowProfileMenu(false); alert('Admin console is not implemented yet.'); }} className="profile-menu-item" style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <span style={{ fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>⚷</span> Admin console
+                  </div>
+                  <div onClick={async () => {
+                    setShowProfileMenu(false);
+                    const name = window.prompt("Enter new workspace name:");
+                    if (name) {
+                      try {
+                        const token = localStorage.getItem('token');
+                        const res = await fetch('http://localhost:5001/api/workspaces', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                          body: JSON.stringify({ name })
+                        });
+                        if (res.ok) window.location.reload();
+                      } catch(e) { console.error(e); }
+                    }
+                  }} className="profile-menu-item" style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <span style={{ fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>+</span> New workspace
+                  </div>
+                  <div onClick={() => { setShowProfileMenu(false); alert('Invite flow would open here.'); }} className="profile-menu-item" style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <span style={{ fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>👤</span> Invite to Asana
+                  </div>
+                </div>
+
+                <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
+
+                {/* Profile block */}
+                <div style={{ padding: '4px 0' }}>
+                  <div onClick={() => { if(setActiveView) setActiveView('profile'); setShowProfileMenu(false); }} className="profile-menu-item" style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <span style={{ fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>👤</span> Profile
+                  </div>
+                  <div onClick={() => { setShowProfileMenu(false); alert('Settings page is not implemented yet.'); }} className="profile-menu-item" style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <span style={{ fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>⚙️</span> Settings
+                  </div>
+                  <div onClick={() => { setShowProfileMenu(false); alert('Add another account flow would open here.'); }} className="profile-menu-item" style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <span style={{ fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>+</span> Add another account
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -222,76 +361,42 @@ export default function Sidebar({
                 </div>
               )}
 
-              {/* Teams Rendering for Active Workspace */}
-              {activeWorkspace && (activeWorkspace.teams || []).map(team => (
-                <div key={team.id} className="sidebar-section">
-                  <div className="sidebar-section-header">
-                    <div className="sidebar-section-label-group" onClick={() => toggleSection(`team-${team.id}`)}>
-                      <span className="sidebar-section-arrow">{collapsed[`team-${team.id}`] ? '▶' : '▼'}</span>
-                      <span className="sidebar-section-label" style={{ textTransform: 'none' }}>{team.name}</span>
-                    </div>
-                    <button className="sidebar-add-btn" onClick={(e) => { e.stopPropagation(); setActiveView('create_project'); }}>+</button>
+              {/* Unified Work Section */}
+              <div className="sidebar-section">
+                <div className="sidebar-section-header">
+                  <div className="sidebar-section-label-group" onClick={() => toggleSection('work')}>
+                    <span className="sidebar-section-arrow">{collapsed.work ? '▶' : '▼'}</span>
+                    <span className="sidebar-section-label" style={{ textTransform: 'none' }}>Work</span>
                   </div>
-                  
-                  {!collapsed[`team-${team.id}`] && (
-                    <ul className="sidebar-project-list">
-                      {activeProjects.filter(p => p.teamId === team.id).map(renderProjectItem)}
-                    </ul>
-                  )}
+                  <button className="sidebar-add-btn" onClick={(e) => { e.stopPropagation(); setActiveView('create_project'); }}>+</button>
                 </div>
-              ))}
+                
+                {!collapsed.work && (
+                  <ul className="sidebar-project-list">
+                    {/* Render Portfolios */}
+                    {(portfolios || []).map(portfolio => {
+                      const isActive = activeView === 'portfolio_detail' && selectedPortfolio?.id === portfolio.id;
+                      return (
+                        <li 
+                          key={portfolio.id} 
+                          className={`sidebar-project-item ${isActive ? 'active' : ''}`}
+                          onClick={() => {
+                            handleSelectProject(null);
+                            setSelectedPortfolio(portfolio);
+                            setActiveView('portfolio_detail');
+                          }}
+                        >
+                          <div className="sidebar-project-icon-box" style={{ backgroundColor: 'transparent', color: 'var(--text-tertiary)' }}>📁</div>
+                          <span className="sidebar-project-name">{portfolio.name}</span>
+                        </li>
+                      );
+                    })}
 
-              {/* Personal / Unassigned Projects */}
-              {activeProjects.filter(p => !p.teamId).length > 0 && (
-                <div className="sidebar-section">
-                  <div className="sidebar-section-header">
-                    <div className="sidebar-section-label-group" onClick={() => toggleSection('projects')}>
-                      <span className="sidebar-section-arrow">{collapsed.projects ? '▶' : '▼'}</span>
-                      <span className="sidebar-section-label">Personal Projects</span>
-                    </div>
-                    <button className="sidebar-add-btn" onClick={(e) => { e.stopPropagation(); setActiveView('create_project'); }}>+</button>
-                  </div>
-
-                  {!collapsed.projects && (
-                    <ul className="sidebar-project-list">
-                      {activeProjects.filter(p => !p.teamId).map(renderProjectItem)}
-                    </ul>
-                  )}
-                </div>
-              )}
-
-              {/* Portfolios Section */}
-              {(portfolios || []).length > 0 && (
-                <div className="sidebar-section">
-                  <div className="sidebar-section-header">
-                    <div className="sidebar-section-label-group" onClick={() => toggleSection('portfolios')}>
-                      <span className="sidebar-section-arrow">{collapsed.portfolios ? '▶' : '▼'}</span>
-                      <span className="sidebar-section-label">Portfolios</span>
-                    </div>
-                  </div>
-                  {!collapsed.portfolios && (
-                    <ul className="sidebar-project-list">
-                      {(portfolios || []).map(portfolio => {
-                        const isActive = activeView === 'portfolio_detail' && selectedPortfolio?.id === portfolio.id;
-                        return (
-                          <li 
-                            key={portfolio.id} 
-                            className={`sidebar-project-item ${isActive ? 'active' : ''}`}
-                            onClick={() => {
-                              handleSelectProject(null);
-                              setSelectedPortfolio(portfolio);
-                              setActiveView('portfolio_detail');
-                            }}
-                          >
-                            <div className="sidebar-project-icon-box" style={{ backgroundColor: 'transparent', color: 'var(--text-tertiary)' }}>📁</div>
-                            <span className="sidebar-project-name">{portfolio.name}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-              )}
+                    {/* Render Projects */}
+                    {activeProjects.map(renderProjectItem)}
+                  </ul>
+                )}
+              </div>
             </>
           )}
 

@@ -1,21 +1,30 @@
 import React, { useState, useEffect } from 'react';
 
-export default function Portfolios({ portfolios = [], setPortfolios, token, setActiveView, setSelectedPortfolio, portfolioCreationParent, setPortfolioCreationParent }) {
+export default function Portfolios({
+  portfolios = [],
+  setPortfolios,
+  token,
+  setActiveView,
+  setSelectedPortfolio,
+  portfolioCreationParent,
+  setPortfolioCreationParent,
+  activeWorkspaceId
+}) {
   const [activeTab, setActiveTab] = useState('Recent and starred');
   const [creationStep, setCreationStep] = useState(0); // 0 = list, 1 = create step 1, 2 = create step 2
-  
+
   useEffect(() => {
     if (portfolioCreationParent) {
       setCreationStep(1);
     }
   }, [portfolioCreationParent]);
-  
+
   // Step 1 states
   const [portfolioName, setPortfolioName] = useState('portfolio');
   const [privacy, setPrivacy] = useState('Public to My workspace');
   const [shareAccess, setShareAccess] = useState('Share project access manually');
   const [defaultView, setDefaultView] = useState('List');
-  
+
   // Step 2 states
   const [nextAction, setNextAction] = useState('projects'); // 'projects' or 'share'
   const [createdPortfolio, setCreatedPortfolio] = useState(null);
@@ -28,11 +37,11 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
         </div>
         <div style={styles.creationContent}>
           <h1 style={styles.creationTitle}>New portfolio</h1>
-          
+
           <div style={styles.formGroup}>
             <label style={styles.formLabel}>Portfolio name</label>
-            <input 
-              style={styles.formInput} 
+            <input
+              style={styles.formInput}
               value={portfolioName}
               onChange={(e) => setPortfolioName(e.target.value)}
             />
@@ -40,7 +49,7 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
 
           <div style={styles.formGroup}>
             <label style={styles.formLabel}>Privacy</label>
-            <select 
+            <select
               style={styles.formSelect}
               value={privacy}
               onChange={(e) => setPrivacy(e.target.value)}
@@ -55,7 +64,7 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
               <label style={styles.formLabel}>Share project access with portfolio members</label>
               <a href="#" style={styles.learnMore}>Learn more</a>
             </div>
-            <select 
+            <select
               style={styles.formSelect}
               value={shareAccess}
               onChange={(e) => setShareAccess(e.target.value)}
@@ -68,7 +77,7 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
           <div style={styles.formGroup}>
             <label style={styles.formLabel}>Default view</label>
             <div style={styles.viewCardsGrid}>
-              <div 
+              <div
                 style={{ ...styles.viewCard, ...(defaultView === 'List' ? styles.viewCardSelected : {}) }}
                 onClick={() => setDefaultView('List')}
               >
@@ -80,8 +89,8 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
                 </div>
                 <div style={styles.viewCardText}>List</div>
               </div>
-              
-              <div 
+
+              <div
                 style={{ ...styles.viewCard, ...(defaultView === 'Timeline' ? styles.viewCardSelected : {}) }}
                 onClick={() => setDefaultView('Timeline')}
               >
@@ -92,8 +101,8 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
                 </div>
                 <div style={styles.viewCardText}>Timeline</div>
               </div>
-              
-              <div 
+
+              <div
                 style={{ ...styles.viewCard, ...(defaultView === 'Workload' ? styles.viewCardSelected : {}) }}
                 onClick={() => setDefaultView('Workload')}
               >
@@ -117,40 +126,41 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
               body: JSON.stringify({
                 name: portfolioName,
                 privacy,
-                defaultView
+                defaultView,
+                workspaceId: activeWorkspaceId
               })
             })
-            .then(res => res.json())
-            .then(data => {
-              if (data.id) {
-                setPortfolios([data, ...portfolios]);
-                setCreatedPortfolio(data);
-                
-                if (portfolioCreationParent) {
-                  fetch(`http://localhost:5001/api/portfolios/${portfolioCreationParent}/portfolios`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ childPortfolioId: data.id })
-                  })
-                  .then(res => res.json())
-                  .then(() => {
-                    if (setPortfolioCreationParent) setPortfolioCreationParent(null);
+              .then(res => res.json())
+              .then(data => {
+                if (data.id) {
+                  setPortfolios([data, ...portfolios]);
+                  setCreatedPortfolio(data);
+
+                  if (portfolioCreationParent) {
+                    fetch(`http://localhost:5001/api/portfolios/${portfolioCreationParent}/portfolios`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                      },
+                      body: JSON.stringify({ childPortfolioId: data.id })
+                    })
+                      .then(res => res.json())
+                      .then(() => {
+                        if (setPortfolioCreationParent) setPortfolioCreationParent(null);
+                        setCreationStep(2);
+                      })
+                      .catch(err => {
+                        console.error(err);
+                        if (setPortfolioCreationParent) setPortfolioCreationParent(null);
+                        setCreationStep(2);
+                      });
+                  } else {
                     setCreationStep(2);
-                  })
-                  .catch(err => {
-                    console.error(err);
-                    if (setPortfolioCreationParent) setPortfolioCreationParent(null);
-                    setCreationStep(2);
-                  });
-                } else {
-                  setCreationStep(2);
+                  }
                 }
-              }
-            })
-            .catch(err => console.error(err));
+              })
+              .catch(err => console.error(err));
           }}>Continue</button>
         </div>
       </div>
@@ -165,8 +175,8 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
         </div>
         <div style={styles.creationContent}>
           <h1 style={styles.creationTitleCenter}>What do you want to do first?</h1>
-          
-          <div 
+
+          <div
             style={{ ...styles.actionCard, ...(nextAction === 'projects' ? styles.actionCardSelected : {}) }}
             onClick={() => setNextAction('projects')}
           >
@@ -177,7 +187,7 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
             </div>
           </div>
 
-          <div 
+          <div
             style={{ ...styles.actionCard, ...(nextAction === 'share' ? styles.actionCardSelected : {}) }}
             onClick={() => setNextAction('share')}
           >
@@ -207,16 +217,16 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
             <button style={styles.createBtn} onClick={() => setCreationStep(1)}>Create portfolio</button>
           )}
         </div>
-        
+
         <div style={styles.tabsAndActionsRow}>
           <div style={styles.tabsContainer}>
-            <div 
+            <div
               style={{ ...styles.tab, ...(activeTab === 'Recent and starred' ? styles.activeTab : {}) }}
               onClick={() => setActiveTab('Recent and starred')}
             >
               Recent and starred
             </div>
-            <div 
+            <div
               style={{ ...styles.tab, ...(activeTab === 'Browse all' ? styles.activeTab : {}) }}
               onClick={() => setActiveTab('Browse all')}
             >
@@ -226,8 +236,8 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
 
           {activeTab === 'Browse all' && (
             <div style={styles.browseAllActions}>
-              <div style={styles.actionItem}><span style={{marginRight: 4}}>≡</span> Filter</div>
-              <div style={styles.actionItem}><span style={{marginRight: 4}}>⇅</span> Sort: Last modified (Newest)</div>
+              <div style={styles.actionItem}><span style={{ marginRight: 4 }}>≡</span> Filter</div>
+              <div style={styles.actionItem}><span style={{ marginRight: 4 }}>⇅</span> Sort: Last modified (Newest)</div>
               <div style={styles.actionItem}>🔍</div>
               <button style={styles.createBtn} onClick={() => setCreationStep(1)}>Create portfolio</button>
             </div>
@@ -242,13 +252,13 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
               <div style={styles.recentTitle}>▼ Recent portfolios</div>
               <div style={styles.gridIcon}>⊞</div>
             </div>
-            
+
             <div style={styles.gridContainer}>
               <div style={styles.newPortfolioCard} onClick={() => setCreationStep(1)}>
                 <div style={styles.plusIcon}>+</div>
                 <div style={styles.newPortfolioText}>New portfolio</div>
               </div>
-              
+
               {portfolios.map(portfolio => (
                 <div key={portfolio.id} style={styles.portfolioCard} onClick={() => {
                   setSelectedPortfolio(portfolio);
@@ -273,7 +283,7 @@ export default function Portfolios({ portfolios = [], setPortfolios, token, setA
               <div style={{ ...styles.listHeaderCell, flex: 2 }}>Parent portfolios</div>
               <div style={{ ...styles.listHeaderCell, width: '120px' }}></div>
             </div>
-            
+
             <div style={styles.listBody}>
               {portfolios.map(portfolio => (
                 <div key={portfolio.id} style={styles.listRow} onClick={() => {

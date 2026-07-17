@@ -270,8 +270,16 @@ const fullTaskInclude = {
 // GET /api/projects/templates — List all projects marked as templates
 router.get('/templates', authenticateToken, async (req, res) => {
     try {
+        const { workspaceId } = req.query;
+        if (!workspaceId) {
+            return res.status(400).json({ error: 'Çalışma alanı (workspaceId) gereklidir.' });
+        }
+
         const templates = await prisma.project.findMany({
-            where: { isTemplate: true },
+            where: { 
+                isTemplate: true,
+                workspaceId: workspaceId
+            },
             include: fullProjectInclude,
             orderBy: { createdAt: 'desc' }
         });
@@ -714,6 +722,21 @@ router.post('/:id/share', authenticateToken, async (req, res) => {
                 role: 'EDITOR'
             }
         });
+
+        // Also add user to the workspace if they are not already a member
+        if (project.workspaceId) {
+            await prisma.workspaceMember.upsert({
+                where: {
+                    workspaceId_userId: { workspaceId: project.workspaceId, userId: userToAdd.id }
+                },
+                update: {},
+                create: {
+                    workspaceId: project.workspaceId,
+                    userId: userToAdd.id,
+                    role: 'MEMBER' // or GUEST depending on your rules
+                }
+            });
+        }
 
         // Create notification for the invited user
         try {

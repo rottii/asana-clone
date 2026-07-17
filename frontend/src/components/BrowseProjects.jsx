@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import './BrowseProjects.css';
 
-export default function BrowseProjects({ projects, user, handleSelectProject, setActiveView, token, setProjects }) {
+export default function BrowseProjects({ projects, user, handleSelectProject, setActiveView, token, setProjects, activeWorkspaceId }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [templates, setTemplates] = useState([]);
 
   useEffect(() => {
-    if (!token) return;
-    fetch('http://localhost:5001/api/projects/templates', {
+    if (!token || !activeWorkspaceId) return;
+    fetch(`http://localhost:5001/api/projects/templates?workspaceId=${activeWorkspaceId}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => setTemplates(data))
+      .then(data => {
+        if (Array.isArray(data)) setTemplates(data);
+        else setTemplates([]);
+      })
       .catch(console.error);
-  }, [token]);
+  }, [token, activeWorkspaceId]);
 
   const handleUseTemplate = async (template) => {
     const newName = window.prompt("Yeni proje adını girin:", template.name.replace(' Template', ''));

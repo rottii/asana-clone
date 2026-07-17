@@ -7,6 +7,7 @@ const { PrismaClient } = require('@prisma/client');
 const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/project');
 const rulesRoutes = require('./routes/rules');
+const messagesRoutes = require('./routes/messages');
 const portfolioRoutes = require('./routes/portfolio');
 const notificationsRoutes = require('./routes/notifications');
 const goalsRoutes = require('./routes/goals');
@@ -57,7 +58,8 @@ const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5001;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
@@ -66,6 +68,7 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/projects/:projectId/rules', rulesRoutes);
+app.use('/api/projects/:projectId/messages', messagesRoutes);
 app.use('/api/portfolios', portfolioRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/goals', goalsRoutes);
@@ -86,6 +89,22 @@ app.get('/api/health', async (req, res) => {
 
 // --- Data Migration / Bootstrap for Workspaces & Teams ---
 async function bootstrapData() {
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      await prisma.$connect();
+      break;
+    } catch (error) {
+      console.log(`Database not ready, retrying in 2 seconds... (${retries} retries left)`);
+      retries -= 1;
+      if (retries === 0) {
+        console.error('Failed to connect to database after multiple retries.');
+        return;
+      }
+      await new Promise(res => setTimeout(res, 2000));
+    }
+  }
+
   try {
     const usersWithoutWorkspace = await prisma.user.findMany({
       where: {

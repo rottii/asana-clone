@@ -1,0 +1,113 @@
+const express = require('express');
+const router = express.Router({ mergeParams: true });
+const { PrismaClient } = require('@prisma/client');
+const jwt = require('jsonwebtoken');
+
+const prisma = new PrismaClient();
+const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
+
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Giriş yapmanız gerekiyor.' });
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ error: 'Geçersiz veya süresi dolmuş token.' });
+        req.user = user;
+        next();
+    });
+};
+
+// GET /api/projects/:projectId/messages — Projenin tüm mesajlarını getir
+router.get('/', authenticateToken, async (req, res) => {
+    try {
+        const { projectId } = req.params;
+
+        const messages = await prisma.projectMessage.findMany({
+            where: { projectId },
+            include: {
+                user: { select: { id: true, name: true, email: true } },
+                replies: {
+                    include: {
+                        user: { select: { id: true, name: true, email: true } }
+                    },
+                    orderBy: { createdAt: 'asc' }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        res.json(messages);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Mesajlar alınırken sunucu hatası.' });
+    }
+});
+
+// POST /api/projects/:projectId/messages — Projeye yeni bir mesaj gönder
+router.post('/', authenticateToken, async (req, res) => {
+    try {
+        const { projectId } = req.params;
+        const { subject, body } = req.body;
+
+        if (!body) {
+            return res.status(400).json({ error: 'Mesaj gövdesi (body) gereklidir.' });
+        }
+
+        // Check if project exists
+        const project = await prisma.project.findUnique({ where: { id: projectId } });
+        if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
+
+        const message = await prisma.projectMessage.create({
+            data: {
+                subject,
+                body,
+                projectId,
+                userId: req.user.userId
+            },
+            include: {
+                user: { select: { id: true, name: true, email: true } },
+                replies: {
+                    include: {
+                        user: { select: { id: true, name: true, email: true } }
+                    }
+                }
+            }
+        });
+
+        res.status(201).json(message);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Mesaj oluşturulurken sunucu hatası.' });
+    }
+});
+
+// POST /api/projects/:projectId/messages/:messageId/replies — Mesaja cevap yaz
+router.post('/:messageId/replies', authenticateToken, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { text } = req.body;
+
+        if (!text) {
+            return res.status(400).json({ error: 'Cevap metni (text) gereklidir.' });
+        }
+
+        const reply = await prisma.projectMessageReply.create({
+            data: {
+                text,
+                messageId,
+                userId: req.user.userId
+            },
+            include: {
+                user: { select: { id: true, name: true, email: true } }
+            }
+        });
+
+        res.status(201).json(reply);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Cevap oluşturulurken sunucu hatası.' });
+    }
+});
+
+module.exports = router;
