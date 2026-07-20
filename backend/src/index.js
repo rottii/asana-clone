@@ -76,6 +76,7 @@ app.use('/api/tags', tagsRoutes);
 app.use('/api/reporting', reportingRoutes);
 app.use('/api/search', require('./routes/search'));
 app.use('/api/workspaces', workspacesRoutes);
+app.use('/api/github', require('./routes/github'));
 
 // Health Check
 app.get('/api/health', async (req, res) => {

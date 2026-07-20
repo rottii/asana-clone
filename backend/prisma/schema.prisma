@@ -173,6 +173,7 @@ model Task {
   completedAt DateTime?
   likes       Int       @default(0)
   customFields Json?    @default("{}") // (Sınırsız esnek alan için)
+  githubPRs    Json?    @default("[]")
   
   sectionId   String
   section     Section   @relation(fields: [sectionId], references: [id], onDelete: Cascade)

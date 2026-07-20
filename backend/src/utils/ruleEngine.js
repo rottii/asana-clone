@@ -48,6 +48,11 @@ const evaluateRules = async (projectId, taskId, event) => {
             await prisma.task.update({ where: { id: taskId }, data: { isCompleted, completedAt: isCompleted ? new Date() : null } });
           } else if (rule.actionType === 'change_assignee' && rule.actionValue) {
             await prisma.task.update({ where: { id: taskId }, data: { assigneeId: rule.actionValue } });
+            await prisma.taskCollaborator.upsert({
+              where: { taskId_userId: { taskId: taskId, userId: rule.actionValue } },
+              update: {},
+              create: { taskId: taskId, userId: rule.actionValue }
+            });
           } else if (rule.actionType === 'set_task_name' && rule.actionValue) {
             await prisma.task.update({ where: { id: taskId }, data: { title: rule.actionValue } });
           } else if (rule.actionType === 'set_task_description' && rule.actionValue) {
@@ -150,15 +155,20 @@ const evaluateRules = async (projectId, taskId, event) => {
               } else {
                 const task = await prisma.task.findUnique({ where: { id: taskId } });
                 if (task) {
-                  let customFields = [];
-                  try { if (task.customFields) customFields = JSON.parse(task.customFields); } catch(e) {}
+                  let customFields = {};
+                  try { 
+                    if (task.customFields) {
+                      const parsed = JSON.parse(task.customFields); 
+                      if (Array.isArray(parsed)) {
+                        parsed.forEach(cf => { if (cf.id && cf.value) customFields[cf.id] = cf.value; });
+                      } else if (typeof parsed === 'object' && parsed !== null) {
+                        customFields = parsed;
+                      }
+                    }
+                  } catch(e) {}
                   
-                  const existingFieldIndex = customFields.findIndex(cf => cf.id === fieldId || cf.name === fieldId || cf.title === fieldId);
-                  if (existingFieldIndex >= 0) {
-                    customFields[existingFieldIndex].value = fieldValue;
-                  } else {
-                    customFields.push({ id: fieldId, value: fieldValue });
-                  }
+                  customFields[fieldId] = fieldValue;
+                  
                   await prisma.task.update({ where: { id: taskId }, data: { customFields: JSON.stringify(customFields) } });
                 }
               }

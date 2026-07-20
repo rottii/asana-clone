@@ -146,7 +146,17 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           cache: 'no-store'
         });
         if (response.ok) {
-          const updatedProj = await response.json();
+          let updatedProj = await response.json();
+          
+          // Filter out the currently pending deleted task so it doesn't reappear
+          if (pendingDeleteRef.current) {
+            const pendingTaskId = pendingDeleteRef.current.task.id;
+            updatedProj.sections = updatedProj.sections.map(sec => ({
+              ...sec,
+              tasks: (sec.tasks || []).filter(t => t.id !== pendingTaskId)
+            }));
+          }
+          
           setSelectedProject(updatedProj);
           setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
         }

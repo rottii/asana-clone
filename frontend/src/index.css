@@ -3,13 +3,13 @@
   --bg-primary: #FFFFFF;
   --bg-secondary: #F9FAFB;
   --bg-tertiary: #F3F4F6;
-  
+
   --text-primary: #111827;
   --text-secondary: #6B7280;
   --text-tertiary: #9CA3AF;
-  
+
   --border-color: #E5E7EB;
-  
+
   --accent-primary: #4F46E5;
   --accent-success: #10B981;
   --accent-danger: #EF4444;
@@ -28,13 +28,13 @@ body.dark {
   --bg-primary: #18181A;
   --bg-secondary: #242427;
   --bg-tertiary: #2A2B2E;
-  
+
   --text-primary: #EDEDED;
   --text-secondary: #A1A1AA;
   --text-tertiary: #71717A;
-  
+
   --border-color: #3F3F46;
-  
+
   --accent-primary: #6366F1;
   --accent-success: #10B981;
   --accent-danger: #F87171;
@@ -54,13 +54,25 @@ body {
   width: 8px;
   height: 8px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background-color: var(--border-color);
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background-color: var(--text-tertiary);
+}
+
+.github-dropdown-item {
+  padding: 12px 16px !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.github-dropdown-item:hover {
+  background-color: var(--bg-secondary) !important;
 }

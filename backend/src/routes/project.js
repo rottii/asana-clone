@@ -1161,7 +1161,7 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
 
-        const { title, description, isCompleted, assigneeId, dueDate, startDate, priority, type, customFields, sectionId, order, likes, isRecurring, recurrenceRule, recurrenceCustom, approvalStatus } = req.body;
+        const { title, description, isCompleted, assigneeId, dueDate, startDate, priority, type, customFields, githubPRs, sectionId, order, likes, isRecurring, recurrenceRule, recurrenceCustom, approvalStatus } = req.body;
 
         const currentTask = await prisma.task.findUnique({
             where: { id: req.params.taskId },
@@ -1185,6 +1185,11 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
         // Handle customFields — accept both string and object
         if (customFields !== undefined) {
             updateData.customFields = typeof customFields === 'string' ? customFields : JSON.stringify(customFields);
+        }
+
+        // Handle githubPRs
+        if (githubPRs !== undefined) {
+            updateData.githubPRs = typeof githubPRs === 'string' ? githubPRs : JSON.stringify(githubPRs);
         }
 
         if (isRecurring !== undefined) updateData.isRecurring = isRecurring;
@@ -1288,6 +1293,22 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
             activitiesToLog.push({ action: isCompleted ? 'completed this task' : 'marked this task incomplete' });
         }
         
+        if (githubPRs !== undefined) {
+            try {
+                const oldPrsStr = typeof currentTask.githubPRs === 'string' ? currentTask.githubPRs : JSON.stringify(currentTask.githubPRs || []);
+                const oldPrs = JSON.parse(oldPrsStr);
+                const newPrsStr = typeof githubPRs === 'string' ? githubPRs : JSON.stringify(githubPRs);
+                const newPrs = JSON.parse(newPrsStr);
+
+                const oldUrls = new Set(oldPrs.map(p => p.url));
+                for (const pr of newPrs) {
+                    if (!oldUrls.has(pr.url)) {
+                        activitiesToLog.push({ action: 'attached_github_pr', newValue: JSON.stringify(pr) });
+                    }
+                }
+            } catch(e) { console.error('Error diffing PRs', e); }
+        }
+
         if (activitiesToLog.length > 0) {
             updateData.activities = {
                 create: activitiesToLog.map(act => ({
@@ -1464,7 +1485,23 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
             }
         }
 
-        res.json(updatedTask);
+        // ─── Refetch Final Task for Rule Engine Changes ─────────────────────
+        const finalTask = await prisma.task.findUnique({
+            where: { id: updatedTask.id },
+            include: fullTaskInclude
+        });
+
+        if (io) {
+            // Emitting after rules evaluated so that UI sees rule engine effects
+            if (projectId) io.to(projectId).emit('task_updated', finalTask);
+            if (finalTask.secondaryProjects) {
+                finalTask.secondaryProjects.forEach(sp => {
+                    io.to(sp.projectId).emit('task_updated', finalTask);
+                });
+            }
+        }
+
+        res.json(finalTask);
     } catch (error) {
         console.error('Error updating task:', error);
         res.status(500).json({ error: 'Görev güncellenirken hata oluştu.', details: error.message });

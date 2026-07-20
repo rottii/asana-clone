@@ -28,6 +28,13 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isConvertMenuOpen, setIsConvertMenuOpen] = useState(false);
 
+  const [isAddingGithubPr, setIsAddingGithubPr] = useState(false);
+  const [githubPrUrlValue, setGithubPrUrlValue] = useState('');
+  const [isFetchingPr, setIsFetchingPr] = useState(false);
+  const [openPrMenuIdx, setOpenPrMenuIdx] = useState(null);
+  
+  const githubPRs = typeof task?.githubPRs === 'string' ? JSON.parse(task.githubPRs || '[]') : (task?.githubPRs || []);
+
   const getCustomFieldSettingsForProject = (proj) => {
     if (!proj || !proj.customFieldSettings) return [];
     try {
@@ -106,6 +113,94 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   }, [openFieldMenuId, openSectionMenuId, isMoreMenuOpen]);
 
   if (!task) return null;
+
+  const handleAddGithubPr = async () => {
+    if (!githubPrUrlValue.trim() || isReadOnly) return;
+    setIsFetchingPr(true);
+    try {
+      const response = await fetch('http://localhost:5001/api/github/pr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: githubPrUrlValue })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Failed to fetch PR');
+        setIsFetchingPr(false);
+        return;
+      }
+      
+      const newPRs = [...githubPRs, data];
+      const patchResponse = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ githubPRs: JSON.stringify(newPRs) })
+      });
+      const patchData = await patchResponse.json();
+      if (patchResponse.ok) {
+        onTaskUpdate(task.id, patchData);
+        setGithubPrUrlValue('');
+        setIsAddingGithubPr(false);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error adding GitHub PR');
+    }
+    setIsFetchingPr(false);
+  };
+
+  const handleRefreshGithubPRs = async () => {
+    if (!githubPRs.length || isReadOnly) return;
+    setIsFetchingPr(true);
+    try {
+      const refreshedPRs = [];
+      for (const pr of githubPRs) {
+        const response = await fetch('http://localhost:5001/api/github/pr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: pr.url })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          refreshedPRs.push(data);
+        } else {
+          refreshedPRs.push(pr); // keep old if fetch fails
+        }
+      }
+      
+      const patchResponse = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ githubPRs: JSON.stringify(refreshedPRs) })
+      });
+      const patchData = await patchResponse.json();
+      if (patchResponse.ok) {
+        onTaskUpdate(task.id, patchData);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setIsFetchingPr(false);
+  };
+
+  const handleRemoveGithubPr = async (indexToRemove) => {
+    if (isReadOnly) return;
+    try {
+      const newPRs = githubPRs.filter((_, idx) => idx !== indexToRemove);
+      const patchResponse = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ githubPRs: JSON.stringify(newPRs) })
+      });
+      const patchData = await patchResponse.json();
+      if (patchResponse.ok) {
+        onTaskUpdate(task.id, patchData);
+      }
+    } catch (e) {
+      console.error('Error removing GitHub PR:', e);
+    }
+    setOpenPrMenuIdx(null);
+  };
 
   const handleSave = async (field, value) => {
     if (isReadOnly) return;
@@ -917,6 +1012,121 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
             )}
           </div>
 
+          {/* SUBTASKS SECTION */}
+          <div style={styles.subtasksSection}>
+            <div style={styles.sectionTitle}>Subtasks</div>
+            <div style={styles.subtaskList}>
+              {task.subtasks?.map(st => (
+                <div key={st.id} style={styles.subtaskItem}>
+                  <input type="checkbox" checked={st.isCompleted} onChange={() => handleToggleSubtaskComplete(st.id, st.isCompleted)} disabled={isReadOnly} style={{ cursor: 'pointer' }} />
+                  <span style={{ textDecoration: st.isCompleted ? 'line-through' : 'none', color: st.isCompleted ? 'var(--text-tertiary)' : 'var(--text-primary)', flex: 1, fontSize: '0.9rem' }}>{st.title}</span>
+                </div>
+              ))}
+            </div>
+            {!isReadOnly && (
+              <form onSubmit={handleAddSubtask} style={styles.subtaskForm}>
+                <input type="text" value={newSubtaskTitle} onChange={e => setNewSubtaskTitle(e.target.value)} placeholder="Add a subtask..." style={styles.subtaskInput} />
+              </form>
+            )}
+          </div>
+
+          {/* APPS SECTION */}
+          <div style={styles.appsSection}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem', gap: '0.5rem' }}>
+              <div style={styles.sectionTitle}>Apps <span style={styles.countPill}>{githubPRs.length || 0}</span></div>
+              {githubPRs.length > 0 && !isReadOnly && (
+                <button onClick={handleRefreshGithubPRs} style={styles.refreshAppBtn} disabled={isFetchingPr} title="Refresh PR Status">
+                  {isFetchingPr ? '...' : '↻'}
+                </button>
+              )}
+            </div>
+            <div style={styles.appRow}>
+              <div style={styles.appName}>GitHub</div>
+              <div style={{ flex: 1 }}>
+                {!isAddingGithubPr && githubPRs.length === 0 && (
+                  <div style={styles.addAppPlaceholder} onClick={() => setIsAddingGithubPr(true)}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.379.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+                    Add GitHub pull request
+                  </div>
+                )}
+                {isAddingGithubPr && (
+                  <div style={styles.addAppInputContainer}>
+                    <input 
+                      type="text" 
+                      value={githubPrUrlValue}
+                      onChange={e => setGithubPrUrlValue(e.target.value)}
+                      placeholder="Paste a GitHub pull request URL..."
+                      style={styles.addAppInput}
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleAddGithubPr();
+                        if (e.key === 'Escape') setIsAddingGithubPr(false);
+                      }}
+                    />
+                    <button onClick={handleAddGithubPr} style={styles.addAppButton} disabled={isFetchingPr}>
+                      {isFetchingPr ? '...' : 'Add'}
+                    </button>
+                  </div>
+                )}
+                {githubPRs.map((pr, idx) => (
+                  <div key={idx} style={styles.githubCard}>
+                     <div style={styles.githubCardHeader}>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.379.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+                        <div style={styles.githubCardTitleArea}>
+                           <a href={pr.url} target="_blank" rel="noreferrer" style={{textDecoration: 'none'}}>
+                             <div style={styles.githubCardTitle}>#{pr.number} {pr.title}</div>
+                           </a>
+                            <div style={styles.githubCardSubtitle}>
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style={{marginRight: 4}}><path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113.882 1.55l3.204 3.204a2.25 2.25 0 11-1.06 1.06L4.32 5.862A2.25 2.25 0 011.5 3.25zM12.25 8a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 114.5 0 2.25 2.25 0 01-4.5 0z"/></svg>
+                              Pull request in {pr.owner}/{pr.repo} • View in GitHub
+                           </div>
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                           <button onClick={() => setOpenPrMenuIdx(openPrMenuIdx === idx ? null : idx)} style={styles.githubCardMoreBtn}>•••</button>
+                           {openPrMenuIdx === idx && (
+                             <div style={{...styles.dropdownMenu, left: 'auto', right: 0, padding: 0, minWidth: '180px', overflow: 'hidden'}} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
+                                <a href={pr.url} target="_blank" rel="noreferrer" className="github-dropdown-item" style={{ ...styles.dropdownItem, textDecoration: 'none', fontSize: '0.9rem', gap: '0.6rem' }}>
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                  View in GitHub
+                                </a>
+                                <button onClick={() => { navigator.clipboard.writeText(pr.url); setOpenPrMenuIdx(null); }} className="github-dropdown-item" style={{ ...styles.dropdownItem, fontSize: '0.9rem', gap: '0.6rem' }}>
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                                  Copy link
+                                </button>
+                                <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+                                <button onClick={() => handleRemoveGithubPr(idx)} className="github-dropdown-item" style={{ ...styles.dropdownItem, color: 'var(--text-primary)', fontSize: '0.9rem', gap: '0.6rem' }}>
+                                  Remove from task
+                                </button>
+                             </div>
+                           )}
+                        </div>
+                     </div>
+                     <div style={styles.githubCardMetrics}>
+                        <div style={styles.githubMetricCol}>
+                           <div style={styles.githubMetricLabel}>Review status</div>
+                           <div style={styles.githubMetricValue}>{pr.reviewStatus || 'In review'}</div>
+                        </div>
+                        <div style={styles.githubMetricCol}>
+                           <div style={styles.githubMetricLabel}>PR status</div>
+                           <div style={styles.githubMetricValue}>{pr.state === 'open' ? 'Open' : (pr.merged ? 'Merged' : 'Closed')}</div>
+                        </div>
+                        <div style={styles.githubMetricCol}>
+                           <div style={styles.githubMetricLabel}>Line changes</div>
+                           <div style={styles.githubMetricValue}>
+                              <span style={styles.githubAdditions}></span> +{pr.additions}
+                              <span style={styles.githubDeletions}></span> -{pr.deletions}
+                           </div>
+                        </div>
+                     </div>
+                     <div style={styles.githubCardFooter}>
+                        Created in GitHub {new Date(pr.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} at {new Date(pr.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                     </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* ATTACHMENTS SECTION */}
           <div style={styles.attachmentsSection}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
@@ -1021,23 +1231,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
             )}
           </div>
 
-          {/* SUBTASKS SECTION */}
-          <div style={styles.subtasksSection}>
-            <div style={styles.sectionTitle}>Subtasks</div>
-            <div style={styles.subtaskList}>
-              {task.subtasks?.map(st => (
-                <div key={st.id} style={styles.subtaskItem}>
-                  <input type="checkbox" checked={st.isCompleted} onChange={() => handleToggleSubtaskComplete(st.id, st.isCompleted)} disabled={isReadOnly} style={{ cursor: 'pointer' }} />
-                  <span style={{ textDecoration: st.isCompleted ? 'line-through' : 'none', color: st.isCompleted ? 'var(--text-tertiary)' : 'var(--text-primary)', flex: 1, fontSize: '0.9rem' }}>{st.title}</span>
-                </div>
-              ))}
-            </div>
-            {!isReadOnly && (
-              <form onSubmit={handleAddSubtask} style={styles.subtaskForm}>
-                <input type="text" value={newSubtaskTitle} onChange={e => setNewSubtaskTitle(e.target.value)} placeholder="Add a subtask..." style={styles.subtaskInput} />
-              </form>
-            )}
-          </div>
+
 
           {/* COMMENTS & ACTIVITY SECTION */}
           <div style={styles.commentsSection}>
@@ -1124,6 +1318,33 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                         </div>
                       </div>
                     );
+                  } else if (item.action === "attached_github_pr") {
+                    let pr = null;
+                    try { pr = JSON.parse(item.newValue); } catch(e){}
+                    return (
+                      <div key={`activity-${item.id}`} style={styles.activityItem}>
+                        <div style={styles.activityAvatar}>{item.user?.name?.charAt(0).toUpperCase() || '?'}</div>
+                        <div style={styles.activityContent}>
+                          <span style={styles.activityAuthor}>{item.user?.name || 'Unknown'}</span> attached
+                          <span style={styles.activityTime}>
+                            {' '}• {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {pr && (
+                             <div style={{ ...styles.githubCard, marginTop: '1rem', width: '90%' }}>
+                               <div style={styles.githubCardHeader}>
+                                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.379.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+                                  <div style={styles.githubCardTitleArea}>
+                                     <div style={styles.githubCardTitle}>#{pr.number} {pr.title}</div>
+                                     <div style={styles.githubCardSubtitle}>
+                                        Pull request in {pr.owner}/{pr.repo} • View in GitHub
+                                     </div>
+                                  </div>
+                               </div>
+                             </div>
+                          )}
+                        </div>
+                      </div>
+                    );
                   } else {
                     return (
                       <div key={`activity-${item.id}`} style={styles.activityItem}>
@@ -1145,7 +1366,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
             </div>
             {projectRole !== 'VIEWER' && (
               <div style={styles.commentForm}>
-                <div style={styles.commentAvatarCurrentUser}>ME</div>
+                <div style={styles.commentAvatarCurrentUser}>{currentUser?.name?.charAt(0).toUpperCase() || '?'}</div>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <RichTextEditor
                     value={newCommentText}
@@ -1237,5 +1458,28 @@ const styles = {
   reactionPicker: { position: 'absolute', top: '100%', right: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: '4px 8px', display: 'flex', gap: '4px', zIndex: 100, marginTop: '4px' },
   reactionPickerEmoji: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', padding: '4px', borderRadius: '50%', transition: 'background-color 0.15s', ':hover': { backgroundColor: 'var(--bg-secondary)' } },
 
-  approvalBtn: { padding: '0.4rem 0.8rem', border: '1px solid', borderRadius: '6px', cursor: 'pointer', fontWeight: '500', fontSize: '0.8rem', transition: 'all 0.15s' }
+  approvalBtn: { padding: '0.4rem 0.8rem', border: '1px solid', borderRadius: '6px', cursor: 'pointer', fontWeight: '500', fontSize: '0.8rem', transition: 'all 0.15s' },
+
+  appsSection: { marginBottom: '2rem' },
+  countPill: { backgroundColor: 'var(--bg-tertiary)', borderRadius: '12px', padding: '2px 8px', fontSize: '0.75rem', fontWeight: '500', color: 'var(--text-secondary)' },
+  refreshAppBtn: { background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center', marginLeft: '0.5rem' },
+  appRow: { display: 'flex', gap: '1rem', alignItems: 'flex-start' },
+  appName: { fontSize: '0.85rem', color: 'var(--text-primary)', width: '60px', marginTop: '6px' },
+  addAppPlaceholder: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: '6px 0' },
+  addAppInputContainer: { display: 'flex', gap: '0.5rem', alignItems: 'center' },
+  addAppInput: { flex: 1, padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', outline: 'none', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' },
+  addAppButton: { padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' },
+  githubCard: { border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '1rem' },
+  githubCardHeader: { display: 'flex', gap: '1rem', alignItems: 'flex-start' },
+  githubCardTitleArea: { flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem' },
+  githubCardTitle: { fontSize: '0.9rem', fontWeight: '500', color: 'var(--text-primary)' },
+  githubCardSubtitle: { fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' },
+  githubCardMoreBtn: { background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1rem' },
+  githubCardMetrics: { display: 'flex', gap: '2rem', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', padding: '0.75rem 0' },
+  githubMetricCol: { display: 'flex', flexDirection: 'column', gap: '0.2rem' },
+  githubMetricLabel: { fontSize: '0.75rem', color: 'var(--text-tertiary)' },
+  githubMetricValue: { fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.3rem' },
+  githubAdditions: { width: 8, height: 8, borderRadius: '50%', backgroundColor: '#2DA44E', display: 'inline-block' },
+  githubDeletions: { width: 8, height: 8, borderRadius: '50%', backgroundColor: '#CF222E', marginLeft: '4px', display: 'inline-block' },
+  githubCardFooter: { fontSize: '0.75rem', color: 'var(--text-tertiary)' }
 };
