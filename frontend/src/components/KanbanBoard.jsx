@@ -89,6 +89,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   // Akıllı konum hafıza takipleri
   const [lastInteractedSectionId, setLastInteractedSectionId] = useState(null)
+  const [lastInteractedTaskId, setLastInteractedTaskId] = useState(null)
   const [draggingTaskId, setDraggingTaskId] = useState(null)
   const [draggingSectionId, setDraggingSectionId] = useState(null)
   const [draggingTabId, setDraggingTabId] = useState(null)
@@ -162,10 +163,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }, [selectedProject?.id, token]);
 
   useEffect(() => {
-    if (selectedProject.sections?.length > 0 && !lastInteractedSectionId) {
+    // Reset interaction state when switching projects
+    setLastInteractedSectionId(null);
+    setLastInteractedTaskId(null);
+    
+    if (selectedProject?.sections?.length > 0) {
       setLastInteractedSectionId(selectedProject.sections[0].id)
     }
-  }, [selectedProject, lastInteractedSectionId])
+  }, [selectedProject?.id])
 
   useEffect(() => {
     const handleAddFieldModal = () => setShowAddFieldMenu(true);
@@ -590,7 +595,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   const handleTopAddTaskGlobal = async (overrides = {}) => {
     if (isReadOnly) return;
-    const targetSectionId = lastInteractedSectionId || selectedProject.sections?.[0]?.id;
+    
+    // Check if activeGroup exists instead of relying on isVirtualGrouping because it's defined later
+    if (activeGroup && activeGroup !== 'Sections') {
+      alert("You cannot add tasks directly into a dynamically grouped view. Please switch to 'Group by: Sections' to add tasks.");
+      return;
+    }
+
+    const targetSectionId = overrides.sectionId || lastInteractedSectionId || selectedProject.sections?.[0]?.id;
     if (!targetSectionId) return;
 
     try {
@@ -605,7 +617,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       })
       const data = await response.json()
       if (response.ok) {
-        handleTaskUpdate(data.id, data, 'create', targetSectionId)
+        handleTaskUpdate(data.id, data, 'create', targetSectionId, overrides.insertAfterTaskId || lastInteractedTaskId)
       } else { alert(data.error); }
     } catch (err) { console.error(err) }
   }
@@ -762,10 +774,18 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   // --- GERİ EKLENDİ: EKSİK OLAN GÖREV GÜNCELLEME MOTORU ---
-  const handleTaskUpdate = (taskId, updatedTask, action = 'edit', sectionId = null) => {
+  const handleTaskUpdate = (taskId, updatedTask, action = 'edit', sectionId = null, insertAfterTaskId = null) => {
     let updatedSections = selectedProject.sections.map(sec => {
       if (action === 'create' && sec.id === sectionId) {
-        return { ...sec, tasks: [...(sec.tasks || []), updatedTask] };
+        let newTasks = [...(sec.tasks || [])];
+        if (insertAfterTaskId) {
+          const insertIdx = newTasks.findIndex(t => t.id === insertAfterTaskId);
+          if (insertIdx !== -1) {
+            newTasks.splice(insertIdx + 1, 0, updatedTask);
+            return { ...sec, tasks: newTasks };
+          }
+        }
+        return { ...sec, tasks: [...newTasks, updatedTask] };
       }
       return { ...sec };
     });
@@ -802,6 +822,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleToggleTaskCompleteInline = async (task, sectionId) => {
     if (isReadOnly) return;
     setLastInteractedSectionId(sectionId);
+    setLastInteractedTaskId(task.id);
 
     if (!task.isCompleted) {
       const activeBlockers = task.blockedBy?.filter(dep => !dep.blockingTask?.isCompleted) || [];
@@ -828,6 +849,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     document.body.click();
     e.stopPropagation();
     setLastInteractedSectionId(sectionId);
+    setLastInteractedTaskId(task.id);
     const rect = e.currentTarget.getBoundingClientRect()
 
     let top = rect.bottom + 4;
@@ -925,6 +947,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       if (!taskId) return
 
       setLastInteractedSectionId(targetSectionId);
+      setLastInteractedTaskId(explicitTargetTaskId);
 
       let currentSections = latestSectionsRef.current || selectedProject.sections;
       let draggedTaskObj = null;
@@ -1395,7 +1418,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               <button
                 style={{ ...styles.addTaskDropdownBtn, borderTopRightRadius: 0, borderBottomRightRadius: 0, paddingRight: '0.5rem' }}
                 disabled={isReadOnly}
-                onClick={handleTopAddTaskGlobal}
+                onClick={(e) => { e.stopPropagation(); handleTopAddTaskGlobal(); }}
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#818CF8'}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6366F1'}
               >
@@ -1741,7 +1764,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
                 style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
               >
-                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} priorityFieldSettings={selectedProject?.priorityFieldSettings || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords) => setActivePopover({ type, task, coords })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} />
+                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} priorityFieldSettings={selectedProject?.priorityFieldSettings || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords) => setActivePopover({ type, task, coords })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} />
               </div>
             )
           })}
@@ -1764,6 +1787,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           token={token}
           lastInteractedSectionId={lastInteractedSectionId}
           setLastInteractedSectionId={setLastInteractedSectionId}
+          lastInteractedTaskId={lastInteractedTaskId}
+          setLastInteractedTaskId={setLastInteractedTaskId}
           draggingTaskId={draggingTaskId}
           setDraggingTaskId={setDraggingTaskId}
           draggingSectionId={draggingSectionId}
@@ -1786,6 +1811,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           onDeleteSection={handleDeleteSection}
           onOpenTaskPane={setActiveTaskPaneId}
           syncProjectStates={syncProjectStates}
+          handleTopAddTaskGlobal={handleTopAddTaskGlobal}
         />
       ) : activeViewObj.type === 'Dashboard' ? (
         <ProjectDashboardView selectedProject={selectedProject} />
@@ -1880,7 +1906,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           <button onClick={() => handleApprovalStatusChange('CHANGES_REQUESTED')} style={{ ...styles.contextMenuItem, padding: '0.3rem 0.5rem', fontSize: '0.8rem', color: '#F59E0B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: '#F59E0B', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"></path></svg></div> Request Changes</button>
           <button onClick={() => handleApprovalStatusChange('REJECTED')} style={{ ...styles.contextMenuItem, padding: '0.3rem 0.5rem', fontSize: '0.8rem', color: 'var(--accent-danger)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: 'var(--accent-danger)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></div> Reject</button>
           <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
-          <button onClick={() => handleApprovalStatusChange('PENDING')} style={{ ...styles.contextMenuItem, padding: '0.3rem 0.5rem', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: 'transparent', border: '1px dashed var(--text-tertiary)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></div> Clear</button>
+          <button onClick={() => handleApprovalStatusChange('PENDING')} style={{ ...styles.contextMenuItem, padding: '0.3rem 0.5rem', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '16px', height: '16px', borderRadius: '4px', backgroundColor: 'transparent', border: '1px dashed var(--text-tertiary)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ fontSize: '10px', lineHeight: 1 }}>⚖️</span></div> Clear</button>
         </div>
       )}
 

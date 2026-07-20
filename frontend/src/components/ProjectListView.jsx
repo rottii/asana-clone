@@ -9,12 +9,14 @@ export default function ProjectListView({
   token,
   lastInteractedSectionId,
   setLastInteractedSectionId,
+  lastInteractedTaskId,
+  setLastInteractedTaskId,
   draggingTaskId,
   setDraggingTaskId,
-  draggingSectionId,       // YENÄ°
-  setDraggingSectionId,    // YENÄ°
-  handleLiveSectionSwap,   // YENÄ°
-  handleFinalSectionMove,  // YENÄ°
+  draggingSectionId,       // YENİ
+  setDraggingSectionId,    // YENİ
+  handleLiveSectionSwap,   // YENİ
+  handleFinalSectionMove,  // YENİ
   handleLiveTaskSwap,
   applyTaskFilter,
   applyTaskSort,
@@ -30,7 +32,8 @@ export default function ProjectListView({
   onRenameSection,
   onDeleteSection,
   onOpenTaskPane,
-  syncProjectStates
+  syncProjectStates,
+  handleTopAddTaskGlobal
 }) {
   const [collapsedSections, setCollapsedSections] = useState({})
   const [quickTaskInputs, setQuickTaskInputs] = useState({})
@@ -361,29 +364,27 @@ export default function ProjectListView({
       <div style={styles.columnDropdownMenu} onClick={(e) => e.stopPropagation()}>
         {(colName !== 'name' && colName !== 'assignee' && colName !== 'dueDate') && (
           <button onClick={() => {
-            const title = titles[colName] || colName;
-            setFieldTitle(title);
-            const cf = customFields.find(c => c.title === title);
-            if (cf) setFieldOptionsList(cf.options || []);
             setEditingFieldOptions(true);
-            setOpenColumnMenuName(null);
-          }} style={styles.dropdownItem}>âœï¸ Edit field</button>
+            setFieldTitle(titles[colName] || colName);
+            const cf = customFields.find(f => f.title === (titles[colName] || colName));
+            setFieldOptionsList(cf?.options || []);
+            closeAllMenus();
+          }} style={styles.dropdownItem}>✏️ Edit field</button>
         )}
-        <button style={styles.dropdownItem}>âš¯ Field access and permissions <span style={{ float: 'right' }}>{'>'}</span></button>
+        <button style={styles.dropdownItem}>⚖️ Field access and permissions <span style={{ float: 'right' }}>{'>'}</span></button>
         <div style={styles.menuDivider}></div>
-        <button style={styles.dropdownItem}>â†‘â†“ Sort <span style={{ float: 'right' }}>{'>'}</span></button>
-        <button style={styles.dropdownItem}>â‰¡ Filter</button>
-        <button style={styles.dropdownItem}>âŠ Group <span style={{ float: 'right' }}>{'>'}</span></button>
+        <button style={styles.dropdownItem}>≡ Filter</button>
+        <button style={styles.dropdownItem}>⊞ Group <span style={{ float: 'right' }}>{'>'}</span></button>
+        <button onClick={() => { handleSortOptionClick && handleSortOptionClick(titles[colName] || colName); closeAllMenus(); }} style={styles.dropdownItem}>Sort</button>
         <div style={styles.menuDivider}></div>
         <button onClick={() => { setShowAddFieldMenu(true); setOpenColumnMenuName(null); }} style={styles.dropdownItem}>+ Add column</button>
-        <button style={styles.dropdownItem}>â†” Move column <span style={{ float: 'right' }}>{'>'}</span></button>
-        <button style={styles.dropdownItem}>ğŸ‘ Hide column</button>
+        <button style={styles.dropdownItem}>↔ Move column <span style={{ float: 'right' }}>{'>'}</span></button>
+        <button style={styles.dropdownItem}>👁️ Hide column</button>
         <div style={styles.menuDivider}></div>
-        <button style={styles.dropdownItem}>Add rule to field</button>
-        <button style={styles.dropdownItem}>âœ¨ AI auto-fill</button>
+        <button style={styles.dropdownItem}>✨ AI auto-fill</button>
         <div style={styles.menuDivider}></div>
         {(colName !== 'name' && colName !== 'assignee' && colName !== 'dueDate') && (
-          <button onClick={(e) => { e.stopPropagation(); handleDeleteField(titles[colName] || colName); }} style={{ ...styles.dropdownItemDelete, padding: '0.5rem 0.75rem', marginTop: 0 }}>ğŸ—‘ Delete field</button>
+          <button onClick={(e) => { e.stopPropagation(); handleDeleteField(titles[colName] || colName); }} style={{ ...styles.dropdownItemDelete, padding: '0.5rem 0.75rem', marginTop: 0 }}>🗑️ Delete field</button>
         )}
       </div>
     );
@@ -410,7 +411,7 @@ export default function ProjectListView({
   };
 
   const handleAddOption = () => {
-    setFieldOptionsList([...fieldOptionsList, { id: Date.now().toString(), label: '', color: '#FDBA74', icon: 'âŒ„' }]);
+    setFieldOptionsList([...fieldOptionsList, { id: Date.now().toString(), label: '', color: '#FDBA74', icon: '▼' }]);
   };
 
   const handleRemoveOption = (id) => {
@@ -421,12 +422,14 @@ export default function ProjectListView({
     setFieldOptionsList(fieldOptionsList.map(o => o.id === id ? { ...o, label: newLabel } : o));
   };
 
-  return (
   const renderTaskRow = (task, sectionId) => {
     return (
                     <div
                       key={task.id}
-                      onClick={() => setLastInteractedSectionId(sectionId)}
+                      onClickCapture={() => {
+                        setLastInteractedSectionId(sectionId);
+                        if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
+                      }}
                       data-task-id={task.id}
                       style={{
                         ...styles.taskDataTableRow,
@@ -462,10 +465,10 @@ export default function ProjectListView({
                         onDragEnd={() => setDraggingTaskId(null)}
                         style={styles.drag6DotHandleCellTask}
                       >
-                        â‹®â‹®
+                        ⋮⋮
                       </div>
 
-                      {/* HÃ¼cre 1: Checkbox & BaÅŸlÄ±k */}
+                      {/* Hücre 1: Checkbox & Başlık */}
                       <div
                         style={{ ...styles.gridBodyCell, width: colWidths.name, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '1rem', cursor: 'pointer', overflow: openApprovalMenuTaskId === task.id ? 'visible' : 'hidden', position: openApprovalMenuTaskId === task.id ? 'relative' : 'static', zIndex: openApprovalMenuTaskId === task.id ? 9999 : 'auto' }}
                         onClick={() => {
@@ -492,7 +495,7 @@ export default function ProjectListView({
                                 }
                               }}
                             >
-                              {task.approvalStatus === 'APPROVED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> : task.approvalStatus === 'REJECTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> : task.approvalStatus === 'CHANGES_REQUESTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"></path></svg> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>}
+                              {task.approvalStatus === 'APPROVED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> : task.approvalStatus === 'REJECTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> : task.approvalStatus === 'CHANGES_REQUESTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"></path></svg> : <span style={{ fontSize: '12px', lineHeight: 1 }}>⚖️</span>}
                             </div>
                           </div>
                         ) : task.type === 'MILESTONE' ? (
@@ -531,7 +534,10 @@ export default function ProjectListView({
                             onChange={(e) => setEditTaskTitleValue(e.target.value)}
                             onBlur={() => submitTaskRename(task, sectionId)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') submitTaskRename(task, sectionId);
+                              if (e.key === 'Enter') {
+                                submitTaskRename(task, sectionId);
+                                if (handleTopAddTaskGlobal) handleTopAddTaskGlobal();
+                              }
                               if (e.key === 'Escape') setEditingTaskId(null);
                             }}
                             style={{
@@ -593,7 +599,7 @@ export default function ProjectListView({
                                 </div>
                               ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', height: '22px' }}>
-                                  <span style={{ color: '#9CA3AF', fontSize: '0.8rem' }}>ğŸ‘¤ Unassigned</span>
+                                  <span style={{ color: '#9CA3AF', fontSize: '0.8rem' }}>👤 Unassigned</span>
                                 </div>
                               )}
                             </div>
@@ -650,7 +656,7 @@ export default function ProjectListView({
                                     Clear value
                                   </button>
                                   <button onClick={() => { setFieldTitle(cf.title); setFieldOptionsList(cf.options); setEditingFieldOptions(true); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                    <span style={{ fontSize: '1rem' }}>âœï¸</span> Edit field
+                                    <span style={{ fontSize: '1rem' }}>✏️</span> Edit field
                                   </button>
                                 </div>
                               )}
@@ -662,6 +668,7 @@ export default function ProjectListView({
     );
   };
 
+  return (
     <div style={styles.listSpreadsheetWrapper}>
       {editingFieldOptions && (
         <div style={styles.modalOverlay}>
@@ -669,14 +676,14 @@ export default function ProjectListView({
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)', fontWeight: '500' }}>âœï¸ Edit field</h2>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)', fontWeight: '500' }}>✏️ Edit field</h2>
                 <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>Created by Iboro, 8 Jul</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <button style={{ padding: '0.3rem 0.6rem', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
-                  <span style={{ fontSize: '1rem' }}>ğŸ‘¥</span> Manage access
+                  <span style={{ fontSize: '1rem' }}>👥</span> Manage access
                 </button>
-                <button onClick={() => setEditingFieldOptions(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>âœ•</button>
+                <button onClick={() => setEditingFieldOptions(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>✕</button>
               </div>
             </div>
 
@@ -693,7 +700,7 @@ export default function ProjectListView({
               <div style={{ width: '150px' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Field type</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--text-secondary)', fontSize: '0.9rem', paddingTop: '0.4rem' }}>
-                  <span>âŠ–</span> Single-select
+                  <span>⊖</span> Single-select
                 </div>
               </div>
             </div>
@@ -714,7 +721,7 @@ export default function ProjectListView({
                     onDragEnd={handleDragEndOption}
                     style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: draggingOptionId === opt.id ? 0.5 : 1, padding: '0.2rem 0' }}
                   >
-                    <div style={{ cursor: 'grab', color: 'var(--text-tertiary)', padding: '0 0.2rem', display: 'flex', alignItems: 'center', userSelect: 'none', fontSize: '1.2rem' }}>â‹®â‹®</div>
+                    <div style={{ cursor: 'grab', color: 'var(--text-tertiary)', padding: '0 0.2rem', display: 'flex', alignItems: 'center', userSelect: 'none', fontSize: '1.2rem' }}>⋮⋮</div>
                     <input
                       type="color"
                       value={opt.color || '#E0E7FF'}
@@ -729,7 +736,7 @@ export default function ProjectListView({
                       placeholder="Type an option name"
                       style={{ flex: 1, border: 'none', outline: 'none', fontSize: '0.9rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' }}
                     />
-                    <button onClick={() => handleRemoveOption(opt.id)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: '1.2rem', cursor: 'pointer' }}>âœ•</button>
+                    <button onClick={() => handleRemoveOption(opt.id)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
                   </div>
                 ))}
               </div>
@@ -765,7 +772,7 @@ export default function ProjectListView({
         </div>
       )}
 
-      {/* Grid Tablo BaÅŸlÄ±k SÃ¼tunlarÄ± */}
+      {/* Grid Tablo Başlık Sütunları */}
       <div style={styles.listTableHeaderRow}>
         <div
           style={{ ...styles.gridHeaderCell, width: colWidths.name, flexShrink: 0, paddingLeft: '3.5rem', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
@@ -774,10 +781,10 @@ export default function ProjectListView({
           onClick={() => handleSortOptionClick && handleSortOptionClick('Alphabetical')}
         >
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, fontWeight: activeSort?.field === 'Alphabetical' ? '700' : '500' }}>
-            Name {activeSort?.field === 'Alphabetical' && (activeSort.direction === 'asc' ? 'â†‘' : 'â†“')}
+            Name {activeSort?.field === 'Alphabetical' && (activeSort.direction === 'asc' ? '↑' : '↓')}
           </span>
           {(hoveredColumnName === 'name' || openColumnMenuName === 'name') && (
-            <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>â–¼</button>
+            <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>▼</button>
           )}
           {openColumnMenuName === 'name' && renderColumnDropdownMenu('name')}
           <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, 'name')} />
@@ -812,10 +819,10 @@ export default function ProjectListView({
               onMouseLeave={() => setHoveredColumnName(null)}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, pointerEvents: 'none', fontWeight: activeSort?.field === title ? '700' : '500' }}>
-                {title} {activeSort?.field === title && (activeSort.direction === 'asc' ? 'â†‘' : 'â†“')}
+                {title} {activeSort?.field === title && (activeSort.direction === 'asc' ? '↑' : '↓')}
               </span>
               {(hoveredColumnName === menuName || openColumnMenuName === menuName) && (
-                <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === menuName; closeAllMenus(); if (!isOpen) setOpenColumnMenuName(menuName); }} style={styles.columnHeaderMenuBtn}>â–¼</button>
+                <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === menuName; closeAllMenus(); if (!isOpen) setOpenColumnMenuName(menuName); }} style={styles.columnHeaderMenuBtn}>▼</button>
               )}
               {openColumnMenuName === menuName && renderColumnDropdownMenu(menuName)}
               <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, colId)} />
@@ -829,25 +836,24 @@ export default function ProjectListView({
           {showAddFieldMenu && (
             <div style={styles.addFieldMenu} onClick={(e) => e.stopPropagation()}>
               <div style={styles.addFieldMenuHeader}>Field types</div>
-              <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â–¼</span> Single-select</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â–¼</span> Multi-select</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ“…</span> Date</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ‘¤</span> People</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ”—</span> Reference</button>
+              <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>▼</span> Single-select</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>▼</span> Multi-select</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>📅</span> Date</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>👤</span> People</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🔗</span> Reference</button>
               <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>A</span> Text</button>
               <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>#</span> Number</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>Æ’(x)</span> Formula</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ†”</span> ID</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â±ï¸</span> Timer</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â±ï¸</span> Time tracking</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ”</span> Rollup</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ƒ(x)</span> Formula</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⏱️</span> Timer</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⏱️</span> Time tracking</button>
+              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🔍</span> Rollup</button>
               <div style={styles.addFieldMenuShowMore}>Show more</div>
             </div>
           )}
         </div>
       </div>
 
-      {/* BÃ¶lÃ¼mler ve GÃ¶revler GÃ¶vdesi */}
+      {/* Bölümler ve Görevler Gövdesi */}
       <div style={styles.listSpreadsheetBody}>
         {(groupedSections || selectedProject.sections)?.map((section, idx) => {
           const filteredTasks = groupedSections ? section.tasks : (applyTaskSort ? applyTaskSort(applyTaskFilter(section.tasks)) : applyTaskFilter(section.tasks))
@@ -872,7 +878,7 @@ export default function ProjectListView({
               }}
               onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
             >
-              {/* BÃ–LÃœM (SECTION) BAÅLIK SATIRI */}
+              {/* BÖLÜM (SECTION) BAÅLIK SATIRI */}
               <div style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
                 <div
                   draggable={!isReadOnly && !isEditing && !isVirtualGrouping}
@@ -893,14 +899,14 @@ export default function ProjectListView({
                   }}
                   style={styles.drag6DotHandleCell}
                 >
-                  â‹®â‹®
+                  ⋮⋮
                 </div>
 
                 <div
                   style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: isEditing ? 'default' : 'pointer' }}
                   onClick={() => !isEditing && setCollapsedSections({ ...collapsedSections, [section.id]: !isCollapsed })}
                 >
-                  <span style={styles.accordionArrowIcon}>{isCollapsed ? 'â–¶' : 'â–¼'}</span>
+                  <span style={styles.accordionArrowIcon}>{isCollapsed ? '▶' : '▼'}</span>
 
                   {isEditing ? (
                     <input
@@ -923,28 +929,27 @@ export default function ProjectListView({
                       onClick={(e) => { e.stopPropagation(); const isOpen = openSectionMenuId === section.id; closeAllMenus(); if (!isOpen) setOpenSectionMenuId(section.id); }}
                       style={styles.threeDotButton}
                     >
-                      â‹®
+                      ⋮
                     </button>
                   )}
                 </div>
 
                 {openSectionMenuId === section.id && (
                   <div style={{ ...styles.dropdownMenu, left: '250px', right: 'auto', top: '2rem' }} onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => { setEditingSectionId(section.id); setEditSectionNameValue(section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Yeniden AdlandÄ±r</button>
-                    <button onClick={() => { if (onDeleteSection) onDeleteSection(section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>BÃ¶lÃ¼mÃ¼ Sil</button>
+                    <button onClick={() => { setEditingSectionId(section.id); setEditSectionNameValue(section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Yeniden Adlandır</button>
+                    <button onClick={() => { if (onDeleteSection) onDeleteSection(section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>Bölümü Sil</button>
                   </div>
                 )}
               </div>
 
-              {/* GÃ¶rev SatÄ±rlarÄ± GÃ¶vdesi */}
+              {/* Görev Satırları Gövdesi */}
               {!isCollapsed && (
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {section.subgroups ? (
                     section.subgroups.map(subgroup => (
                       <div key={subgroup.id}>
                         <div style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                          <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>â†³</span>
+                          <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>↳</span>
                           <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>{subgroup.name}</span>
                           <span style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' }}>{subgroup.tasks.length}</span>
                         </div>
@@ -954,11 +959,20 @@ export default function ProjectListView({
                   ) : (
                     filteredTasks.map(t => renderTaskRow(t, section.id))
                   )}
-                  {/* SatÄ±r Ä°Ã§i HÄ±zlÄ± GÃ¶rev Ekleme */}
+                  {/* Satır İçi Hızlı Görev Ekleme */}
                   {!isReadOnly && !isVirtualGrouping && (
-                    <div style={styles.quickAddTaskRowList}>
+                    <div
+                      style={{ ...styles.quickAddTaskRowList, cursor: 'text' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLastInteractedSectionId(section.id);
+                        const inp = document.getElementById(`quick-add-${section.id}`);
+                        if (inp) inp.focus();
+                      }}
+                    >
                       <span style={{ paddingLeft: '3.5rem', color: '#9CA3AF', fontSize: '0.85rem' }}>+</span>
                       <input
+                        id={`quick-add-${section.id}`}
                         type="text"
                         placeholder="Add task..."
                         value={quickTaskInputs[section.id] || ''}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import TaskCard from './TaskCard'
 
-export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, priorityFieldSettings, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection }) {
+export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, priorityFieldSettings, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [isEditingName, setIsEditingName] = useState(false)
@@ -87,11 +87,17 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
       {/* SADECE GÖREV KARTLARININ KAYDIRILDIĞI SCROLL ALANI */}
       <div style={styles.taskListContainer}>
         {section.tasks?.map(task => (
-          <TaskCard 
+          <div 
             key={task.id} 
-            task={task} 
-            token={token} 
-            onTaskUpdate={onTaskUpdate} 
+            onClickCapture={() => {
+              if (setLastInteractedSectionId) setLastInteractedSectionId(section.id);
+              if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
+            }}
+          >
+            <TaskCard 
+              task={task} 
+              token={token} 
+              onTaskUpdate={onTaskUpdate} 
             onTaskContextMenu={onTaskContextMenu} 
             onOpenApprovalMenu={onOpenApprovalMenu}
             onOpenPopover={onOpenPopover}
@@ -104,6 +110,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
             draggingTaskId={draggingTaskId}
             setDraggingTaskId={setDraggingTaskId}
           />
+          </div>
         ))}
       </div>
 

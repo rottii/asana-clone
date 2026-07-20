@@ -1,0 +1,14 @@
+370:           }} style={styles.dropdownItem}>âœï¸ Edit field</button>
+372:         <button style={styles.dropdownItem}>âš¯ Field access and permissions <span style={{ float: 'right' }}>{'>'}</span></button>
+375:         <button style={styles.dropdownItem}>â‰¡ Filter</button>
+376:         <button style={styles.dropdownItem}>âŠ Group <span style={{ float: 'right' }}>{'>'}</span></button>
+379:         <button style={styles.dropdownItem}>â†” Move column <span style={{ float: 'right' }}>{'>'}</span></button>
+380:         <button style={styles.dropdownItem}>ğŸ‘ Hide column</button>
+383:         <button style={styles.dropdownItem}>âœ¨ AI auto-fill</button>
+386:           <button onClick={(e) => { e.stopPropagation(); handleDeleteField(titles[colName] || colName); }} style={{ ...styles.dropdownItemDelete, padding: '0.5rem 0.75rem', marginTop: 0 }}>ğŸ—‘ Delete field</button>
+413:     setFieldOptionsList([...fieldOptionsList, { id: Date.now().toString(), label: '', color: '#FDBA74', icon: 'âŒ„' }]);
+653:                                     <span style={{ fontSize: '1rem' }}>âœï¸</span> Edit field
+672:                 <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)', fontWeight: '500' }}>âœï¸ Edit field</h2>
+841:               <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â±ï¸</span> Timer</button>
+842:               <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>â±ï¸</span> Time tracking</button>
+843:               <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ğŸ”</span> Rollup</button>
