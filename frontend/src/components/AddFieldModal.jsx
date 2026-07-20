@@ -5,14 +5,14 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
   const [activeTab, setActiveTab] = useState('create') // 'create' | 'library' | 'ai'
   const [fieldTitle, setFieldTitle] = useState(editField ? editField.title : '')
   const [fieldType, setFieldType] = useState('Single-select')
-  
+
   const [options, setOptions] = useState(
-    editField && editField.options && editField.options.length > 0 
+    editField && editField.options && editField.options.length > 0
       ? editField.options.map(opt => ({ id: opt.id, value: opt.label, color: opt.color || '#E0E7FF' }))
       : [
-          { id: 1, value: '', color: '#10B981' },
-          { id: 2, value: '', color: '#EF4444' }
-        ]
+        { id: 1, value: '', color: '#10B981' },
+        { id: 2, value: '', color: '#EF4444' }
+      ]
   )
 
   const handleAddOption = () => {
@@ -40,13 +40,13 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
     if (!fieldTitle.trim()) return
 
     const defaultValue = options[0]?.value || '—'
-    
+
     const mappedOptions = options.filter(o => o.value.trim() !== '').map(o => ({
       id: o.id.toString(),
       label: o.value.trim(),
       color: o.color
     }));
-    
+
     if (editField && onUpdateField) {
       onUpdateField({ ...editField, title: fieldTitle.trim(), options: mappedOptions })
     } else {
@@ -57,7 +57,7 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
   return createPortal(
     <div style={styles.backdrop} onClick={onClose}>
       <div style={styles.modalBox} onClick={(e) => e.stopPropagation()}>
-        
+
         <div style={styles.modalHeader}>
           <h2 style={styles.modalTitle}>{editField ? 'Edit field' : 'Add field'}</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -67,23 +67,17 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
         </div>
 
         <div style={styles.tabsRow}>
-          <span 
-            onClick={() => setActiveTab('create')} 
+          <span
+            onClick={() => setActiveTab('create')}
             style={{ ...styles.tabItem, ...(activeTab === 'create' ? styles.activeTabItem : {}) }}
           >
             Create new
           </span>
-          <span 
-            onClick={() => setActiveTab('library')} 
+          <span
+            onClick={() => setActiveTab('library')}
             style={{ ...styles.tabItem, ...(activeTab === 'library' ? styles.activeTabItem : {}) }}
           >
             Choose from library
-          </span>
-          <span 
-            onClick={() => setActiveTab('ai')} 
-            style={{ ...styles.tabItem, ...(activeTab === 'ai' ? styles.activeTabItem : {}) }}
-          >
-            Fields with AI Studio
           </span>
         </div>
 
@@ -91,9 +85,9 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
           <div style={styles.inputGridRow}>
             <div style={{ flex: 1 }}>
               <label style={styles.fieldLabel}>Field title <span style={{ color: '#EF4444' }}>*</span></label>
-              <input 
-                type="text" 
-                placeholder="Priority, Stage, Status..." 
+              <input
+                type="text"
+                placeholder="Priority, Stage, Status..."
                 value={fieldTitle}
                 onChange={e => setFieldTitle(e.target.value)}
                 style={styles.mainInput}
@@ -102,8 +96,8 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
             </div>
             <div style={{ width: '180px' }}>
               <label style={styles.fieldLabel}>Field type</label>
-              <select 
-                value={fieldType} 
+              <select
+                value={fieldType}
                 onChange={e => setFieldType(e.target.value)}
                 style={styles.mainSelect}
               >
@@ -122,16 +116,16 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
               <div style={styles.optionsListContainer}>
                 {options.map((option, index) => (
                   <div key={option.id} style={styles.optionInputRow}>
-                    <input 
+                    <input
                       type="color"
                       value={option.color}
                       onChange={(e) => handleOptionColorChange(option.id, e.target.value)}
                       style={{ width: 24, height: 24, border: 'none', padding: 0, backgroundColor: 'transparent', cursor: 'pointer', flexShrink: 0 }}
                       title="Choose color"
                     />
-                    <input 
-                      type="text" 
-                      placeholder="Type an option name" 
+                    <input
+                      type="text"
+                      placeholder="Type an option name"
                       value={option.value}
                       onChange={e => handleOptionChange(option.id, e.target.value)}
                       style={styles.optionInputField}
@@ -171,7 +165,7 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
 }
 
 const styles = {
-  backdrop: { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0, 0, 0, 0.4)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 },
+  backdrop: { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100005 },
   modalBox: { backgroundColor: 'var(--bg-primary)', width: '520px', maxWidth: '90%', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)', padding: '1.5rem', boxSizing: 'border-box', fontFamily: 'system-ui' },
   modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' },
   modalTitle: { margin: 0, fontSize: '1.4rem', fontWeight: '600', color: 'var(--text-primary)' },

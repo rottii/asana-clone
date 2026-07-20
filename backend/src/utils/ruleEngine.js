@@ -12,20 +12,25 @@ const evaluateRules = async (projectId, taskId, event) => {
 
       // 1. Exact Match triggers (where event.type matches triggerType exactly)
       const exactMatchTriggers = [
-        'task_completed', 'rule_run_manually', 'scheduled_time_occurs', 
-        'task_added_to_project', 'task_field_changed', 'task_assigned', 
+        'rule_run_manually', 'scheduled_time_occurs', 
+        'task_added_to_project', 'task_assigned', 
         'task_type_changed', 'task_name_changed', 'task_description_changed', 
-        'due_date_is', 'due_date_changed', 'due_date_approaching', 
-        'task_overdue', 'start_date_is', 'start_date_changed', 
+        'due_date_changed', 'due_date_approaching', 
+        'task_overdue', 'start_date_changed', 
         'start_date_approaching', 'start_date_passed', 'status_changed', 
         'approval_status_changed', 'task_no_longer_blocked', 
         'completion_status_changed', 'custom_field_changed', 
-        'added_to_task', 'attachment_added', 'comment_added', 'collaborator_added',
-        'task_moved_general'
+        'attachment_added', 'comment_added', 'collaborator_added'
       ];
 
       if (exactMatchTriggers.includes(rule.triggerType) && event.type === rule.triggerType) {
-        triggered = true;
+        if (rule.triggerType === 'custom_field_changed') {
+            if (!rule.triggerValue || rule.triggerValue === event.fieldName) {
+                triggered = true;
+            }
+        } else {
+            triggered = true;
+        }
       } 
       // 2. Specific Section Move
       else if (rule.triggerType === 'task_moved' && (event.type === 'task_moved' || event.type === 'task_moved_general')) {
@@ -89,6 +94,75 @@ const evaluateRules = async (projectId, taskId, event) => {
             await prisma.taskCollaborator.create({
               data: { taskId: taskId, userId: rule.actionValue }
             }).catch(() => {}); // ignore unique constraint errors
+            
+            // Trigger collaborator_added
+            await evaluateRules(projectId, taskId, { type: 'collaborator_added' });
+          } else if (rule.actionType === 'add_to_project' && rule.actionValue) {
+            // Add task to another project (multi-homing)
+            const targetProjectId = rule.actionValue;
+            // Get default section for that project
+            const section = await prisma.section.findFirst({ where: { projectId: targetProjectId }, orderBy: { order: 'asc' } });
+            if (section) {
+               await prisma.taskProject.create({
+                 data: { taskId: taskId, projectId: targetProjectId, sectionId: section.id, order: 0 }
+               }).catch(() => {});
+            }
+          } else if (rule.actionType === 'remove_from_project') {
+            // Remove from the current project if it's a secondary project
+            await prisma.taskProject.deleteMany({
+              where: { taskId: taskId, projectId: projectId }
+            });
+            // Note: If it's the primary project, we don't delete the task here to avoid accidental data loss.
+          } else if (rule.actionType === 'create_approvals' && rule.actionValue) {
+            const task = await prisma.task.findUnique({ where: { id: taskId } });
+            if (task) {
+              const titles = rule.actionValue.split(',').map(t => t.trim()).filter(Boolean);
+              for (let i = 0; i < titles.length; i++) {
+                await prisma.task.create({
+                  data: { title: titles[i], sectionId: task.sectionId, creatorId: task.creatorId, parentId: taskId, order: i, type: 'APPROVAL', approvalStatus: 'PENDING' }
+                });
+              }
+            }
+          } else if (rule.actionType === 'convert_to_project') {
+            const task = await prisma.task.findUnique({ where: { id: taskId }, include: { section: { include: { project: true } } } });
+            if (task) {
+              // Create a new project with the task's title
+              const newProject = await prisma.project.create({
+                data: {
+                  name: task.title,
+                  ownerId: task.creatorId,
+                  workspaceId: task.section?.project?.workspaceId || null,
+                  sections: {
+                    create: [{ name: 'To Do', order: 0 }, { name: 'In Progress', order: 1 }, { name: 'Done', order: 2 }]
+                  }
+                }
+              });
+              // Add a comment to the task linking to the new project
+              await prisma.comment.create({
+                data: { text: `This task was converted to a project: ${newProject.name}`, taskId: taskId, userId: task.creatorId }
+              });
+            }
+          } else if (rule.actionType === 'change_custom_field' && rule.actionValue) {
+            const [fieldId, fieldValue] = rule.actionValue.split(':');
+            if (fieldId && fieldValue) {
+              if (fieldId === 'Priority') {
+                await prisma.task.update({ where: { id: taskId }, data: { priority: fieldValue } });
+              } else {
+                const task = await prisma.task.findUnique({ where: { id: taskId } });
+                if (task) {
+                  let customFields = [];
+                  try { if (task.customFields) customFields = JSON.parse(task.customFields); } catch(e) {}
+                  
+                  const existingFieldIndex = customFields.findIndex(cf => cf.id === fieldId || cf.name === fieldId || cf.title === fieldId);
+                  if (existingFieldIndex >= 0) {
+                    customFields[existingFieldIndex].value = fieldValue;
+                  } else {
+                    customFields.push({ id: fieldId, value: fieldValue });
+                  }
+                  await prisma.task.update({ where: { id: taskId }, data: { customFields: JSON.stringify(customFields) } });
+                }
+              }
+            }
           }
           console.log(`[Rule Engine] Task ${taskId} executed action ${rule.actionType} via rule ${rule.triggerType}`);
         } catch (actionErr) {

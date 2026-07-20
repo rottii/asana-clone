@@ -94,6 +94,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [draggingSectionId, setDraggingSectionId] = useState(null)
   const [draggingTabId, setDraggingTabId] = useState(null)
   const [dropTargetTab, setDropTargetTab] = useState({ id: null, position: null })
+  
+  const [undoToast, setUndoToast] = useState(false);
+  const pendingDeleteRef = useRef(null);
 
   const projectRole = selectedProject.ownerId === user.id
     ? 'ADMIN'
@@ -103,6 +106,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   // Sürükle bırak işlemlerinde state gecikmesini önlemek için senkron referans
   const latestSectionsRef = useRef(selectedProject.sections);
+  useEffect(() => {
+    return () => {
+      if (pendingDeleteRef.current) {
+        clearTimeout(pendingDeleteRef.current.timeoutId);
+        fetch(`http://localhost:5001/api/projects/tasks/${pendingDeleteRef.current.task.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(console.error);
+      }
+    };
+  }, [token]);
+
   useEffect(() => {
     latestSectionsRef.current = selectedProject.sections;
   }, [selectedProject.sections]);
@@ -166,7 +178,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     // Reset interaction state when switching projects
     setLastInteractedSectionId(null);
     setLastInteractedTaskId(null);
-    
+
     if (selectedProject?.sections?.length > 0) {
       setLastInteractedSectionId(selectedProject.sections[0].id)
     }
@@ -392,8 +404,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchesTitle = task.title?.toLowerCase().includes(query);
-        const matchesDesc = task.description?.toLowerCase().includes(query);
-        if (!matchesTitle && !matchesDesc) return false;
+        if (!matchesTitle) return false;
       }
       if (activeFilters.includes('incomplete') && task.isCompleted) return false
       if (activeFilters.includes('completed') && !task.isCompleted) return false
@@ -595,7 +606,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   const handleTopAddTaskGlobal = async (overrides = {}) => {
     if (isReadOnly) return;
-    
+
     // Check if activeGroup exists instead of relying on isVirtualGrouping because it's defined later
     if (activeGroup && activeGroup !== 'Sections') {
       alert("You cannot add tasks directly into a dynamically grouped view. Please switch to 'Group by: Sections' to add tasks.");
@@ -737,6 +748,12 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     }
   };
 
+  useEffect(() => {
+    if (selectedProject?.id) {
+        fetchProjectRules();
+    }
+  }, [selectedProject?.id, token]);
+
   const openRulesView = () => {
     setCustomizeView('rules');
     fetchProjectRules();
@@ -799,12 +816,21 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         }
       }
 
-      if (originalSectionId && updatedTask.sectionId && originalSectionId !== updatedTask.sectionId) {
+      let targetSectionId = updatedTask.sectionId;
+      if (updatedTask.secondaryProjects) {
+        const sp = updatedTask.secondaryProjects.find(p => p.projectId === selectedProject.id);
+        if (sp) targetSectionId = sp.sectionId;
+      }
+      
+      // If the targetSectionId doesn't exist in the current project, it means the task was removed from this project.
+      const targetSectionExists = updatedSections.some(sec => sec.id === targetSectionId);
+
+      if (originalSectionId && (originalSectionId !== targetSectionId || !targetSectionExists)) {
         updatedSections = updatedSections.map(sec => {
           if (sec.id === originalSectionId) {
             return { ...sec, tasks: (sec.tasks || []).filter(t => t.id !== taskId) };
           }
-          if (sec.id === updatedTask.sectionId) {
+          if (sec.id === targetSectionId) {
             return { ...sec, tasks: [...(sec.tasks || []), updatedTask] };
           }
           return sec;
@@ -881,14 +907,67 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     } catch (err) { console.error(err) }
   }
 
+  const executeDeleteTask = async (taskId) => {
+    try {
+      await fetch(`http://localhost:5001/api/projects/tasks/${taskId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
+    } catch (err) { console.error(err) }
+  }
+
   const handleDeleteTask = async (taskId) => {
     const taskIdToDelete = taskId || contextMenu.taskId;
     setContextMenu({ visible: false, x: 0, y: 0, taskId: null });
-    try {
-      await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToDelete}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
-      const updatedSections = selectedProject.sections.map(sec => ({ ...sec, tasks: (sec.tasks || []).filter(t => t.id !== taskIdToDelete) }))
-      syncProjectStates({ ...selectedProject, sections: updatedSections })
-    } catch (err) { console.error(err) }
+    
+    let taskToDelete = null;
+    let secId = null;
+    let taskIndex = -1;
+    for (const sec of selectedProject.sections) {
+      const idx = sec.tasks?.findIndex(t => t.id === taskIdToDelete);
+      if (idx !== -1 && idx !== undefined) {
+        taskToDelete = sec.tasks[idx];
+        secId = sec.id;
+        taskIndex = idx;
+        break;
+      }
+    }
+    
+    if (!taskToDelete) return;
+
+    if (pendingDeleteRef.current) {
+      clearTimeout(pendingDeleteRef.current.timeoutId);
+      executeDeleteTask(pendingDeleteRef.current.task.id);
+    }
+
+    const updatedSections = selectedProject.sections.map(sec => ({ ...sec, tasks: (sec.tasks || []).filter(t => t.id !== taskIdToDelete) }))
+    syncProjectStates({ ...selectedProject, sections: updatedSections })
+
+    const timeoutId = setTimeout(() => {
+      executeDeleteTask(taskIdToDelete);
+      setUndoToast(false);
+      pendingDeleteRef.current = null;
+    }, 5000);
+
+    pendingDeleteRef.current = { task: taskToDelete, sectionId: secId, index: taskIndex, timeoutId };
+    setUndoToast(true);
+  }
+
+  const handleUndoDelete = () => {
+    if (!pendingDeleteRef.current) return;
+    clearTimeout(pendingDeleteRef.current.timeoutId);
+    
+    const { task, sectionId, index } = pendingDeleteRef.current;
+    
+    const updatedSections = selectedProject.sections.map(sec => {
+      if (sec.id === sectionId) {
+        const newTasks = [...(sec.tasks || [])];
+        newTasks.splice(index, 0, task);
+        return { ...sec, tasks: newTasks };
+      }
+      return sec;
+    });
+    syncProjectStates({ ...selectedProject, sections: updatedSections });
+    
+    setUndoToast(false);
+    pendingDeleteRef.current = null;
   }
 
   const handleConvertTask = async (newType, taskId) => {
@@ -2078,7 +2157,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 <div style={{ ...styles.customizeHeader, justifyContent: 'flex-start', gap: '0.75rem' }}>
                   <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--text-secondary)', padding: 0 }} onClick={() => setCustomizeView('main')}>←</button>
                   <h2 style={{ ...styles.customizeTitle, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '1.2rem' }}>
-                    Rules <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '400', marginTop: '3px' }}>with AI Studio</span>
+                    Rules
                   </h2>
                 </div>
 
@@ -2103,7 +2182,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                             <span style={{ color: '#F87171', fontSize: '1.2rem', marginTop: '2px' }}>⚡</span>
                             <div>
                               <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: '500' }}>{ruleName}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Active • Last run 5 hours ago</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Active</div>
                             </div>
                           </div>
                           <div style={{ position: 'relative' }}>
@@ -2218,6 +2297,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           <div className="view-context-menu-item delete-item" onMouseDown={(e) => { e.stopPropagation(); handleDeleteView(); }}>🗑️ Delete</div>
         </div>
       )}
+      {undoToast && (
+        <div style={{ position: 'fixed', bottom: '24px', left: '24px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', padding: '12px 16px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '24px', zIndex: 99999, border: '1px solid var(--border-color)' }}>
+          <span style={{ fontSize: '0.9rem', fontWeight: '400' }}>Task deleted</span>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => { if (pendingDeleteRef.current) { clearTimeout(pendingDeleteRef.current.timeoutId); executeDeleteTask(pendingDeleteRef.current.task.id); } setUndoToast(false); pendingDeleteRef.current = null; }}>✕</button>
+            <button style={{ border: '1px solid var(--border-color)', background: 'transparent', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: '500' }} onClick={handleUndoDelete}>Undo</button>
+          </div>
+        </div>
+      )}
 
     </div>
   )
@@ -2278,8 +2366,8 @@ const styles = {
   listSpreadsheetWrapper: { flex: 1, overflowY: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
   ghostDragCardTemplate: { position: 'fixed', top: '-1000px', left: '-1000px', width: '180px', padding: '8px 12px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.8rem', fontWeight: '600', borderRadius: '6px', border: '1px solid var(--accent-primary)', boxShadow: '0 10px 15px -3px rgba(79,70,229,0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', zIndex: -99999 },
 
-  customizePanelOverlay: { position: 'fixed', top: '99px', left: 0, right: 0, bottom: 0, zIndex: 100000 },
-  customizePanel: { position: 'fixed', top: '99px', right: 0, bottom: 0, width: '380px', backgroundColor: 'var(--bg-primary)', borderLeft: '1px solid var(--border-color)', zIndex: 100001, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 15px rgba(0,0,0,0.05)' },
+  customizePanelOverlay: { position: 'fixed', top: '104px', left: 0, right: 0, bottom: 0, zIndex: 100000 },
+  customizePanel: { position: 'fixed', top: '104px', right: 0, bottom: 0, width: '380px', backgroundColor: 'var(--bg-primary)', borderLeft: '1px solid var(--border-color)', zIndex: 100001, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 15px rgba(0,0,0,0.05)' },
   customizeHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-color)' },
   customizeTitle: { margin: 0, fontSize: '1.25rem', fontWeight: '500', color: 'var(--text-primary)' },
   customizeCloseBtn: { background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer' },

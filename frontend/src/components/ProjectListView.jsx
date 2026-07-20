@@ -135,6 +135,8 @@ export default function ProjectListView({
   useEffect(() => {
     if (!resizingCol) return;
 
+    document.body.style.cursor = 'col-resize';
+
     const handleMouseMove = (e) => {
       const delta = e.clientX - resizeRef.current.startX;
       const newWidth = Math.max(50, resizeRef.current.startWidth + delta);
@@ -148,6 +150,7 @@ export default function ProjectListView({
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
+      document.body.style.cursor = '';
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -670,6 +673,9 @@ export default function ProjectListView({
 
   return (
     <div style={styles.listSpreadsheetWrapper}>
+      {resizingCol && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, cursor: 'col-resize' }} />
+      )}
       {editingFieldOptions && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
@@ -772,10 +778,12 @@ export default function ProjectListView({
         </div>
       )}
 
-      {/* Grid Tablo Başlık Sütunları */}
+      <div style={{ minWidth: 'max-content', flex: 1 }}>
+        {/* Grid Tablo Başlık Sütunları */}
       <div style={styles.listTableHeaderRow}>
+        <div style={{ width: '32px', flexShrink: 0, boxSizing: 'border-box' }} />
         <div
-          style={{ ...styles.gridHeaderCell, width: colWidths.name, flexShrink: 0, paddingLeft: '3.5rem', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          style={{ ...styles.gridHeaderCell, width: colWidths.name, flexShrink: 0, paddingLeft: '42px', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
           onMouseEnter={() => setHoveredColumnName('name')}
           onMouseLeave={() => setHoveredColumnName(null)}
           onClick={() => handleSortOptionClick && handleSortOptionClick('Alphabetical')}
@@ -787,7 +795,7 @@ export default function ProjectListView({
             <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>▼</button>
           )}
           {openColumnMenuName === 'name' && renderColumnDropdownMenu('name')}
-          <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, 'name')} />
+          <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, 'name')} onClick={(e) => e.stopPropagation()} />
         </div>
         {columnOrder.map(colId => {
           let title = '';
@@ -825,12 +833,12 @@ export default function ProjectListView({
                 <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === menuName; closeAllMenus(); if (!isOpen) setOpenColumnMenuName(menuName); }} style={styles.columnHeaderMenuBtn}>▼</button>
               )}
               {openColumnMenuName === menuName && renderColumnDropdownMenu(menuName)}
-              <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, colId)} />
+              <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, colId)} onClick={(e) => e.stopPropagation()} />
             </div>
           );
         })}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', flexShrink: 0, position: 'relative', borderBottom: '1px solid #E5E7EB' }}>
-          <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = showAddFieldMenu; closeAllMenus(); setShowAddFieldMenu(!isOpen); }} style={styles.addFieldButton} title="Add column">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '200px', flexShrink: 0, position: 'relative', borderBottom: '1px solid var(--border-color)' }}>
+          <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = showAddFieldMenu; closeAllMenus(); setShowAddFieldMenu(!isOpen); }} style={{ ...styles.addFieldButton, width: '40px' }} title="Add column">
             +
           </button>
           {showAddFieldMenu && (
@@ -1005,26 +1013,27 @@ export default function ProjectListView({
             }}
           />
         )}
+        </div>
       </div>
     </div>
   )
 }
 
 const styles = {
-  listSpreadsheetWrapper: { flex: 1, overflowY: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
+  listSpreadsheetWrapper: { flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
   listTableHeaderRow: { display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', flexShrink: 0 },
-  gridHeaderCell: { padding: '0.6rem', fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderRight: '1px solid var(--border-color)' },
+  gridHeaderCell: { boxSizing: 'border-box', padding: '0.6rem', fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderRight: '1px solid var(--border-color)' },
   sectionAccordionRow: { display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none' },
   accordionArrowIcon: { fontSize: '0.7rem', color: 'var(--text-primary)', width: '12px' },
   sectionTitleText: { fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' },
   sectionTaskCountBadge: { backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' },
   taskDataTableRow: { display: 'flex', borderBottom: '1px solid var(--bg-tertiary)', transition: 'background-color 0.1s, opacity 0.15s ease' },
-  gridBodyCell: { padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center', borderRight: '1px solid var(--bg-tertiary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  gridBodyCell: { boxSizing: 'border-box', padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center', borderRight: '1px solid var(--bg-tertiary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   listAvatarIcon: { width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' },
   quickAddTaskRowList: { display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--bg-tertiary)', padding: '0.35rem 0' },
   quickAddTaskInpCell: { flex: 1, border: 'none', outline: 'none', fontSize: '0.85rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' },
-  drag6DotHandleCell: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', color: 'var(--text-tertiary)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none', marginRight: '0.4rem' },
-  drag6DotHandleCellTask: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', color: 'var(--border-color)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none' },
+  drag6DotHandleCell: { boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', color: 'var(--text-tertiary)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none', marginRight: '0.4rem' },
+  drag6DotHandleCellTask: { boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', color: 'var(--border-color)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none' },
   sectionRenameInput: { flex: 1, border: '1px solid var(--accent-primary)', borderRadius: '4px', outline: 'none', padding: '2px 6px', fontSize: '0.9rem', fontWeight: '600', backgroundColor: 'transparent', color: 'var(--text-primary)' },
   threeDotButton: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 0.5rem' },
   dropdownMenu: { position: 'absolute', top: '100%', right: '1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, padding: '0.25rem', minWidth: '150px' },

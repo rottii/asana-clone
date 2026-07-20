@@ -368,15 +368,18 @@ export default function ProjectTimelineView({
                   </g>
                 );
               })}
-              {connectingTask && rawTasks[connectingTask.id] && (
-                <path 
-                  d={`M ${rawTasks[connectingTask.id].left + rawTasks[connectingTask.id].width} ${rawTasks[connectingTask.id].yCenter} C ${rawTasks[connectingTask.id].left + rawTasks[connectingTask.id].width + 30} ${rawTasks[connectingTask.id].yCenter}, ${mousePos.x - 30} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`} 
-                  stroke="#4F46E5" 
-                  strokeWidth="2" 
-                  strokeDasharray="4"
-                  fill="none" 
-                />
-              )}
+              {connectingTask && rawTasks[connectingTask.id] && (() => {
+                const cTask = rawTasks[connectingTask.id];
+                const startX = connectingTask.isStart ? cTask.left : cTask.left + cTask.width;
+                const cp1X = connectingTask.isStart ? startX - 30 : startX + 30;
+                const cp2X = connectingTask.isStart ? mousePos.x + 30 : mousePos.x - 30;
+                return (
+                  <path 
+                    d={`M ${startX} ${cTask.yCenter} C ${cp1X} ${cTask.yCenter}, ${cp2X} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`} 
+                    stroke="#4F46E5" strokeWidth="2" strokeDasharray="4" fill="none" 
+                  />
+                );
+              })()}
               <defs>
                 <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                   <polygon points="0 0, 10 3.5, 0 7" fill="#9CA3AF" />
@@ -493,7 +496,11 @@ export default function ProjectTimelineView({
                           onMouseUp={(e) => {
                             if (connectingTask && connectingTask.id !== t.id) {
                               e.stopPropagation();
-                              handleCreateDependency(t.id, connectingTask.id);
+                              if (connectingTask.isStart) {
+                                handleCreateDependency(connectingTask.id, t.id);
+                              } else {
+                                handleCreateDependency(t.id, connectingTask.id);
+                              }
                               setConnectingTask(null);
                             }
                           }}
@@ -510,6 +517,19 @@ export default function ProjectTimelineView({
                             style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === t.id ? 1 : 0 }}
                             onMouseDown={(e) => {
                               e.stopPropagation();
+                              if (svgRef.current) {
+                                const rect = svgRef.current.getBoundingClientRect();
+                                setConnectingTask({
+                                  id: t.id,
+                                  isStart: true,
+                                  x: e.clientX - rect.left,
+                                  y: e.clientY - rect.top
+                                });
+                                setMousePos({
+                                  x: e.clientX - rect.left,
+                                  y: e.clientY - rect.top
+                                });
+                              }
                             }}
                           >
                             <div style={styles.connectorLineLeft} />
@@ -569,6 +589,7 @@ export default function ProjectTimelineView({
                                 const rect = svgRef.current.getBoundingClientRect();
                                 setConnectingTask({
                                   id: t.id,
+                                  isStart: false,
                                   x: e.clientX - rect.left,
                                   y: e.clientY - rect.top
                                 });

@@ -75,8 +75,7 @@ export default function MyTasks({ user, projects, token }) {
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchesTitle = task.title?.toLowerCase().includes(query);
-        const matchesDesc = task.description?.toLowerCase().includes(query);
-        if (!matchesTitle && !matchesDesc) return false;
+        if (!matchesTitle) return false;
       }
       if (activeFilters.includes('incomplete') && task.isCompleted) return false;
       if (activeFilters.includes('completed') && !task.isCompleted) return false;

@@ -384,9 +384,15 @@ export default function ProjectGanttView({
                     </g>
                   );
                 })}
-                {connectingTask && rawTasks[connectingTask.id] && rawTasks[connectingTask.id].yCenter !== undefined && (
-                  <path d={`M ${rawTasks[connectingTask.id].left + rawTasks[connectingTask.id].width} ${rawTasks[connectingTask.id].yCenter} C ${rawTasks[connectingTask.id].left + rawTasks[connectingTask.id].width + 30} ${rawTasks[connectingTask.id].yCenter}, ${mousePos.x - 30} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`} stroke="#4F46E5" strokeWidth="2" strokeDasharray="4" fill="none" />
-                )}
+                {connectingTask && rawTasks[connectingTask.id] && rawTasks[connectingTask.id].yCenter !== undefined && (() => {
+                  const cTask = rawTasks[connectingTask.id];
+                  const startX = connectingTask.isStart ? cTask.left : cTask.left + cTask.width;
+                  const cp1X = connectingTask.isStart ? startX - 30 : startX + 30;
+                  const cp2X = connectingTask.isStart ? mousePos.x + 30 : mousePos.x - 30;
+                  return (
+                    <path d={`M ${startX} ${cTask.yCenter} C ${cp1X} ${cTask.yCenter}, ${cp2X} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`} stroke="#4F46E5" strokeWidth="2" strokeDasharray="4" fill="none" />
+                  );
+                })()}
                 <defs>
                   <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                     <polygon points="0 0, 10 3.5, 0 7" fill="#9CA3AF" />
@@ -420,13 +426,24 @@ export default function ProjectGanttView({
                           onMouseUp={(e) => {
                             if (connectingTask && connectingTask.id !== task.id) {
                               e.stopPropagation();
-                              handleCreateDependency(task.id, connectingTask.id);
+                              if (connectingTask.isStart) {
+                                handleCreateDependency(connectingTask.id, task.id);
+                              } else {
+                                handleCreateDependency(task.id, connectingTask.id);
+                              }
                               setConnectingTask(null);
                             }
                           }}
                         >
                           {/* Connector node LEFT */}
-                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => e.stopPropagation()}>
+                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { 
+                            e.stopPropagation(); 
+                            if (svgRef.current) {
+                              const rect = svgRef.current.getBoundingClientRect();
+                              setConnectingTask({ id: task.id, isStart: true });
+                              setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                            }
+                          }}>
                             <div style={styles.connectorLineLeft} />
                           </div>
 
@@ -440,11 +457,18 @@ export default function ProjectGanttView({
                               backgroundColor: task.isCompleted ? '#D1D5DB' : '#6366F1',
                               border: '2px solid rgba(0,0,0,0.15)',
                             }} />
-                            <span style={{ ...styles.taskTitleTruncated, textDecoration: task.isCompleted ? 'line-through' : 'none' }}>{task.title}</span>
+                            {/* Title removed for cleaner Gantt UI */}
                           </div>
 
                           {/* Connector node RIGHT */}
-                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { e.stopPropagation(); setConnectingTask(task); }}>
+                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { 
+                            e.stopPropagation(); 
+                            if (svgRef.current) {
+                              const rect = svgRef.current.getBoundingClientRect();
+                              setConnectingTask({ id: task.id, isStart: false });
+                              setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                            }
+                          }}>
                             <div style={styles.connectorLineRight} />
                           </div>
                         </div>
@@ -460,13 +484,24 @@ export default function ProjectGanttView({
                           onMouseUp={(e) => {
                             if (connectingTask && connectingTask.id !== task.id) {
                               e.stopPropagation();
-                              handleCreateDependency(task.id, connectingTask.id);
+                              if (connectingTask.isStart) {
+                                handleCreateDependency(connectingTask.id, task.id);
+                              } else {
+                                handleCreateDependency(task.id, connectingTask.id);
+                              }
                               setConnectingTask(null);
                             }
                           }}
                         >
                           {/* Connector node LEFT */}
-                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => e.stopPropagation()}>
+                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => {
+                            e.stopPropagation();
+                            if (svgRef.current) {
+                              const rect = svgRef.current.getBoundingClientRect();
+                              setConnectingTask({ id: task.id, isStart: true });
+                              setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                            }
+                          }}>
                             <div style={styles.connectorLineLeft} />
                           </div>
 
@@ -478,7 +513,7 @@ export default function ProjectGanttView({
                             style={styles.taskBarContent} 
                             onMouseDown={(e) => { if(!isReadOnly){ e.stopPropagation(); setDragState({ taskId: task.id, type: 'MOVE', startX: e.clientX, deltaX: 0 });} }}
                           >
-                            <span style={styles.taskTitleTruncated}>{task.title}</span>
+                            {/* Title removed for cleaner Gantt UI */}
                           </div>
 
                           {!isReadOnly && (
@@ -486,7 +521,14 @@ export default function ProjectGanttView({
                           )}
 
                           {/* Connector node RIGHT */}
-                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { e.stopPropagation(); setConnectingTask(task); }}>
+                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { 
+                            e.stopPropagation(); 
+                            if (svgRef.current) {
+                              const rect = svgRef.current.getBoundingClientRect();
+                              setConnectingTask({ id: task.id, isStart: false });
+                              setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                            }
+                          }}>
                             <div style={styles.connectorLineRight} />
                           </div>
                         </div>

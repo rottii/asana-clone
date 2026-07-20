@@ -1335,6 +1335,50 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
                 if (isCompleted !== undefined) {
                     await evaluateRules(projectId, updatedTask.id, { type: 'task_completed' });
                     await evaluateRules(projectId, updatedTask.id, { type: 'completion_status_changed' });
+
+                    // Subtask completion logic: If this is a subtask, check if ALL subtasks of its parent are now completed
+                    if (updatedTask.parentId) {
+                        const parentTask = await prisma.task.findUnique({
+                            where: { id: updatedTask.parentId },
+                            include: { subtasks: true, section: true }
+                        });
+                        if (parentTask && parentTask.section?.projectId) {
+                            const allSubtasksCompleted = parentTask.subtasks.every(st => st.id === updatedTask.id ? isCompleted : st.isCompleted);
+                            // If this change made all subtasks complete, trigger for the parent
+                            if (allSubtasksCompleted && isCompleted) {
+                                await evaluateRules(parentTask.section.projectId, parentTask.id, { type: 'completion_status_changed' });
+                            }
+                        }
+                    }
+
+                    // Task no longer blocked logic: If this task was blocking others, check if they are now unblocked
+                    if (isCompleted) {
+                        const blockedDependencies = await prisma.taskDependency.findMany({
+                            where: { blockingId: updatedTask.id },
+                            include: { 
+                                blockedByTask: { 
+                                    include: { 
+                                        blockedBy: { include: { blockingTask: true } }, 
+                                        section: true 
+                                    } 
+                                } 
+                            }
+                        });
+                        
+                        for (const dep of blockedDependencies) {
+                            const blockedTask = dep.blockedByTask;
+                            const allBlockersCompleted = blockedTask.blockedBy.every(b => 
+                                b.blockingTask.isCompleted || b.blockingTask.id === updatedTask.id
+                            );
+                            
+                            if (allBlockersCompleted && blockedTask.section?.projectId) {
+                                await evaluateRules(blockedTask.section.projectId, blockedTask.id, { type: 'task_no_longer_blocked' });
+                            }
+                        }
+                    }
+                }
+                if (approvalStatus !== undefined && approvalStatus !== currentTask.approvalStatus) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'approval_status_changed' });
                 }
                 if (assigneeId !== undefined && assigneeId !== currentTask.assigneeId) {
                     await evaluateRules(projectId, updatedTask.id, { type: 'task_assigned' });
@@ -1354,8 +1398,22 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
                 if (startDate !== undefined) {
                     await evaluateRules(projectId, updatedTask.id, { type: 'start_date_changed' });
                 }
+                if (priority !== undefined && priority !== currentTask.priority) {
+                    await evaluateRules(projectId, updatedTask.id, { type: 'custom_field_changed', fieldName: 'Priority' });
+                }
                 if (customFields !== undefined) {
-                    await evaluateRules(projectId, updatedTask.id, { type: 'custom_field_changed' });
+                    let oldFields = {};
+                    let newFields = {};
+                    try { oldFields = typeof currentTask.customFields === 'string' ? JSON.parse(currentTask.customFields) : (currentTask.customFields || {}); } catch(e){}
+                    try { newFields = typeof customFields === 'string' ? JSON.parse(customFields) : (customFields || {}); } catch(e){}
+                    
+                    if (oldFields && newFields) {
+                        for (const key of Object.keys(newFields)) {
+                            if (newFields[key] !== oldFields[key]) {
+                                await evaluateRules(projectId, updatedTask.id, { type: 'custom_field_changed', fieldName: key });
+                            }
+                        }
+                    }
                 }
                 if (sectionId !== undefined && sectionId !== currentTask.sectionId) {
                     await evaluateRules(projectId, updatedTask.id, {
@@ -1652,6 +1710,10 @@ router.delete('/tasks/:taskId/dependencies/:dependencyId', authenticateToken, as
             include: fullTaskInclude
         });
 
+        if (updatedTask && updatedTask.blockedBy.length === 0 && updatedTask.section?.projectId) {
+            await evaluateRules(updatedTask.section.projectId, updatedTask.id, { type: 'task_no_longer_blocked' });
+        }
+
         res.json(updatedTask);
     } catch (error) {
         console.error('Error deleting dependency:', error);
@@ -1898,6 +1960,11 @@ router.post('/tasks/:taskId/attachments', authenticateToken, upload.array('files
                 })
             )
         );
+
+        const taskForRule = await prisma.task.findUnique({ where: { id: req.params.taskId }, select: { section: { select: { projectId: true } } } });
+        if (taskForRule?.section?.projectId) {
+            await evaluateRules(taskForRule.section.projectId, req.params.taskId, { type: 'attachment_added' });
+        }
 
         res.status(201).json(attachments);
     } catch (error) {

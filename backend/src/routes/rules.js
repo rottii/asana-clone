@@ -2,6 +2,7 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const router = express.Router({ mergeParams: true }); // projectId alabilmek için
+const { evaluateRules } = require('../utils/ruleEngine');
 
 // 1. Projeye ait tüm kuralları getir
 router.get('/', async (req, res) => {
@@ -80,6 +81,24 @@ router.put('/:ruleId', async (req, res) => {
     res.json(updatedRule);
   } catch (error) {
     console.error('Kural güncellenirken hata:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// 5. Kuralı manuel çalıştır
+router.post('/:ruleId/run/:taskId', async (req, res) => {
+  const { projectId, ruleId, taskId } = req.params;
+  try {
+    const rule = await prisma.rule.findUnique({ where: { id: ruleId } });
+    if (!rule) return res.status(404).json({ error: 'Kural bulunamadı' });
+
+    // evaluateRules assumes event.type matches rule.triggerType for exact matches
+    // But since this is a manual run, we just pass the exact triggerType of the rule so it triggers
+    await evaluateRules(projectId, taskId, { type: 'rule_run_manually' });
+    
+    res.json({ success: true, message: 'Kural çalıştırıldı' });
+  } catch (error) {
+    console.error('Kural manuel çalıştırılırken hata:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
