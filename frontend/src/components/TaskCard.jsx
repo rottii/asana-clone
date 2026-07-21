@@ -3,7 +3,7 @@ import AddFieldModal from './AddFieldModal'
 
 let globalLastDragY = 0;
 
-export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId }) {
+export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId }) {
   const [openFieldMenuId, setOpenFieldMenuId] = useState(null)
   const [isHovered, setIsHovered] = useState(false)
   const [isEditingMode, setIsEditingMode] = useState(false)
@@ -144,14 +144,14 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
       })
       const data = await response.json()
       if (!response.ok) { alert(data.error || "Yetki yok."); return; }
-      
+
       const newLikedState = !currentlyLiked;
       setIsLiked(newLikedState);
       const likedTasks = getLikedTasks();
       if (newLikedState) {
-          localStorage.setItem(`likedTasks`, JSON.stringify([...likedTasks, task.id]));
+        localStorage.setItem(`likedTasks`, JSON.stringify([...likedTasks, task.id]));
       } else {
-          localStorage.setItem(`likedTasks`, JSON.stringify(likedTasks.filter(id => id !== task.id)));
+        localStorage.setItem(`likedTasks`, JSON.stringify(likedTasks.filter(id => id !== task.id)));
       }
       onTaskUpdate(task.id, data)
     } catch (err) { console.error(err) }
@@ -196,7 +196,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
   }
 
   const getPriorityStyle = (level) => {
-    switch(level) {
+    switch (level) {
       case 'HIGH': return { backgroundColor: '#FEE2E2', color: '#991B1B' }
       case 'LOW': return { backgroundColor: '#CCFBF1', color: '#115E59' }
       default: return { backgroundColor: '#FEF3C7', color: '#92400E' }
@@ -204,7 +204,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
   }
 
   return (
-    <div 
+    <div
       ref={cardRef}
       data-task-id={task.id}
       draggable={!isReadOnly && !isVirtualGrouping && !isEditingMode}
@@ -225,13 +225,13 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
         if (draggingTaskId && draggingTaskId !== task.id && !isVirtualGrouping) {
           const draggedEl = document.querySelector(`[data-task-id="${draggingTaskId}"]`);
           if (!draggedEl) return;
-          
+
           const draggedRect = draggedEl.getBoundingClientRect();
           const targetRect = e.currentTarget.getBoundingClientRect();
           const y = e.clientY - targetRect.top;
-          
+
           const isDraggingDown = draggedRect.top < targetRect.top;
-          
+
           const extra = Math.max(0, targetRect.height - draggedRect.height);
 
           if (isDraggingDown) {
@@ -274,19 +274,19 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1, minWidth: 0 }}>
           {task.type === 'APPROVAL' ? (
             <div style={{ position: 'relative' }}>
-              <div 
+              <div
                 style={{
                   width: '18px', height: '18px', borderRadius: '4px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px',
                   cursor: isReadOnly ? 'default' : 'pointer',
                   backgroundColor: task.approvalStatus === 'APPROVED' ? 'var(--accent-success)' : task.approvalStatus === 'REJECTED' ? 'var(--accent-danger)' : task.approvalStatus === 'CHANGES_REQUESTED' ? '#F59E0B' : 'transparent',
-                  border: task.approvalStatus === 'PENDING' || !task.approvalStatus ? '1px dashed var(--text-tertiary)' : 'none',
+                  border: task.approvalStatus === 'PENDING' || !task.approvalStatus ? '1px solid var(--text-tertiary)' : 'none',
                   color: task.approvalStatus === 'PENDING' || !task.approvalStatus ? 'var(--text-secondary)' : '#fff',
                 }}
                 title={task.approvalStatus || 'PENDING'}
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  e.preventDefault(); 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
                   if (!isReadOnly && onOpenApprovalMenu) {
                     onOpenApprovalMenu(e, task);
                   }
@@ -335,8 +335,8 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
                     handleTitleSave();
                   }
                 }}
-                style={{ 
-                  width: '100%', border: 'none', outline: 'none', 
+                style={{
+                  width: '100%', border: 'none', outline: 'none',
                   fontSize: '0.95rem', color: 'var(--text-primary)', fontFamily: 'Inter, sans-serif', fontWeight: '500',
                   padding: 0, margin: 0, overflow: 'hidden', height: '1.35rem', lineHeight: '1.4', background: 'transparent',
                   userSelect: 'text', WebkitUserSelect: 'text', cursor: 'text', position: 'relative', zIndex: 10
@@ -347,12 +347,12 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
             )}
           </div>
         </div>
-        
+
         {(isHovered && !isEditingMode && !isReadOnly) && (
-          <button 
+          <button
             style={{
               position: 'absolute', top: '0.5rem', right: '0.5rem',
-              background: 'none', border: '1px solid var(--border-color)', cursor: 'pointer', padding: '0.4rem', 
+              background: 'none', border: '1px solid var(--border-color)', cursor: 'pointer', padding: '0.4rem',
               color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
               borderRadius: '6px', backgroundColor: 'var(--bg-primary)'
             }}
@@ -371,13 +371,13 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
         )}
       </div>
 
-      <div style={{ 
-        display: 'flex', 
+      <div style={{
+        display: 'flex',
         flexDirection: isEditingMode ? 'column' : 'row',
-        flexWrap: isEditingMode ? 'nowrap' : 'wrap', 
+        flexWrap: isEditingMode ? 'nowrap' : 'wrap',
         alignItems: 'flex-start',
-        gap: '0.5rem', 
-        marginTop: '0.75rem' 
+        gap: '0.5rem',
+        marginTop: '0.75rem'
       }}>
 
 
@@ -385,41 +385,312 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
         {customFieldSettings?.map(cf => {
           const parsedFields = getParsedCustomFields(task.customFields);
           const value = parsedFields[cf.id];
-          const isEmpty = !value || (typeof value === 'string' && value.trim() === '');
-          
+          const cfType = cf.type || 'single-select';
+          const isEmpty = !value || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0);
+
           if (isEmpty && !isEditingMode) return null;
-            
-          const opt = cf.options?.find(o => (o.value || o.label) === value);
-          const displayValue = opt ? (opt.label || opt.value) : (isEmpty ? `Set ${cf.title}` : value);
-          const badgeStyle = opt?.color ? { ...styles.staticCustomBadge, backgroundColor: opt.color, color: 'var(--text-primary)', border: 'none' } : styles.staticCustomBadge;
-          
-          return (
-            <div key={cf.id} style={{ position: 'relative' }}>
-              <span 
-                onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!isReadOnly && (cf.type === 'SELECT' || cf.type === 'single-select')) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }}
-                style={{ ...badgeStyle, cursor: (!isReadOnly && (cf.type === 'SELECT' || cf.type === 'single-select')) ? 'pointer' : 'default', opacity: isEmpty ? 0.7 : 1, border: isEmpty ? '1px dashed var(--border-color)' : badgeStyle.border }}
-              >
-                {displayValue}
-              </span>
-              {openFieldMenuId === cf.id && (cf.type === 'SELECT' || cf.type === 'single-select') && (
-                <div style={styles.dropdownMenu} onClick={(e) => e.stopPropagation()}>
-                  <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>{cf.title}</div>
-                  {cf.options?.map(o => (
-                    <button 
-                      key={o.id}
-                      onClick={() => { handleDirectFieldUpdate(cf.id, o.label || o.value); setOpenFieldMenuId(null); }}
-                      style={{...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px'}}
-                    >
-                       <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', display: 'inline-block', flexShrink: 0 }}></div>
-                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
-                    </button>
-                  ))}
-                  <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
-                  <button onClick={() => { handleDirectFieldUpdate(cf.id, ''); setOpenFieldMenuId(null); }} style={{...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)'}}>Clear value</button>
+
+          // SINGLE-SELECT
+          if (cfType === 'SELECT' || cfType === 'single-select') {
+            const opt = cf.options?.find(o => (o.value || o.label) === value);
+            const displayValue = opt ? (opt.label || opt.value) : (isEmpty ? `Set ${cf.title}` : value);
+            const badgeStyle = opt?.color ? { ...styles.staticCustomBadge, backgroundColor: opt.color, color: 'var(--text-primary)', border: 'none' } : styles.staticCustomBadge;
+            return (
+              <div key={cf.id} style={{ position: 'relative' }}>
+                <span
+                  onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }}
+                  style={{ ...badgeStyle, cursor: !isReadOnly ? 'pointer' : 'default', opacity: isEmpty ? 0.7 : 1, border: isEmpty ? '1px dashed var(--border-color)' : badgeStyle.border }}
+                >
+                  {displayValue}
+                </span>
+                {openFieldMenuId === cf.id && (
+                  <div style={styles.dropdownMenu} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>{cf.title}</div>
+                    {cf.options?.map(o => (
+                      <button
+                        key={o.id}
+                        onClick={() => { handleDirectFieldUpdate(cf.id, o.label || o.value); setOpenFieldMenuId(null); }}
+                        style={{ ...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px' }}
+                      >
+                        <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', display: 'inline-block', flexShrink: 0 }}></div>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
+                      </button>
+                    ))}
+                    <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+                    <button onClick={() => { handleDirectFieldUpdate(cf.id, ''); setOpenFieldMenuId(null); }} style={{ ...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)' }}>Clear value</button>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // MULTI-SELECT
+          if (cfType === 'multi-select') {
+            const selectedValues = Array.isArray(value) ? value : (value ? [value] : []);
+            if (selectedValues.length === 0 && !isEditingMode) return null;
+            return (
+              <div key={cf.id} style={{ position: 'relative' }}>
+                <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }} style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', cursor: !isReadOnly ? 'pointer' : 'default' }}>
+                  {selectedValues.length > 0 ? selectedValues.map(sv => {
+                    const opt = cf.options?.find(o => (o.label || o.value) === sv);
+                    return (
+                      <span key={sv} style={{ ...styles.staticCustomBadge, backgroundColor: opt?.color || '#E0E7FF', color: 'var(--text-primary)', border: 'none', fontSize: '0.65rem', padding: '1px 6px' }}>
+                        {sv}
+                      </span>
+                    );
+                  }) : (
+                    <span style={{ ...styles.staticCustomBadge, opacity: 0.7, border: '1px dashed var(--border-color)' }}>Set {cf.title}</span>
+                  )}
                 </div>
-              )}
-            </div>
-          );
+                {openFieldMenuId === cf.id && (
+                  <div style={styles.dropdownMenu} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>{cf.title}</div>
+                    {cf.options?.map(o => {
+                      const label = o.label || o.value;
+                      const isSelected = selectedValues.includes(label);
+                      return (
+                        <button
+                          key={o.id}
+                          onClick={() => {
+                            const newVals = isSelected ? selectedValues.filter(v => v !== label) : [...selectedValues, label];
+                            handleDirectFieldUpdate(cf.id, newVals);
+                          }}
+                          style={{ ...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px', backgroundColor: isSelected ? 'var(--bg-secondary)' : 'transparent' }}
+                        >
+                          <div style={{ width: 12, height: 12, borderRadius: '3px', border: isSelected ? 'none' : '1px solid #D1D5DB', backgroundColor: isSelected ? '#4F46E5' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '8px', color: '#fff' }}>
+                            {isSelected && '✓'}
+                          </div>
+                          <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', display: 'inline-block', flexShrink: 0 }}></div>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                        </button>
+                      );
+                    })}
+                    <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+                    <button onClick={() => { handleDirectFieldUpdate(cf.id, []); setOpenFieldMenuId(null); }} style={{ ...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)' }}>Clear all</button>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // DATE
+          if (cfType === 'date') {
+            if (!value && !isEditingMode) return null;
+            const formatted = value ? new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric' }) : `Set ${cf.title}`;
+            return (
+              <span 
+                key={cf.id} 
+                onClick={(e) => { 
+                  e.stopPropagation(); e.preventDefault(); 
+                  if (!isReadOnly) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const coords = { left: rect.left };
+                    if (rect.bottom > window.innerHeight - 300) {
+                      coords.bottom = window.innerHeight - rect.top;
+                    } else {
+                      coords.top = rect.bottom + 5;
+                    }
+                    onOpenPopover('custom-date', task, coords, { customFieldId: cf.id }); 
+                  }
+                }} 
+                style={{ ...styles.staticCustomBadge, opacity: value ? 1 : 0.7, cursor: !isReadOnly ? 'pointer' : 'default', border: !value ? '1px dashed var(--border-color)' : styles.staticCustomBadge.border }}
+              >
+                📅 {formatted}
+              </span>
+            );
+          }
+
+          // PEOPLE
+          if (cfType === 'people') {
+            const selectedPeople = Array.isArray(value) ? value : (value ? [value] : []);
+            if (selectedPeople.length === 0 && !isEditingMode) return null;
+            return (
+              <div key={cf.id} style={{ position: 'relative' }}>
+                <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }} style={{ display: 'flex', gap: '2px', cursor: !isReadOnly ? 'pointer' : 'default' }}>
+                  {selectedPeople.length > 0 ? selectedPeople.slice(0, 3).map((uid, i) => (
+                    <span key={uid} style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold', marginLeft: i > 0 ? '-4px' : '0', border: '1px solid var(--bg-primary)' }}>
+                      {projectMembers?.find(m => m.user?.id === uid)?.user?.name?.charAt(0).toUpperCase() || '?'}
+                    </span>
+                  )) : (
+                    <span style={{ ...styles.staticCustomBadge, opacity: 0.7, border: '1px dashed var(--border-color)' }}>Set {cf.title}</span>
+                  )}
+                  {selectedPeople.length > 3 && <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>+{selectedPeople.length - 3}</span>}
+                </div>
+                {openFieldMenuId === cf.id && (
+                  <div style={styles.dropdownMenu} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>People</div>
+                    {projectMembers?.map(m => {
+                      const uid = m.user?.id;
+                      const isSelected = selectedPeople.includes(uid);
+                      return (
+                        <button
+                          key={uid}
+                          onClick={() => {
+                            if (!uid) return;
+                            const newVals = isSelected ? selectedPeople.filter(v => v !== uid) : [...selectedPeople, uid];
+                            handleDirectFieldUpdate(cf.id, newVals);
+                          }}
+                          style={{ ...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px', backgroundColor: isSelected ? 'var(--bg-secondary)' : 'transparent' }}
+                        >
+                          <div style={{ width: 12, height: 12, borderRadius: '3px', border: isSelected ? 'none' : '1px solid #D1D5DB', backgroundColor: isSelected ? '#4F46E5' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '8px', color: '#fff' }}>
+                            {isSelected && '✓'}
+                          </div>
+                          <span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 'bold', flexShrink: 0 }}>
+                            {m.user?.name?.charAt(0).toUpperCase() || '?'}
+                          </span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.user?.name || m.user?.email}</span>
+                        </button>
+                      );
+                    })}
+                    <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+                    <button onClick={() => { handleDirectFieldUpdate(cf.id, []); setOpenFieldMenuId(null); }} style={{ ...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)' }}>Clear all</button>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // NUMBER
+          if (cfType === 'number') {
+            if ((!value && value !== 0) && !isEditingMode) return null;
+            if (openFieldMenuId === cf.id && !isReadOnly) {
+              return (
+                <input
+                  key={cf.id}
+                  autoFocus
+                  type="number"
+                  defaultValue={value}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onBlur={(e) => {
+                    handleDirectFieldUpdate(cf.id, e.target.value ? Number(e.target.value) : '');
+                    setOpenFieldMenuId(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleDirectFieldUpdate(cf.id, e.target.value ? Number(e.target.value) : '');
+                      setOpenFieldMenuId(null);
+                    }
+                  }}
+                  style={{ background: 'var(--bg-primary)', border: '1px solid #4F46E5', borderRadius: '4px', fontSize: '0.75rem', padding: '0.2rem 0.5rem', color: 'var(--text-primary)', outline: 'none', fontWeight: '500', maxWidth: '80px', fontFamily: 'monospace' }}
+                />
+              );
+            }
+            const fmt = cf.numberFormat || 'plain';
+            const num = Number(value);
+            let displayNum = value;
+            if (!isNaN(num) && value !== '') {
+              if (fmt === 'currency') displayNum = `$${num.toLocaleString()}`;
+              else if (fmt === 'percent') displayNum = `${num}%`;
+              else displayNum = num.toLocaleString();
+            } else if (!value && value !== 0) {
+              displayNum = `Set ${cf.title}`;
+            }
+            return (
+              <span key={cf.id} onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!isReadOnly) setOpenFieldMenuId(cf.id); }} style={{ ...styles.staticCustomBadge, fontFamily: 'monospace', cursor: !isReadOnly ? 'pointer' : 'default', border: (!value && value !== 0) ? '1px dashed var(--border-color)' : styles.staticCustomBadge.border, opacity: (!value && value !== 0) ? 0.7 : 1 }}>
+                {displayNum}
+              </span>
+            );
+          }
+
+          // TEXT
+          if (cfType === 'text') {
+            if (!value && !isEditingMode) return null;
+            if (openFieldMenuId === cf.id && !isReadOnly) {
+              return (
+                <input
+                  key={cf.id}
+                  autoFocus
+                  type="text"
+                  defaultValue={value}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onBlur={(e) => {
+                    handleDirectFieldUpdate(cf.id, e.target.value);
+                    setOpenFieldMenuId(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleDirectFieldUpdate(cf.id, e.target.value);
+                      setOpenFieldMenuId(null);
+                    }
+                  }}
+                  style={{ background: 'var(--bg-primary)', border: '1px solid #4F46E5', borderRadius: '4px', fontSize: '0.75rem', padding: '0.2rem 0.5rem', color: 'var(--text-primary)', outline: 'none', fontWeight: '500', maxWidth: '120px' }}
+                />
+              );
+            }
+            return (
+              <span key={cf.id} onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!isReadOnly) setOpenFieldMenuId(cf.id); }} style={{ ...styles.staticCustomBadge, maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: !isReadOnly ? 'pointer' : 'default', border: !value ? '1px dashed var(--border-color)' : styles.staticCustomBadge.border, opacity: !value ? 0.7 : 1 }}>
+                {value || `Set ${cf.title}`}
+              </span>
+            );
+          }
+
+          // ID
+          if (cfType === 'id') {
+            const idVal = value || task.id?.slice(-6).toUpperCase();
+            return (
+              <span key={cf.id} style={{ ...styles.staticCustomBadge, fontFamily: 'monospace', fontSize: '0.65rem', letterSpacing: '0.05em' }}>
+                {idVal}
+              </span>
+            );
+          }
+
+          // TIMER
+          if (cfType === 'timer') {
+            const timerData = (typeof value === 'object' && value !== null) ? value : { elapsed: 0, running: false, lastStart: null };
+            const elapsed = timerData.elapsed || 0;
+            const isRunning = timerData.running || false;
+            if (elapsed === 0 && !isRunning && !isEditingMode) return null;
+            
+            const formatTime = (secs) => {
+              const h = Math.floor(secs / 3600);
+              const m = Math.floor((secs % 3600) / 60);
+              return `${h}h ${m}m`;
+            };
+
+            return (
+              <div key={cf.id} style={{ position: 'relative' }}>
+                <span onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }} style={{ ...styles.staticCustomBadge, fontFamily: 'monospace', color: isRunning ? '#10B981' : 'var(--text-primary)', cursor: !isReadOnly ? 'pointer' : 'default', border: (elapsed === 0 && !isRunning) ? '1px dashed var(--border-color)' : styles.staticCustomBadge.border, opacity: (elapsed === 0 && !isRunning) ? 0.7 : 1 }}>
+                  ⏱ {elapsed === 0 && !isRunning ? `Set ${cf.title}` : formatTime(elapsed)}
+                </span>
+                {openFieldMenuId === cf.id && !isReadOnly && (
+                  <div style={{ ...styles.dropdownMenu, padding: '4px' }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => {
+                        if (isRunning) {
+                          const now = Math.floor(Date.now() / 1000);
+                          const addedTime = timerData.lastStart ? now - timerData.lastStart : 0;
+                          handleDirectFieldUpdate(cf.id, { running: false, elapsed: elapsed + addedTime, lastStart: null });
+                        } else {
+                          handleDirectFieldUpdate(cf.id, { running: true, elapsed, lastStart: Math.floor(Date.now() / 1000) });
+                        }
+                        setOpenFieldMenuId(null);
+                      }}
+                      style={{ ...styles.dropdownItem, padding: '4px 8px', color: isRunning ? '#EF4444' : '#10B981', fontWeight: 'bold' }}
+                    >
+                      {isRunning ? '⏹ Stop Timer' : '▶ Start Timer'}
+                    </button>
+                    {elapsed > 0 && !isRunning && (
+                      <button onClick={() => { handleDirectFieldUpdate(cf.id, { running: false, elapsed: 0, lastStart: null }); setOpenFieldMenuId(null); }} style={{ ...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)' }}>Reset</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // FORMULA (read-only)
+          if (cfType === 'formula') {
+            if (!value && !isEditingMode) return null;
+            return (
+              <span key={cf.id} style={{ ...styles.staticCustomBadge, fontStyle: 'italic' }}>
+                {value || '—'}
+              </span>
+            );
+          }
+
+          return null;
         })}
 
         {task.tags && task.tags.map(tag => (
@@ -427,9 +698,9 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path></svg>
           </span>
         ))}
-        
+
         {isEditingMode && !isReadOnly && (
-          <button 
+          <button
             style={{ ...styles.addFieldDashedBtn, display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}
             onClick={(e) => {
               e.stopPropagation();
@@ -448,24 +719,24 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
           <div onClick={handleOpenAssignee} style={{ cursor: isReadOnly ? 'default' : 'pointer' }}>
             {task.assignee ? <div style={styles.avatarCircleFilled}>{getInitials(task.assignee.name)}</div> : <div style={styles.avatarCircleEmpty}>👤</div>}
           </div>
-          <div onClick={handleOpenDatePicker} style={{ ...styles.dateBadgeTrigger, backgroundColor: (task.startDate || task.dueDate) ? ((task.dueDate && new Date(task.dueDate).setHours(0,0,0,0) < new Date().setHours(0,0,0,0) && !task.isCompleted) ? 'var(--accent-danger)' : 'var(--bg-tertiary)') : 'transparent', color: (task.startDate || task.dueDate) ? ((task.dueDate && new Date(task.dueDate).setHours(0,0,0,0) < new Date().setHours(0,0,0,0) && !task.isCompleted) ? '#FFF' : 'var(--accent-primary)') : 'var(--text-secondary)', border: '1px dashed var(--border-color)', cursor: isReadOnly ? 'default' : 'pointer' }}>
+          <div onClick={handleOpenDatePicker} style={{ ...styles.dateBadgeTrigger, backgroundColor: (task.startDate || task.dueDate) ? ((task.dueDate && new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0) && !task.isCompleted) ? 'var(--accent-danger)' : 'var(--bg-tertiary)') : 'transparent', color: (task.startDate || task.dueDate) ? ((task.dueDate && new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0) && !task.isCompleted) ? '#FFF' : 'var(--accent-primary)') : 'var(--text-secondary)', border: '1px dashed var(--border-color)', cursor: isReadOnly ? 'default' : 'pointer' }}>
             {formatFriendlyDateRange(task.startDate, task.dueDate)}
             {task.isRecurring && <span style={{ marginLeft: '4px' }} title="Recurring Task">🔁</span>}
           </div>
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {task.attachments?.length > 0 && (
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                📎 {task.attachments.length}
-              </span>
-            )}
-            <span 
-              onClick={handleLikeToggle}
-              style={{ ...styles.likeIconPlaceholder, cursor: isReadOnly ? 'default' : 'pointer', opacity: (isLiked || task.likes > 0) ? 1 : 0.3, color: isLiked ? '#4F46E5' : 'inherit' }}
-            >
-              👍 {task.likes > 0 ? task.likes : ''}
+          {task.attachments?.length > 0 && (
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+              📎 {task.attachments.length}
             </span>
+          )}
+          <span
+            onClick={handleLikeToggle}
+            style={{ ...styles.likeIconPlaceholder, cursor: isReadOnly ? 'default' : 'pointer', opacity: (isLiked || task.likes > 0) ? 1 : 0.3, color: isLiked ? '#4F46E5' : 'inherit' }}
+          >
+            👍 {task.likes > 0 ? task.likes : ''}
+          </span>
         </div>
       </div>
     </div>

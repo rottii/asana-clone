@@ -94,7 +94,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [draggingSectionId, setDraggingSectionId] = useState(null)
   const [draggingTabId, setDraggingTabId] = useState(null)
   const [dropTargetTab, setDropTargetTab] = useState({ id: null, position: null })
-  
+
   const [undoToast, setUndoToast] = useState(false);
   const pendingDeleteRef = useRef(null);
 
@@ -147,7 +147,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         });
         if (response.ok) {
           let updatedProj = await response.json();
-          
+
           // Filter out the currently pending deleted task so it doesn't reappear
           if (pendingDeleteRef.current) {
             const pendingTaskId = pendingDeleteRef.current.task.id;
@@ -156,7 +156,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               tasks: (sec.tasks || []).filter(t => t.id !== pendingTaskId)
             }));
           }
-          
+
           setSelectedProject(updatedProj);
           setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
         }
@@ -679,7 +679,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     try {
       const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ isArchived: !isCurrentlyArchived }) })
       const data = await response.json()
-      setProjects(projects.map(p => p.id === selectedProject.id ? data : p));
+      setProjects(prev => prev.map(p => p.id === selectedProject.id ? data : p));
       syncProjectStates(data);
     } catch (err) { console.error(err) }
   }
@@ -703,7 +703,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     if (!window.confirm("Proje silinsin mi?")) return;
     try {
       await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
-      setProjects(projects.filter(p => p.id !== selectedProject.id)); setSelectedProject(null);
+      setProjects(prev => prev.filter(p => p.id !== selectedProject.id)); setSelectedProject(null);
     } catch (err) { console.error(err) }
   }
 
@@ -760,7 +760,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   useEffect(() => {
     if (selectedProject?.id) {
-        fetchProjectRules();
+      fetchProjectRules();
     }
   }, [selectedProject?.id, token]);
 
@@ -785,10 +785,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
-          triggerType: rule.triggerType,
-          triggerValue: rule.triggerValue,
-          actionType: rule.actionType,
-          actionValue: rule.actionValue
+          ruleData: rule.ruleData
         })
       });
       if (res.ok) fetchProjectRules();
@@ -831,7 +828,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         const sp = updatedTask.secondaryProjects.find(p => p.projectId === selectedProject.id);
         if (sp) targetSectionId = sp.sectionId;
       }
-      
+
       // If the targetSectionId doesn't exist in the current project, it means the task was removed from this project.
       const targetSectionExists = updatedSections.some(sec => sec.id === targetSectionId);
 
@@ -881,7 +878,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   // --- GERİ EKLENDİ: EKSİK OLAN LİSTE POPOVER METODU ---
-  const handleOpenPopoverInline = (e, type, task, sectionId) => {
+  const handleOpenPopoverInline = (e, type, task, sectionId, extraProps = {}) => {
     document.body.click();
     e.stopPropagation();
     setLastInteractedSectionId(sectionId);
@@ -896,7 +893,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       bottom = window.innerHeight - rect.top + 4;
     }
 
-    setActivePopover({ type, task, coords: { top, bottom, left: rect.left } })
+    setActivePopover({ type, task, coords: { top, bottom, left: rect.left }, ...extraProps })
   }
   const handleDuplicateTask = async () => {
     const taskIdToDuplicate = contextMenu.taskId;
@@ -926,7 +923,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleDeleteTask = async (taskId) => {
     const taskIdToDelete = taskId || contextMenu.taskId;
     setContextMenu({ visible: false, x: 0, y: 0, taskId: null });
-    
+
     let taskToDelete = null;
     let secId = null;
     let taskIndex = -1;
@@ -939,7 +936,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         break;
       }
     }
-    
+
     if (!taskToDelete) return;
 
     if (pendingDeleteRef.current) {
@@ -963,9 +960,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleUndoDelete = () => {
     if (!pendingDeleteRef.current) return;
     clearTimeout(pendingDeleteRef.current.timeoutId);
-    
+
     const { task, sectionId, index } = pendingDeleteRef.current;
-    
+
     const updatedSections = selectedProject.sections.map(sec => {
       if (sec.id === sectionId) {
         const newTasks = [...(sec.tasks || [])];
@@ -975,7 +972,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       return sec;
     });
     syncProjectStates({ ...selectedProject, sections: updatedSections });
-    
+
     setUndoToast(false);
     pendingDeleteRef.current = null;
   }
@@ -985,6 +982,20 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     setContextMenu({ visible: false, x: 0, y: 0, taskId: null });
     if (isReadOnly) return;
     try {
+      if (newType === 'PROJECT') {
+        const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToConvert}/convert-to-project`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        if (response.ok) {
+          handleTaskUpdate(taskIdToConvert, data);
+        } else {
+          alert(data.error || "Görevi projeye dönüştürürken hata oluştu.");
+        }
+        return;
+      }
+
       const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToConvert}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -1087,7 +1098,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   const syncProjectStates = (updatedProj) => {
     setSelectedProject(updatedProj)
-    setProjects(projects.map(p => p.id === updatedProj.id ? updatedProj : p))
+    setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p))
   }
 
   const formatFriendlyDate = (startDate, dueDate) => {
@@ -1853,7 +1864,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
                 style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
               >
-                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} priorityFieldSettings={selectedProject?.priorityFieldSettings || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords) => setActivePopover({ type, task, coords })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} />
+                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} priorityFieldSettings={selectedProject?.priorityFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra={}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} />
               </div>
             )
           })}
@@ -2012,8 +2023,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         <AddFieldModal
           project={selectedProject}
           onClose={() => { setShowAddFieldMenu(false); setFieldToEdit(null); }}
-          onCreateField={async (title, defaultVal, options) => {
-            const newField = { id: Date.now().toString(), title, type: 'single-select', options: options && options.length > 0 ? options : [{ id: '1', label: defaultVal, color: '#E0E7FF' }] };
+          onCreateField={async (fieldData) => {
+            const newField = { id: Date.now().toString(), ...fieldData };
             const newCustomFields = [...(selectedProject.customFieldSettings || []), newField];
             try {
               const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ customFieldSettings: newCustomFields }) });
@@ -2031,7 +2042,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           token={token}
         />
       )}
-      {activePopover && activePopover.type === 'date' && <DatePickerPopover task={activePopover.task} token={token} coords={activePopover.coords} onDatesUpdated={(id, updated) => { handleTaskUpdate(id, updated); setActivePopover(null); }} />}
+      {activePopover && (activePopover.type === 'date' || activePopover.type === 'custom-date') && <DatePickerPopover task={activePopover.task} token={token} coords={activePopover.coords} customFieldId={activePopover.customFieldId} onDatesUpdated={(id, updated) => { handleTaskUpdate(id, updated); setActivePopover(null); }} />}
       {activePopover && activePopover.type === 'assignee' && <AssigneePopover task={activePopover.task} token={token} coords={activePopover.coords} project={selectedProject} onAssigneeUpdated={(id, updated) => { handleTaskUpdate(id, updated); setActivePopover(null); }} />}
 
       {/* Global Task Detail Pane */}
@@ -2057,7 +2068,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               setActiveTaskPaneId(null);
             }}
             onConvertTask={handleConvertTask}
-            onOpenPopover={(type, task, coords) => setActivePopover({ type, task, coords })}
+            onOpenPopover={(type, task, coords, extra={}) => setActivePopover({ type, task, coords, ...extra })}
           />
         </div>
       )}
@@ -2183,11 +2194,21 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     {projectRules.length === 0 && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>No active rules.</div>}
                     {projectRules.map(r => {
-                      let ruleName = r.triggerType.replace(/_/g, ' ') + ' → ' + r.actionType.replace(/_/g, ' ');
-                      // Prettify
-                      ruleName = ruleName.charAt(0).toUpperCase() + ruleName.slice(1);
+                      let ruleName = r.name || 'Rule';
+                      if (!r.name && r.ruleData?.trigger?.type) {
+                         const triggerName = r.ruleData.trigger.type.replace(/_/g, ' ');
+                         const actionName = r.ruleData.branches?.[0]?.actions?.[0]?.type?.replace(/_/g, ' ') || 'action';
+                         ruleName = triggerName + ' → ' + actionName;
+                         ruleName = ruleName.charAt(0).toUpperCase() + ruleName.slice(1);
+                      }
                       return (
-                        <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '0.5rem 0' }}>
+                        <div 
+                          key={r.id} 
+                          style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '0.5rem', margin: '0 -0.5rem', borderRadius: '6px', cursor: 'pointer', transition: 'background-color 0.2s' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          onClick={() => handleEditRule(r)}
+                        >
                           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
                             <span style={{ color: '#F87171', fontSize: '1.2rem', marginTop: '2px' }}>⚡</span>
                             <div>

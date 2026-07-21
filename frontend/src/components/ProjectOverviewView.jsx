@@ -1,9 +1,48 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import RichTextEditor from './RichTextEditor';
+
+const statusConfig = {
+  NONE: { color: 'var(--text-tertiary)', label: 'Set status', desc: 'No status set. Click to update.' },
+  ON_TRACK: { color: 'var(--accent-success)', label: 'On track', desc: 'Everything is running smoothly.' },
+  AT_RISK: { color: '#F59E0B', label: 'At risk', desc: 'There are some concerns.' },
+  OFF_TRACK: { color: 'var(--accent-danger)', label: 'Off track', desc: 'Requires immediate attention.' },
+  ON_HOLD: { color: 'var(--text-secondary)', label: 'On hold', desc: 'Project is paused.' },
+  COMPLETE: { color: 'var(--accent-primary)', label: 'Complete', desc: 'Project is finished.' }
+};
 
 export default function ProjectOverviewView({ selectedProject, projectRole, isReadOnly, token, onUpdate, onOpenShareModal }) {
   const [isEditingDesc, setIsEditingDesc] = useState(false);
   const [descInput, setDescInput] = useState(selectedProject.description || '');
+  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
+  const statusMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target)) {
+        setIsStatusMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleUpdateStatus = async (newStatus) => {
+    if (isReadOnly) return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await response.json();
+      if (response.ok && onUpdate) {
+        onUpdate(data);
+      }
+      setIsStatusMenuOpen(false);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const handleSaveDescription = async () => {
     if (isReadOnly) return;
@@ -23,11 +62,22 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
     }
   };
 
+  // Format roles from UPPERCASE to Title Case
+  const formatRole = (role) => {
+    if (!role) return '';
+    return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+  };
+
   // Members list calculation
-  const members = [
+  const allMembers = [
     { ...selectedProject.owner, role: 'Owner' },
-    ...(selectedProject.members || []).map(m => ({ ...m.user, role: m.role }))
+    ...(selectedProject.members || []).map(m => ({ ...m.user, role: formatRole(m.role) }))
   ];
+  
+  // Deduplicate by user id so the owner isn't listed twice
+  const members = allMembers.filter((member, index, self) => 
+    index === self.findIndex((t) => t.id === member.id)
+  );
 
   return (
     <div style={styles.overviewContainer}>
@@ -93,11 +143,36 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
           <h3 style={styles.sideSectionTitle}>Project status</h3>
           <div style={styles.statusBox}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-              <div style={styles.statusDot}></div>
-              <span style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>On track</span>
+              <div style={{ ...styles.statusDot, backgroundColor: statusConfig[selectedProject.status || 'NONE'].color }}></div>
+              <span style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>{statusConfig[selectedProject.status || 'NONE'].label}</span>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>Everything is running smoothly. Last updated today.</p>
-            {!isReadOnly && <button style={styles.updateStatusBtn}>Update status</button>}
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>{statusConfig[selectedProject.status || 'NONE'].desc}</p>
+            {!isReadOnly && (
+              <div style={{ position: 'relative' }} ref={statusMenuRef}>
+                <button 
+                  style={styles.updateStatusBtn} 
+                  onClick={() => setIsStatusMenuOpen(!isStatusMenuOpen)}
+                >
+                  Update status
+                </button>
+                {isStatusMenuOpen && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '8px', width: '200px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 10, display: 'flex', flexDirection: 'column', padding: '8px 0' }}>
+                    {Object.entries(statusConfig).map(([key, config]) => (
+                      <button
+                        key={key}
+                        onClick={() => handleUpdateStatus(key)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', border: 'none', background: 'transparent', width: '100%', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: config.color }}></div>
+                        {config.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

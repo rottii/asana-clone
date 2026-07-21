@@ -2,15 +2,25 @@ import { useState } from 'react'
 
 const monthsList = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-export default function DatePickerPopover({ task, token, coords, onDatesUpdated }) {
+export default function DatePickerPopover({ task, token, coords, onDatesUpdated, customFieldId }) {
   const [calendarView, setCalendarView] = useState({ year: 2026, month: 6 }) // July 2026
+
+  const getParsedCustomFields = (cf) => {
+    if (!cf) return {};
+    if (typeof cf === 'string') {
+      try { return JSON.parse(cf); } catch(e) { return {}; }
+    }
+    return cf;
+  };
+  const parsedFields = customFieldId ? getParsedCustomFields(task.customFields) : {};
+  const customFieldValue = customFieldId ? parsedFields[customFieldId] : null;
   
-  const [isRangeMode, setIsRangeMode] = useState(!!task.startDate);
-  const [activeInput, setActiveInput] = useState(!!task.startDate ? 'start' : 'end');
+  const [isRangeMode, setIsRangeMode] = useState(customFieldId ? false : !!task.startDate);
+  const [activeInput, setActiveInput] = useState(customFieldId ? 'end' : (!!task.startDate ? 'start' : 'end'));
   
   const [rangeSelect, setRangeSelect] = useState({
-    start: task.startDate ? task.startDate.substring(0, 10) : null,
-    end: task.dueDate ? task.dueDate.substring(0, 10) : null
+    start: customFieldId ? null : (task.startDate ? task.startDate.substring(0, 10) : null),
+    end: customFieldId ? customFieldValue : (task.dueDate ? task.dueDate.substring(0, 10) : null)
   })
 
   const [recurrence, setRecurrence] = useState({
@@ -52,6 +62,16 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated 
     return days
   }
 
+  const formatDateStr = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const year = parts[0].substring(2);
+    const month = parts[1];
+    const day = parts[2];
+    return `${day}/${month}/${year}`;
+  }
+
   const handleDayClick = (dateStr) => {
     if (!isRangeMode) {
       setRangeSelect({ start: null, end: dateStr });
@@ -77,24 +97,33 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated 
 
   const handleSave = async () => {
     try {
+      let bodyData = {};
+      if (customFieldId) {
+        const parsedFields = getParsedCustomFields(task.customFields);
+        parsedFields[customFieldId] = rangeSelect.end;
+        bodyData = { customFields: JSON.stringify(parsedFields) };
+      } else {
+        bodyData = {
+          startDate: rangeSelect.start, 
+          dueDate: rangeSelect.end,
+          isRecurring: recurrence.isRecurring,
+          recurrenceRule: recurrence.isRecurring ? recurrence.rule : null,
+          recurrenceCustom: recurrence.isRecurring ? JSON.stringify({
+              interval: parseInt(recurrence.customInterval) || 1,
+              frequency: recurrence.customFrequency,
+              days: recurrence.customDays,
+              monthlyType: recurrence.monthlyType,
+              monthlyDay: recurrence.monthlyDay,
+              monthlyWeekNum: recurrence.monthlyWeekNum,
+              monthlyWeekday: recurrence.monthlyWeekday
+          }) : null
+        };
+      }
+
       const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ 
-            startDate: rangeSelect.start, 
-            dueDate: rangeSelect.end,
-            isRecurring: recurrence.isRecurring,
-            recurrenceRule: recurrence.isRecurring ? recurrence.rule : null,
-            recurrenceCustom: recurrence.isRecurring ? JSON.stringify({
-                interval: parseInt(recurrence.customInterval) || 1,
-                frequency: recurrence.customFrequency,
-                days: recurrence.customDays,
-                monthlyType: recurrence.monthlyType,
-                monthlyDay: recurrence.monthlyDay,
-                monthlyWeekNum: recurrence.monthlyWeekNum,
-                monthlyWeekday: recurrence.monthlyWeekday
-            }) : null
-        })
+        body: JSON.stringify(bodyData)
       })
       const updatedTask = await response.json()
 
@@ -109,10 +138,19 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated 
 
   const handleClear = async () => {
     try {
+      let bodyData = {};
+      if (customFieldId) {
+        const parsedFields = getParsedCustomFields(task.customFields);
+        parsedFields[customFieldId] = null;
+        bodyData = { customFields: JSON.stringify(parsedFields) };
+      } else {
+        bodyData = { startDate: null, dueDate: null, isRecurring: false };
+      }
+
       const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ startDate: null, dueDate: null, isRecurring: false })
+        body: JSON.stringify(bodyData)
       })
       const updatedTask = await response.json()
 
@@ -193,6 +231,7 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated 
 
   return (
     <div 
+      className="popover"
       style={{
         ...styles.calendarPopover,
         top: coords.top !== undefined ? `${coords.top}px` : 'auto',   
@@ -203,19 +242,31 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated 
       }} 
       onClick={(e) => e.stopPropagation()}
     >
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-        {!isRangeMode ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem' }} onClick={() => { setIsRangeMode(true); setActiveInput('start'); }}>
-            + Start date
+      {/* Header Controls */}
+      {customFieldId && (
+        <div style={{ padding: '0.5rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', marginBottom: '0.5rem' }}>
+          Select Date
+        </div>
+      )}
+
+      {/* Date Inputs */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', padding: '0 0.5rem', alignItems: 'center' }}>
+        {!customFieldId && !isRangeMode && (
+          <div 
+            style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+            onClick={() => { setIsRangeMode(true); setActiveInput('start'); }}
+          >
+            <span style={{ fontSize: '1.2rem', fontWeight: '300' }}>+</span> Start date
           </div>
-        ) : (
+        )}
+        {(!customFieldId && isRangeMode) && (
           <div style={{ ...styles.popoverInputBox, border: `1px solid ${activeInput === 'start' ? '#4F46E5' : '#D1D5DB'}` }} onClick={() => setActiveInput('start')}>
-            <input type="text" readOnly value={rangeSelect.start || 'Start date'} style={styles.hiddenTextInp}/>
+            <input type="text" readOnly value={rangeSelect.start ? formatDateStr(rangeSelect.start) : 'Start date'} style={styles.hiddenTextInp}/>
             {rangeSelect.start && <span onClick={(e) => { e.stopPropagation(); setRangeSelect({ ...rangeSelect, start: null }); if (!rangeSelect.end) setIsRangeMode(false); }} style={styles.clearInpCross}>×</span>}
           </div>
         )}
-        <div style={{ ...styles.popoverInputBox, border: `1px solid ${(!isRangeMode || activeInput === 'end') ? '#4F46E5' : '#D1D5DB'}` }} onClick={() => isRangeMode && setActiveInput('end')}>
-          <input type="text" readOnly value={rangeSelect.end || 'Due date'} style={styles.hiddenTextInp}/>
+        <div style={{ ...styles.popoverInputBox, border: `1px solid ${(!isRangeMode || activeInput === 'end') ? '#4F46E5' : '#D1D5DB'}` }} onClick={() => { setActiveInput('end'); }}>
+          <input type="text" readOnly value={rangeSelect.end ? formatDateStr(rangeSelect.end) : 'Due date'} style={styles.hiddenTextInp}/>
           {rangeSelect.end && <span onClick={(e) => { e.stopPropagation(); setRangeSelect({ ...rangeSelect, end: null }) }} style={styles.clearInpCross}>×</span>}
         </div>
       </div>

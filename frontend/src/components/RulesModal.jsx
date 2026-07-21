@@ -70,20 +70,66 @@ const ACTION_OPTIONS = [
   ]},
   { group: 'Add to task', items: [
       { id: 'add_comment', label: 'Add comment', icon: '💬' },
-      { id: 'add_collaborators', label: 'Add or remove collaborators', icon: '👤' }
+      { id: 'add_collaborators', label: 'Add or remove collaborators...', icon: '👤' }
+  ]}
+];
+
+const CONDITION_OPTIONS = [
+  { group: 'Task moved', items: [
+      { id: 'task_in_section', label: 'Task is in section...', icon: '≡' },
+      { id: 'task_added_by_form', label: 'Task is added to this project by form...', icon: '+' },
+      { id: 'task_added_by_email', label: 'Task is added to this project by email...', icon: '+' }
+  ]},
+  { group: 'Task field is...', items: [
+      { id: 'assignee_is', label: 'Assignee is...', icon: '👤' },
+      { id: 'task_creator_is', label: 'Task creator is...', icon: '👤' },
+      { id: 'task_name_is', label: 'Task name is...', icon: 'A' },
+      { id: 'task_description_is', label: 'Task description is...', icon: 'A' },
+      { id: 'due_date_is', label: 'Due date is...', icon: '📅' },
+      { id: 'start_date_is', label: 'Start date is...', icon: '📅' }
+  ]},
+  { group: 'Status is...', items: [
+      { id: 'task_type_is', label: 'Task type is...', icon: '✓' },
+      { id: 'completion_status_is', label: 'Task or all subtasks completion status is...', icon: '✓' },
+      { id: 'approval_status_is', label: 'Approval status is...', icon: '✓' },
+      { id: 'task_no_longer_blocked', label: 'Task is no longer blocked', icon: '🔗' }
+  ]},
+  { group: 'Task details', items: [
+      { id: 'task_in_projects', label: 'Task is in any of these projects...', icon: '🏢' }
+  ]},
+  { group: 'Custom field is...', items: [
+      { id: 'custom_field_is', label: 'Custom field is...', icon: 'v' }
+  ]},
+  { group: 'Task has...', items: [
+      { id: 'task_has_attachment', label: 'Task has an attachment', icon: '📎' },
+      { id: 'task_has_comment', label: 'Task has a comment', icon: '💬' }
   ]}
 ];
 
 export default function RulesModal({ projectId, token, onClose, editRule = null }) {
   const [ruleName, setRuleName] = useState(editRule ? 'Edit Rule' : 'New Rule');
-  const [triggerType, setTriggerType] = useState(editRule?.triggerType || '');
-  const [triggerValue, setTriggerValue] = useState(editRule?.triggerValue || '');
-  const [actionType, setActionType] = useState(editRule?.actionType || '');
-  const [actionValue, setActionValue] = useState(editRule?.actionValue || '');
   
-  const [activePanel, setActivePanel] = useState(null); // 'trigger', 'action', or null
+  const [ruleData, setRuleData] = useState(() => {
+    if (editRule?.ruleData) return editRule.ruleData;
+    if (editRule?.triggerType) {
+      return {
+        trigger: { type: editRule.triggerType, value: editRule.triggerValue },
+        branches: [{
+          id: Date.now().toString(),
+          conditions: [],
+          actions: [{ type: editRule.actionType, value: editRule.actionValue }]
+        }]
+      }
+    }
+    return { trigger: null, branches: [{ id: '1', conditions: [], actions: [] }] };
+  });
+
+  const [activePanel, setActivePanel] = useState(null); // { type: 'trigger'|'condition'|'action', branchId: string, itemIndex: number }
+  const [showAddBranchMenu, setShowAddBranchMenu] = useState(false);
+  const [actionPlaceholders, setActionPlaceholders] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   
+  const [allProjects, setAllProjects] = useState([]);
   const [sections, setSections] = useState([]);
   const [members, setMembers] = useState([]);
   const [customFields, setCustomFields] = useState([]);
@@ -91,8 +137,7 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
 
   useEffect(() => {
     fetchProjectData();
-    // Reconstruct rule name if editing (optional enhancement)
-    if (editRule) {
+    if (editRule && !editRule.ruleData) {
        let name = editRule.triggerType.replace(/_/g, ' ') + ' → ' + editRule.actionType.replace(/_/g, ' ');
        name = name.charAt(0).toUpperCase() + name.slice(1);
        setRuleName(name);
@@ -105,16 +150,12 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const projects = await res.json();
+      setAllProjects(projects);
       const currentProject = projects.find(p => p.id === projectId);
       if (currentProject) {
         setProjectName(currentProject.name || 'Project');
-        if (currentProject.sections) {
-          setSections(currentProject.sections);
-        }
-        if (currentProject.members) {
-          const membersList = currentProject.members.map(m => m.user || m);
-          setMembers(membersList);
-        }
+        if (currentProject.sections) setSections(currentProject.sections);
+        if (currentProject.members) setMembers(currentProject.members.map(m => m.user || m));
         let fields = [];
         try {
             if (currentProject.customFieldSettings) {
@@ -124,115 +165,188 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
         } catch (e) {}
         setCustomFields(fields);
       }
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) {}
   };
 
   const handlePublish = async () => {
-    if (!triggerType || !actionType) return;
+    if (!ruleData.trigger) return;
     try {
       let res;
       if (editRule) {
         res = await fetch(`http://localhost:5001/api/projects/${projectId}/rules/${editRule.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ triggerType, triggerValue, actionType, actionValue })
+          body: JSON.stringify({ ruleData, isActive: true })
         });
       } else {
         res = await fetch(`http://localhost:5001/api/projects/${projectId}/rules`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ triggerType, triggerValue, actionType, actionValue })
+          body: JSON.stringify({ ruleData })
         });
       }
-
-      if (res.ok) {
-        onClose();
-      } else {
-        const error = await res.json();
-        alert(error.error);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+      if (res.ok) onClose();
+      else alert((await res.json()).error);
+    } catch (err) {}
   };
 
   const getFilteredOptions = (options) => {
-    if (!searchQuery) return options;
-    return options.map(group => ({
+    let opts = options;
+    if (activePanel?.type === 'condition') {
+      opts = opts.map(g => {
+        if (g.group === 'Custom field is...') {
+           if (customFields.length > 0) {
+             return {
+               ...g,
+               items: customFields.map(cf => ({
+                 id: 'custom_field_is',
+                 fieldId: cf.id || cf.name || cf.title,
+                 label: `${cf.title || cf.name} is...`,
+                 icon: 'v'
+               }))
+             };
+           }
+        }
+        return g;
+      });
+    }
+
+    if (!searchQuery) return opts;
+    return opts.map(group => ({
       ...group,
       items: group.items.filter(item => item.label.toLowerCase().includes(searchQuery.toLowerCase()))
     })).filter(group => group.items.length > 0);
   };
 
-  const renderTriggerValueInput = () => {
-    if (triggerType === 'task_moved') {
-      return (
-        <select className="node-value-selector" value={triggerValue} onChange={e => setTriggerValue(e.target.value)} onClick={e => e.stopPropagation()}>
-          <option value="">Select section...</option>
-          {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      );
-    }
-    if (triggerType === 'custom_field_changed') {
-      return (
-        <select className="node-value-selector" value={triggerValue} onChange={e => setTriggerValue(e.target.value)} onClick={e => e.stopPropagation()}>
-          <option value="">Select field...</option>
-          {customFields.map(cf => <option key={cf.id || cf.title || cf.name} value={cf.id || cf.name || cf.title}>{cf.title || cf.name}</option>)}
-        </select>
-      );
-    }
-    return null;
+  const updateNodeData = (nodeType, branchId, itemIndex, field, value) => {
+    setRuleData(prev => {
+      const newData = { ...prev };
+      if (nodeType === 'trigger') {
+        newData.trigger = { ...newData.trigger, [field]: value };
+      } else {
+        const branchIndex = newData.branches.findIndex(b => b.id === branchId);
+        if (branchIndex !== -1) {
+          if (nodeType === 'condition') {
+            newData.branches[branchIndex].conditions[itemIndex] = { ...newData.branches[branchIndex].conditions[itemIndex], [field]: value };
+          } else if (nodeType === 'action') {
+            newData.branches[branchIndex].actions[itemIndex] = { ...newData.branches[branchIndex].actions[itemIndex], [field]: value };
+          }
+        }
+      }
+      return newData;
+    });
   };
 
-  const renderActionValueInput = () => {
-    if (actionType === 'move_to_section') {
+  const setNodeType = (nodeType, branchId, itemIndex, typeId) => {
+    if (nodeType === 'action') {
+      const branch = ruleData.branches.find(b => b.id === branchId);
+      if (branch && !branch.actions[itemIndex]) {
+         setActionPlaceholders(prev => ({ ...prev, [branchId]: false }));
+      }
+    }
+    
+    setRuleData(prev => {
+      const newData = { ...prev };
+      if (nodeType === 'trigger') {
+        newData.trigger = { type: typeId, value: '' };
+      } else {
+        const branchIndex = newData.branches.findIndex(b => b.id === branchId);
+        if (branchIndex !== -1) {
+          if (nodeType === 'condition') {
+            if (newData.branches[branchIndex].conditions[itemIndex]) {
+               newData.branches[branchIndex].conditions[itemIndex] = { type: typeId, value: '' };
+            } else {
+               newData.branches[branchIndex].conditions.push({ type: typeId, value: '' });
+            }
+          } else if (nodeType === 'action') {
+            if (newData.branches[branchIndex].actions[itemIndex]) {
+               newData.branches[branchIndex].actions[itemIndex] = { type: typeId, value: '' };
+            } else {
+               newData.branches[branchIndex].actions.push({ type: typeId, value: '' });
+            }
+          }
+        }
+      }
+      return newData;
+    });
+  };
+
+  const removeNode = (nodeType, branchId, itemIndex) => {
+    setRuleData(prev => {
+      const newData = { ...prev };
+      if (nodeType === 'trigger') {
+        newData.trigger = null;
+      } else {
+        const branchIndex = newData.branches.findIndex(b => b.id === branchId);
+        if (branchIndex !== -1) {
+          if (nodeType === 'condition') {
+            newData.branches[branchIndex].conditions.splice(itemIndex, 1);
+          } else if (nodeType === 'action') {
+            newData.branches[branchIndex].actions.splice(itemIndex, 1);
+          }
+        }
+      }
+      return newData;
+    });
+    setActivePanel(null);
+  };
+
+  const removeBranch = (branchId) => {
+    setRuleData(prev => {
+      const newData = { ...prev };
+      newData.branches = newData.branches.filter(b => b.id !== branchId);
+      if (newData.branches.length === 0) {
+        newData.branches = [{ id: Date.now().toString(), conditions: [], actions: [] }];
+      }
+      return newData;
+    });
+    setActivePanel(null);
+  };
+
+  const addBranch = (type = 'condition') => {
+    setRuleData(prev => {
+      const branches = [...prev.branches];
+      const newBranch = { id: Date.now().toString(), type: type, conditions: [], actions: [] };
+      
+      const otherwiseIdx = branches.findIndex(b => b.type === 'otherwise');
+      if (otherwiseIdx !== -1 && type !== 'otherwise') {
+        branches.splice(otherwiseIdx, 0, newBranch);
+      } else {
+        branches.push(newBranch);
+      }
+
+      return {
+        ...prev,
+        branches
+      };
+    });
+    setShowAddBranchMenu(false);
+  };
+
+  const renderValueInput = (nodeType, typeId, value, branchId, itemIndex) => {
+    const onChange = (v) => updateNodeData(nodeType, branchId, itemIndex, 'value', v);
+    const onTypeChange = (v) => updateNodeData(nodeType, branchId, itemIndex, 'type', v);
+    
+    // Inputs shared by condition and action/trigger
+    if (typeId === 'task_moved' || typeId === 'move_to_section' || typeId === 'task_in_section') {
       return (
-        <select className="node-value-selector" value={actionValue} onChange={e => setActionValue(e.target.value)} onClick={e => e.stopPropagation()}>
+        <select className="node-value-selector" value={value || ''} onChange={e => onChange(e.target.value)} onClick={e => e.stopPropagation()}>
           <option value="">Select section...</option>
           {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       );
     }
-    if (actionType === 'mark_complete') {
-      return (
-        <select className="node-value-selector" value={actionValue} onChange={e => setActionValue(e.target.value)} onClick={e => e.stopPropagation()}>
-          <option value="">Select status...</option>
-          <option value="true">Complete</option>
-          <option value="false">Incomplete</option>
-        </select>
-      );
-    }
-    if (actionType === 'change_assignee' || actionType === 'add_collaborators') {
-      return (
-        <select className="node-value-selector" value={actionValue} onChange={e => setActionValue(e.target.value)} onClick={e => e.stopPropagation()}>
-          <option value="">Select user...</option>
-          {members.map(m => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
-        </select>
-      );
-    }
-    if (actionType === 'set_task_type') {
-      return (
-        <select className="node-value-selector" value={actionValue} onChange={e => setActionValue(e.target.value)} onClick={e => e.stopPropagation()}>
-          <option value="">Select type...</option>
-          <option value="TASK">Task</option>
-          <option value="MILESTONE">Milestone</option>
-          <option value="APPROVAL">Approval</option>
-        </select>
-      );
-    }
-    if (actionType === 'change_custom_field') {
+    if (typeId === 'custom_field_changed' || typeId === 'custom_field_is' || typeId === 'change_custom_field') {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }} onClick={e => e.stopPropagation()}>
-          <select className="node-value-selector" style={{ margin: 0 }} value={actionValue.split(':')[0] || ''} onChange={e => setActionValue(`${e.target.value}:`)}>
+          <select className="node-value-selector" style={{ margin: 0 }} value={(value||'').split(':')[0] || ''} onChange={e => onChange(`${e.target.value}:`)}>
             <option value="">Select field...</option>
             {customFields.map(cf => <option key={cf.id || cf.title || cf.name} value={cf.id || cf.name || cf.title}>{cf.title || cf.name}</option>)}
           </select>
-          {actionValue.split(':')[0] && (
-            <select className="node-value-selector" style={{ margin: 0 }} value={actionValue.split(':')[1] || ''} onChange={e => setActionValue(`${actionValue.split(':')[0]}:${e.target.value}`)}>
+          {(value||'').split(':')[0] && (
+            <select className="node-value-selector" style={{ margin: 0 }} value={(value||'').split(':')[1] || ''} onChange={e => onChange(`${(value||'').split(':')[0]}:${e.target.value}`)}>
               <option value="">Select value...</option>
-              {customFields.find(cf => (cf.id || cf.title || cf.name) === actionValue.split(':')[0])?.options?.map(opt => (
+              {customFields.find(cf => (cf.id || cf.title || cf.name) === (value||'').split(':')[0])?.options?.map(opt => (
                 <option key={opt.id || opt.label} value={opt.label || opt}>{opt.label || opt}</option>
               ))}
             </select>
@@ -240,32 +354,183 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
         </div>
       );
     }
-    if (['change_due_date', 'set_task_name', 'set_task_description', 'create_task', 'create_subtasks', 'create_approvals', 'convert_to', 'add_comment'].includes(actionType)) {
+    if (typeId === 'mark_complete' || typeId === 'completion_status_is') {
+      return (
+        <select className="node-value-selector" value={value || ''} onChange={e => onChange(e.target.value)} onClick={e => e.stopPropagation()}>
+          <option value="">Select status...</option>
+          <option value={typeId === 'mark_complete' ? 'true' : 'completed'}>Complete</option>
+          <option value={typeId === 'mark_complete' ? 'false' : 'incomplete'}>Incomplete</option>
+        </select>
+      );
+    }
+    if (typeId === 'change_assignee' || typeId === 'add_collaborators' || typeId === 'remove_collaborators' || typeId === 'assignee_is' || typeId === 'task_creator_is') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }} onClick={e => e.stopPropagation()}>
+          {(typeId === 'add_collaborators' || typeId === 'remove_collaborators') && (
+            <select className="node-value-selector" style={{ margin: 0 }} value={typeId} onChange={e => onTypeChange(e.target.value)}>
+              <option value="add_collaborators">Add collaborators</option>
+              <option value="remove_collaborators">Remove collaborators</option>
+            </select>
+          )}
+          <select className="node-value-selector" style={{ margin: 0 }} value={value || ''} onChange={e => onChange(e.target.value)}>
+            <option value="">Select user...</option>
+            {members.map(m => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
+          </select>
+        </div>
+      );
+    }
+    if (typeId === 'add_to_project' || typeId === 'move_to_project') {
+      const selectedProjId = (value||'').split(':')[0] || '';
+      const selectedSecId = (value||'').split(':')[1] || '';
+      const proj = allProjects.find(p => p.id === selectedProjId);
+      const projSections = proj?.sections || [];
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }} onClick={e => e.stopPropagation()}>
+          <select className="node-value-selector" style={{ margin: 0 }} value={typeId} onChange={e => onTypeChange(e.target.value)}>
+            <option value="add_to_project">Add to project</option>
+            <option value="move_to_project">Move to project</option>
+          </select>
+          <select className="node-value-selector" style={{ margin: 0 }} value={selectedProjId} onChange={e => onChange(e.target.value)}>
+            <option value="">Select project...</option>
+            {allProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {selectedProjId && projSections.length > 0 && (
+            <select className="node-value-selector" style={{ margin: 0 }} value={selectedSecId} onChange={e => onChange(`${selectedProjId}:${e.target.value}`)}>
+              <option value="">Select section (optional)...</option>
+              {projSections.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      );
+    }
+    if (typeId === 'set_task_type' || typeId === 'task_type_is') {
+      return (
+        <select className="node-value-selector" value={value || ''} onChange={e => onChange(e.target.value)} onClick={e => e.stopPropagation()}>
+          <option value="">Select type...</option>
+          <option value="TASK">Task</option>
+          <option value="MILESTONE">Milestone</option>
+          <option value="APPROVAL">Approval</option>
+        </select>
+      );
+    }
+    if (typeId === 'approval_status_is') {
+      return (
+        <select className="node-value-selector" value={value || ''} onChange={e => onChange(e.target.value)} onClick={e => e.stopPropagation()}>
+          <option value="">Select status...</option>
+          <option value="PENDING">Pending</option>
+          <option value="APPROVED">Approved</option>
+          <option value="REJECTED">Rejected</option>
+          <option value="CHANGES_REQUESTED">Changes Requested</option>
+        </select>
+      );
+    }
+    if (typeId === 'task_in_projects') {
+      return (
+        <select className="node-value-selector" value={value || ''} onChange={e => onChange(e.target.value)} onClick={e => e.stopPropagation()}>
+          <option value="">Select project...</option>
+          {allProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      );
+    }
+    if (['change_due_date', 'set_task_name', 'set_task_description', 'create_task', 'create_subtasks', 'create_approvals', 'convert_to', 'add_comment', 'task_name_is', 'task_description_is'].includes(typeId)) {
       return (
         <input 
           type="text" 
-          value={actionValue} 
-          onChange={e => setActionValue(e.target.value)}
+          value={value || ''} 
+          onChange={e => onChange(e.target.value)}
           onClick={e => e.stopPropagation()}
           placeholder={
-            actionType === 'change_due_date' ? '+Days (e.g. 3) or Date' :
-            actionType === 'create_subtasks' ? 'Titles (comma separated)' :
-            actionType === 'add_comment' ? 'Comment text' : 'Enter value...'
+            typeId === 'change_due_date' ? '+Days (e.g. 3) or Date' :
+            typeId === 'create_subtasks' ? 'Titles (comma separated)' :
+            typeId === 'add_comment' ? 'Comment text' : 'Enter value...'
           }
           className="node-value-selector"
         />
       );
     }
+    if (['due_date_is', 'start_date_is'].includes(typeId)) {
+      let config = { op: 'empty', date1: '', date2: '' };
+      try {
+         if (value) config = JSON.parse(value);
+      } catch(e) {}
+      
+      const updateDateConfig = (newOp, newD1, newD2) => {
+         onChange(JSON.stringify({ op: newOp, date1: newD1, date2: newD2 }));
+      };
+      
+      const name = typeId === 'due_date_is' ? 'Due date' : 'Start date';
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', width: '100%' }}>
+          <select 
+            className="node-value-selector" 
+            style={{ margin: 0 }}
+            value={config.op} 
+            onChange={(e) => updateDateConfig(e.target.value, config.date1, config.date2)}
+            onClick={e => e.stopPropagation()}
+          >
+            <option value="empty">{name} is empty</option>
+            <option value="not_empty">{name} is not empty</option>
+            <option value="before">{name} is before...</option>
+            <option value="after">{name} is after...</option>
+            <option value="between">{name} is between...</option>
+          </select>
+          
+          {(config.op === 'before' || config.op === 'after') && (
+            <input 
+              type="date"
+              className="node-value-selector"
+              style={{ margin: 0, width: '65%' }}
+              value={config.date1}
+              onChange={e => updateDateConfig(config.op, e.target.value, config.date2)}
+              onClick={e => e.stopPropagation()}
+            />
+          )}
+          
+          {config.op === 'between' && (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+               <input 
+                 type="date"
+                 className="node-value-selector"
+                 style={{ margin: 0, flex: 1, minWidth: 0, width: 'auto' }}
+                 value={config.date1}
+                 onChange={e => updateDateConfig(config.op, e.target.value, config.date2)}
+                 onClick={e => e.stopPropagation()}
+               />
+               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>and</span>
+               <input 
+                 type="date"
+                 className="node-value-selector"
+                 style={{ margin: 0, flex: 1, minWidth: 0, width: 'auto' }}
+                 value={config.date2}
+                 onChange={e => updateDateConfig(config.op, config.date1, e.target.value)}
+                 onClick={e => e.stopPropagation()}
+               />
+            </div>
+          )}
+        </div>
+      );
+    }
     return null;
   };
 
-  const selectedTriggerObj = TRIGGER_OPTIONS.flatMap(g => g.items).find(i => i.id === triggerType);
-  const selectedActionObj = ACTION_OPTIONS.flatMap(g => g.items).find(i => i.id === actionType);
+  const getOptionMeta = (typeId, panelType) => {
+    let opts = [];
+    if (panelType === 'trigger') opts = TRIGGER_OPTIONS;
+    else if (panelType === 'condition') opts = CONDITION_OPTIONS;
+    else opts = ACTION_OPTIONS;
+
+    let res = opts.flatMap(g => g.items).find(i => i.id === typeId);
+    if (!res && typeId === 'move_to_project') res = { id: 'move_to_project', label: 'Move or add to project…', icon: '+' };
+    if (!res && typeId === 'remove_collaborators') res = { id: 'remove_collaborators', label: 'Add or remove collaborators...', icon: '👤' };
+    return res;
+  };
 
   return (
-    <div className="rules-modal-overlay" onClick={() => setActivePanel(null)}>
-      
-      {/* Header */}
+    <div className="rules-modal-overlay" onClick={() => { setActivePanel(null); setShowAddBranchMenu(false); }}>
       <div className="rules-modal-header" onClick={e => e.stopPropagation()}>
         <div className="rules-modal-header-left">
           <button className="close-btn" onClick={onClose}>←</button>
@@ -285,7 +550,7 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
         </div>
         <div>
           <button 
-            className={`publish-btn ${(!triggerType || !actionType) ? 'disabled' : ''}`}
+            className={`publish-btn ${!ruleData.trigger ? 'disabled' : ''}`}
             onClick={handlePublish}
           >
             Publish rule
@@ -294,53 +559,217 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
       </div>
 
       <div className="rules-modal-body">
-        
-        {/* Canvas area containing nodes */}
         <div className="canvas-area">
-          <div className="node-group">
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start' }}>
             
-            {/* Trigger Node */}
-            <div 
-              className={`rule-node ${triggerType ? 'filled' : ''} ${activePanel === 'trigger' ? 'selected' : ''}`}
-              onClick={(e) => { e.stopPropagation(); setActivePanel('trigger'); setSearchQuery(''); }}
-            >
-              {triggerType && (
-                <button className="node-remove" onClick={(e) => { e.stopPropagation(); setTriggerType(''); setTriggerValue(''); }}>×</button>
-              )}
-              <div className="node-title">
-                {triggerType ? selectedTriggerObj?.label : '+ When...'}
+            {/* TRIGGER NODE */}
+            <div className="trigger-column" style={{ marginTop: '0px' }}>
+              <div 
+                className={`rule-node ${ruleData.trigger ? 'filled' : ''} ${activePanel?.type === 'trigger' ? 'selected' : ''}`}
+                onClick={(e) => { e.stopPropagation(); setActivePanel({ type: 'trigger' }); setSearchQuery(''); }}
+              >
+                {ruleData.trigger && (
+                  <button className="node-remove" onClick={(e) => { e.stopPropagation(); removeNode('trigger'); }}>×</button>
+                )}
+                <div className="node-title" style={!ruleData.trigger ? { color: 'var(--text-tertiary)' } : {}}>
+                  {ruleData.trigger ? getOptionMeta(ruleData.trigger.type, 'trigger')?.label : '+ When...'}
+                </div>
+                {ruleData.trigger && renderValueInput('trigger', ruleData.trigger.type, ruleData.trigger.value, null, null)}
               </div>
-              {!triggerType && <div className="node-content">Add a trigger that sets the rule in motion.</div>}
-              {triggerType && renderTriggerValueInput()}
             </div>
 
-            <div className="node-connector dotted">
-              <div className="connector-circle">...</div>
-            </div>
-
-            {/* Condition Node (Placeholder for now) */}
-            <div className="rule-node disabled" onClick={e => e.stopPropagation()}>
-              <div className="node-title" style={{ color: 'var(--text-tertiary)' }}>+ Check if...</div>
-              <div className="node-content">Add a condition (coming soon).</div>
-            </div>
-
-            <div className="node-connector"></div>
-
-            {/* Action Node */}
-            <div 
-              className={`rule-node ${actionType ? 'filled' : ''} ${activePanel === 'action' ? 'selected' : ''}`}
-              onClick={(e) => { e.stopPropagation(); setActivePanel('action'); setSearchQuery(''); }}
-            >
-              {actionType && (
-                <button className="node-remove" onClick={(e) => { e.stopPropagation(); setActionType(''); setActionValue(''); }}>×</button>
-              )}
-              <div className="node-title">
-                {actionType ? selectedActionObj?.label : '+ Do this...'}
+            {/* CONNECTOR FROM TRIGGER */}
+            {ruleData.branches.length === 1 && ruleData.branches[0].conditions.length === 0 ? (
+              <div style={{ position: 'relative', width: '40px', height: '2px', background: '#D1D5DB', marginTop: '39px' }}>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setNodeType('condition', ruleData.branches[0].id, 0, ''); }}
+                  style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '24px', height: '24px', borderRadius: '50%', border: '2px solid #D1D5DB', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: '#6B7280', padding: 0, paddingBottom: '2px' }}
+                >+</button>
               </div>
-              {!actionType && <div className="node-content">Add an action that occurs as a result of the rule.</div>}
-              {actionType && renderActionValueInput()}
-            </div>
+            ) : (
+              <div className="h-connector" style={{ marginTop: '39px', width: '40px' }}></div>
+            )}
+            {/* SPINE & BRANCHES */}
+            <div className="spine-container">
+              
+              {ruleData.branches.map((branch, bIdx) => {
+                const showSpineDot = ruleData.branches.length > 1 || (ruleData.branches.length === 1 && branch.conditions.length > 0);
+                return (
+                <div key={branch.id} style={{ display: 'flex', flexDirection: 'row', marginBottom: '30px', position: 'relative', zIndex: 2 }}>
+                  
+                  {/* SOLID LINE DOWN TO NEXT BRANCH */}
+                  {bIdx < ruleData.branches.length - 1 && (
+                    <div style={{ position: 'absolute', top: '40px', bottom: '-30px', left: '19px', width: '2px', background: '#D1D5DB', zIndex: -1 }}></div>
+                  )}
 
+                  {/* SOLID LINE UP TO PREVIOUS BRANCH */}
+                  {bIdx > 0 && (
+                    <div style={{ position: 'absolute', top: '0', height: '40px', left: '19px', width: '2px', background: '#D1D5DB', zIndex: -1 }}></div>
+                  )}
+
+                  {/* DASHED LINE DOWN TO ADD BRANCH BUTTON */}
+                  {bIdx === ruleData.branches.length - 1 && showSpineDot && (
+                    <div style={{ position: 'absolute', top: '40px', bottom: '-10px', left: '19px', width: '2px', borderLeft: '2px dashed #D1D5DB', zIndex: -1 }}></div>
+                  )}
+
+                  {showSpineDot && (
+                    <>
+                      <div className="spine-node-row" style={{ width: '40px', justifyContent: 'center', height: '80px', flexShrink: 0, margin: 0, position: 'relative' }}>
+                        {bIdx === 0 && <div style={{ position: 'absolute', top: '39px', left: '0', width: '20px', height: '2px', background: '#D1D5DB', zIndex: -1 }}></div>}
+                        <div style={{ position: 'absolute', top: '39px', right: '0', width: '20px', height: '2px', background: '#D1D5DB', zIndex: -1 }}></div>
+                        <div className="spine-circle">...</div>
+                      </div>
+                      <div className="h-connector" style={{ marginTop: '39px', width: '40px' }}></div>
+                    </>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start' }}>
+                    {/* CONDITIONS */}
+                    {branch.type !== 'otherwise' && branch.conditions.map((cond, cIdx) => (
+                      <div key={`c-${cIdx}`} style={{ display: 'flex', flexDirection: 'row' }}>
+                        <div 
+                          className={`rule-node filled ${activePanel?.type === 'condition' && activePanel?.branchId === branch.id && activePanel?.itemIndex === cIdx ? 'selected' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); setActivePanel({ type: 'condition', branchId: branch.id, itemIndex: cIdx }); setSearchQuery(''); }}
+                        >
+                          <button className="node-remove" onClick={(e) => { e.stopPropagation(); removeNode('condition', branch.id, cIdx); }}>×</button>
+                          <div className="node-title" style={!cond.type ? { color: 'var(--text-tertiary)' } : {}}>
+                            {cond.type ? getOptionMeta(cond.type, 'condition')?.label : '+ Check if...'}
+                          </div>
+                          {renderValueInput('condition', cond.type, cond.value, branch.id, cIdx)}
+                        </div>
+                        <div className="h-connector" style={{ marginTop: '39px' }}></div>
+                      </div>
+                    ))}
+
+                    {/* CONDITION PLACEHOLDER OR OTHERWISE */}
+                    {branch.type === 'otherwise' ? (
+                           <div style={{ display: 'flex', flexDirection: 'row' }}>
+                             <div className="rule-node" style={{ justifyContent: 'center' }}>
+                                <button className="node-remove" onClick={(e) => { e.stopPropagation(); removeBranch(branch.id); }}>×</button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                   <div style={{ width: '24px', height: '24px', background: '#F3F4F6', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#6B7280' }}>→</div>
+                                   <div>
+                                      <div style={{ fontWeight: 500, fontSize: '0.9rem', color: '#374151' }}>Otherwise</div>
+                                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>If all other conditions are not met</div>
+                                   </div>
+                                </div>
+                             </div>
+                             <div className="h-connector" style={{ marginTop: '39px' }}></div>
+                           </div>
+                    ) : branch.conditions.length === 0 ? (
+                       ruleData.branches.length === 1 ? null : (
+                           <div style={{ display: 'flex', flexDirection: 'row' }}>
+                             <div 
+                               className={`rule-node ${activePanel?.type === 'condition' && activePanel?.branchId === branch.id && activePanel?.itemIndex === branch.conditions.length ? 'selected' : ''}`}
+                               onClick={(e) => { e.stopPropagation(); setActivePanel({ type: 'condition', branchId: branch.id, itemIndex: branch.conditions.length }); setSearchQuery(''); }}
+                             >
+                               <button className="node-remove" onClick={(e) => { e.stopPropagation(); removeBranch(branch.id); }}>×</button>
+                               <div className="node-title" style={{ color: 'var(--text-tertiary)' }}>{bIdx === 0 ? '+ Check if...' : '+ Otherwise if...'}</div>
+                             </div>
+                             <div className="h-connector" style={{ marginTop: '39px' }}></div>
+                           </div>
+                       )
+                    ) : null}
+
+                    {/* ACTIONS */}
+                    {(() => {
+                      const isExpanded = branch.actions.length > 1 || actionPlaceholders[branch.id];
+
+                      if (branch.actions.length === 0) {
+                        return (
+                          <div 
+                            className={`rule-node ${activePanel?.type === 'action' && activePanel?.branchId === branch.id && activePanel?.itemIndex === 0 ? 'selected' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); setActivePanel({ type: 'action', branchId: branch.id, itemIndex: 0 }); setSearchQuery(''); }}
+                          >
+                            <div className="node-title" style={{ color: 'var(--text-tertiary)' }}>+ Do this...</div>
+                          </div>
+                        );
+                      }
+
+                      if (!isExpanded) {
+                        return (
+                          <div 
+                            className={`action-group-container single ${activePanel?.type === 'action' && activePanel?.branchId === branch.id && activePanel?.itemIndex === 0 ? 'selected' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); setActivePanel({ type: 'action', branchId: branch.id, itemIndex: 0 }); setSearchQuery(''); }}
+                          >
+                             <button className="action-remove-btn" onClick={(e) => { e.stopPropagation(); removeNode('action', branch.id, 0); }}>×</button>
+                             <div className="single-action-content">
+                                <div className="action-label">Do this</div>
+                                <div className="action-title">
+                                   {getOptionMeta(branch.actions[0].type, 'action')?.label}
+                                </div>
+                                {renderValueInput('action', branch.actions[0].type, branch.actions[0].value, branch.id, 0)}
+                             </div>
+                             <div className="add-action-hover-btn" onClick={(e) => { e.stopPropagation(); setActionPlaceholders(prev => ({ ...prev, [branch.id]: true })); }}>+</div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="action-group-container expanded">
+                          {branch.actions.map((act, aIdx) => (
+                             <div key={`a-${aIdx}`} className="action-item-wrapper">
+                               <div className="action-label">{aIdx === 0 ? 'Do this' : 'And'}</div>
+                               <div 
+                                 className={`action-item-box ${activePanel?.type === 'action' && activePanel?.branchId === branch.id && activePanel?.itemIndex === aIdx ? 'selected' : ''}`}
+                                 onClick={(e) => { e.stopPropagation(); setActivePanel({ type: 'action', branchId: branch.id, itemIndex: aIdx }); setSearchQuery(''); }}
+                               >
+                                  <button className="action-remove-btn" onClick={(e) => { e.stopPropagation(); removeNode('action', branch.id, aIdx); }}>×</button>
+                                  <div style={{ flex: 1 }}>
+                                    <div className="action-title">
+                                      {getOptionMeta(act.type, 'action')?.label}
+                                    </div>
+                                    {renderValueInput('action', act.type, act.value, branch.id, aIdx)}
+                                  </div>
+                               </div>
+                             </div>
+                          ))}
+                          
+                          {actionPlaceholders[branch.id] && (
+                             <div className="action-item-wrapper">
+                               <div className="action-label">And</div>
+                               <div 
+                                 className={`action-item-box placeholder ${activePanel?.type === 'action' && activePanel?.branchId === branch.id && activePanel?.itemIndex === branch.actions.length ? 'selected' : ''}`}
+                                 onClick={(e) => { e.stopPropagation(); setActivePanel({ type: 'action', branchId: branch.id, itemIndex: branch.actions.length }); setSearchQuery(''); }}
+                               >
+                                 <div className="node-title" style={{ color: '#3b82f6', margin: 0 }}>+ Do this...</div>
+                               </div>
+                             </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )})}
+
+              {/* ADD BRANCH BUTTON */}
+              {(ruleData.branches.length > 1 || (ruleData.branches[0].type !== 'otherwise' && ruleData.branches[0].conditions.length > 0)) && (
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', position: 'relative', zIndex: 2, height: '60px', marginTop: '-20px' }}>
+                  {/* Dashed elbow line */}
+                  <div style={{ position: 'absolute', left: '19px', top: '0', width: '20px', height: '27px', borderLeft: '2px dashed #D1D5DB', borderBottom: '2px dashed #D1D5DB', borderBottomLeftRadius: '8px' }}></div>
+                  <div style={{ marginLeft: '40px', marginTop: '10px', position: 'relative' }}>
+                     <button className="add-branch-btn" onClick={(e) => { e.stopPropagation(); setShowAddBranchMenu(!showAddBranchMenu); }} style={{ margin: 0 }}>+ Add branch</button>
+                     
+                     {showAddBranchMenu && (
+                       <div className="add-branch-menu" onClick={e => e.stopPropagation()}>
+                         <div className="add-branch-menu-item" onClick={() => addBranch('condition')}>
+                           <div className="menu-item-title">+ Otherwise if...</div>
+                           <div className="menu-item-desc">Add another set of conditions and actions to this rule.</div>
+                         </div>
+                         {!ruleData.branches.some(b => b.type === 'otherwise') && (
+                           <div className="add-branch-menu-item" onClick={() => addBranch('otherwise')}>
+                             <div className="menu-item-title">+ Otherwise</div>
+                             <div className="menu-item-desc">Add actions that will run if all other conditions are not met.</div>
+                           </div>
+                         )}
+                       </div>
+                     )}
+                  </div>
+                </div>
+              )}
+
+            </div>
           </div>
         </div>
 
@@ -348,17 +777,12 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
         {activePanel && (
           <div className="side-panel" onClick={e => e.stopPropagation()}>
             <div className="side-panel-header">
-              <h3>{activePanel === 'trigger' ? 'When...' : 'Do this...'}</h3>
-              <p>
-                {activePanel === 'trigger' 
-                  ? 'Add a trigger that sets the rule in motion.' 
-                  : 'Add an action that occurs as a result of the rule.'}
-              </p>
+              <h3>{activePanel.type === 'trigger' ? 'When...' : activePanel.type === 'condition' ? 'Check if...' : 'Do this...'}</h3>
               <div className="search-input-wrapper">
                 <span className="search-icon">🔍</span>
                 <input 
                   type="text" 
-                  placeholder={`Search ${activePanel}s`} 
+                  placeholder={`Search ${activePanel.type}s`} 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -366,11 +790,11 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
             </div>
             
             <div className="side-panel-tabs">
-              <div className="panel-tab active">{activePanel === 'trigger' ? 'Triggers' : 'Actions'}</div>
+              <div className="panel-tab active">{activePanel.type === 'trigger' ? 'Triggers' : activePanel.type === 'condition' ? 'Conditions' : 'Actions'}</div>
             </div>
 
             <div className="side-panel-content">
-              {getFilteredOptions(activePanel === 'trigger' ? TRIGGER_OPTIONS : ACTION_OPTIONS).map(group => (
+              {getFilteredOptions(activePanel.type === 'trigger' ? TRIGGER_OPTIONS : activePanel.type === 'condition' ? CONDITION_OPTIONS : ACTION_OPTIONS).map(group => (
                 <div key={group.group} className="option-group">
                   <div className="option-group-title">{group.group}</div>
                   {group.items.map(item => (
@@ -378,13 +802,13 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
                       key={item.id} 
                       className="option-item"
                       onClick={() => {
-                        if (activePanel === 'trigger') {
-                          setTriggerType(item.id);
-                          setTriggerValue('');
+                        if (item.id === 'custom_field_is' && item.fieldId) {
+                           setNodeType(activePanel.type, activePanel.branchId, activePanel.itemIndex, 'custom_field_is');
+                           updateNodeData(activePanel.type, activePanel.branchId, activePanel.itemIndex, 'value', `${item.fieldId}:`);
                         } else {
-                          setActionType(item.id);
-                          setActionValue('');
+                           setNodeType(activePanel.type, activePanel.branchId, activePanel.itemIndex, item.id);
                         }
+                        setSearchQuery('');
                       }}
                     >
                       <div className="option-icon">{item.icon}</div>
@@ -396,7 +820,6 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

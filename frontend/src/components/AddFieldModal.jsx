@@ -1,10 +1,24 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 
+const FIELD_TYPES = [
+  { value: 'single-select', label: 'Single-select', icon: '⊘' },
+  { value: 'multi-select', label: 'Multi-select', icon: '☑' },
+  { value: 'date', label: 'Date', icon: '📅' },
+  { value: 'people', label: 'People', icon: '👤' },
+  { value: 'text', label: 'Text', icon: 'A' },
+  { value: 'number', label: 'Number', icon: '#' },
+  { value: 'formula', label: 'Formula', icon: 'fx' },
+  { value: 'id', label: 'ID', icon: '🆔' },
+  { value: 'timer', label: 'Timer', icon: '⏱' },
+];
+
 export default function AddFieldModal({ onClose, onCreateField, onUpdateField, editField }) {
-  const [activeTab, setActiveTab] = useState('create') // 'create' | 'library' | 'ai'
+  const [activeTab, setActiveTab] = useState('create')
   const [fieldTitle, setFieldTitle] = useState(editField ? editField.title : '')
-  const [fieldType, setFieldType] = useState('Single-select')
+  const [fieldType, setFieldType] = useState(editField ? (editField.type || 'single-select') : 'single-select')
+  const [numberFormat, setNumberFormat] = useState(editField?.numberFormat || 'plain')
+  const [formulaExpression, setFormulaExpression] = useState(editField?.formula || '')
 
   const [options, setOptions] = useState(
     editField && editField.options && editField.options.length > 0
@@ -14,6 +28,8 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
         { id: 2, value: '', color: '#EF4444' }
       ]
   )
+
+  const hasOptions = fieldType === 'single-select' || fieldType === 'multi-select';
 
   const handleAddOption = () => {
     const randomColors = ['#3B82F6', '#F59E0B', '#8B5CF6', '#EC4899', '#10B981']
@@ -39,18 +55,27 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
     e.preventDefault()
     if (!fieldTitle.trim()) return
 
-    const defaultValue = options[0]?.value || '—'
+    const mappedOptions = hasOptions
+      ? options.filter(o => o.value.trim() !== '').map(o => ({
+          id: o.id.toString(),
+          label: o.value.trim(),
+          color: o.color
+        }))
+      : [];
 
-    const mappedOptions = options.filter(o => o.value.trim() !== '').map(o => ({
-      id: o.id.toString(),
-      label: o.value.trim(),
-      color: o.color
-    }));
+    const fieldData = {
+      title: fieldTitle.trim(),
+      type: fieldType,
+      options: mappedOptions,
+    };
+
+    if (fieldType === 'number') fieldData.numberFormat = numberFormat;
+    if (fieldType === 'formula') fieldData.formula = formulaExpression;
 
     if (editField && onUpdateField) {
-      onUpdateField({ ...editField, title: fieldTitle.trim(), options: mappedOptions })
+      onUpdateField({ ...editField, ...fieldData })
     } else {
-      onCreateField(fieldTitle.trim(), defaultValue, mappedOptions)
+      onCreateField(fieldData)
     }
   }
 
@@ -100,17 +125,19 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
                 value={fieldType}
                 onChange={e => setFieldType(e.target.value)}
                 style={styles.mainSelect}
+                disabled={!!editField}
               >
-                <option value="Single-select">v Single-select</option>
-                <option value="Text">📝 Text</option>
-                <option value="Number">🔢 Number</option>
+                {FIELD_TYPES.map(ft => (
+                  <option key={ft.value} value={ft.value}>{ft.icon} {ft.label}</option>
+                ))}
               </select>
             </div>
           </div>
 
           <button type="button" style={styles.addDescTextLink}>+ Add description</button>
 
-          {fieldType === 'Single-select' && (
+          {/* Options editor for single-select and multi-select */}
+          {hasOptions && (
             <div style={{ marginTop: '1.25rem' }}>
               <label style={styles.fieldLabel}>Options <span style={{ color: '#EF4444' }}>*</span></label>
               <div style={styles.optionsListContainer}>
@@ -138,6 +165,60 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
               <button type="button" onClick={handleAddOption} style={styles.addOptionTextBtn}>
                 + Add an option
               </button>
+            </div>
+          )}
+
+          {/* Number format selector */}
+          {fieldType === 'number' && (
+            <div style={{ marginTop: '1.25rem' }}>
+              <label style={styles.fieldLabel}>Number format</label>
+              <select value={numberFormat} onChange={e => setNumberFormat(e.target.value)} style={styles.mainSelect}>
+                <option value="plain">1,000</option>
+                <option value="currency">$1,000</option>
+                <option value="percent">100%</option>
+              </select>
+            </div>
+          )}
+
+          {/* Formula expression */}
+          {fieldType === 'formula' && (
+            <div style={{ marginTop: '1.25rem' }}>
+              <label style={styles.fieldLabel}>Formula expression</label>
+              <input
+                type="text"
+                placeholder="e.g. {Number Field} * 2"
+                value={formulaExpression}
+                onChange={e => setFormulaExpression(e.target.value)}
+                style={styles.mainInput}
+              />
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                Formula fields are computed automatically and are read-only.
+              </div>
+            </div>
+          )}
+
+          {/* Info for read-only types */}
+          {fieldType === 'id' && (
+            <div style={{ marginTop: '1.25rem', padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              🆔 ID fields are auto-generated and read-only. Each task will get a unique numeric ID.
+            </div>
+          )}
+
+          {fieldType === 'timer' && (
+            <div style={{ marginTop: '1.25rem', padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              ⏱ Timer fields let you track time spent on tasks. Click start/stop to toggle the timer.
+            </div>
+          )}
+
+          {fieldType === 'people' && (
+            <div style={{ marginTop: '1.25rem', padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              👤 People fields let you assign multiple project members to a task field.
+            </div>
+          )}
+
+          {fieldType === 'date' && (
+            <div style={{ marginTop: '1.25rem', padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              📅 Date fields store a single date value that can be set per task.
             </div>
           )}
 

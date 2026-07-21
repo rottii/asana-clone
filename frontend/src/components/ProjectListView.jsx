@@ -427,247 +427,427 @@ export default function ProjectListView({
 
   const renderTaskRow = (task, sectionId) => {
     return (
-                    <div
-                      key={task.id}
-                      onClickCapture={() => {
-                        setLastInteractedSectionId(sectionId);
-                        if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
-                      }}
-                      data-task-id={task.id}
-                      style={{
-                        ...styles.taskDataTableRow,
-                        position: 'relative',
-                        zIndex: openApprovalMenuTaskId === task.id ? 9999 : 0,
-                        backgroundColor: lastInteractedSectionId === sectionId ? 'var(--bg-secondary)' : 'var(--bg-primary)',
-                        opacity: draggingTaskId === task.id ? 0.4 : 1,
-                        borderLeft: lastInteractedSectionId === sectionId ? '3px solid #4F46E5' : '3px solid transparent'
-                      }}
-                      onContextMenu={(e) => { e.preventDefault(); onTaskContextMenu(e, task.id); }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        if (draggingTaskId && draggingTaskId !== task.id && !isVirtualGrouping) {
-                          if (handleLiveTaskSwap) handleLiveTaskSwap(draggingTaskId, task.id);
-                        }
-                      }}
-                      onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, sectionId, task.id); }}
-                    >
-                      <div
-                        draggable={!isReadOnly && !isVirtualGrouping}
-                        onDragStart={(e) => {
-                          e.stopPropagation();
-                          setDraggingTaskId(task.id);
-                          e.dataTransfer.setData('drag-type', 'task');
-                          e.dataTransfer.setData('task-id', task.id);
+      <div
+        key={task.id}
+        onClickCapture={() => {
+          setLastInteractedSectionId(sectionId);
+          if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
+        }}
+        data-task-id={task.id}
+        style={{
+          ...styles.taskDataTableRow,
+          position: 'relative',
+          zIndex: (openApprovalMenuTaskId === task.id || (openCellMenuId && openCellMenuId.startsWith(`${task.id}-`))) ? 9999 : 0,
+          backgroundColor: lastInteractedSectionId === sectionId ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+          opacity: draggingTaskId === task.id ? 0.4 : 1,
+          borderLeft: lastInteractedSectionId === sectionId ? '3px solid #4F46E5' : '3px solid transparent'
+        }}
+        onContextMenu={(e) => { e.preventDefault(); onTaskContextMenu(e, task.id); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (draggingTaskId && draggingTaskId !== task.id && !isVirtualGrouping) {
+            if (handleLiveTaskSwap) handleLiveTaskSwap(draggingTaskId, task.id);
+          }
+        }}
+        onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, sectionId, task.id); }}
+      >
+        <div
+          draggable={!isReadOnly && !isVirtualGrouping}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            setDraggingTaskId(task.id);
+            e.dataTransfer.setData('drag-type', 'task');
+            e.dataTransfer.setData('task-id', task.id);
 
-                          const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
-                          if (ghostEl) {
-                            ghostEl.textContent = task.title;
-                            e.dataTransfer.setDragImage(ghostEl, 20, 15);
-                          }
-                        }}
-                        onDragEnd={() => setDraggingTaskId(null)}
-                        style={styles.drag6DotHandleCellTask}
-                      >
-                        ⋮⋮
+            const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
+            if (ghostEl) {
+              ghostEl.textContent = task.title;
+              e.dataTransfer.setDragImage(ghostEl, 20, 15);
+            }
+          }}
+          onDragEnd={() => setDraggingTaskId(null)}
+          style={styles.drag6DotHandleCellTask}
+        >
+          ⋮⋮
+        </div>
+
+        {/* Hücre 1: Checkbox & Başlık */}
+        <div
+          style={{ ...styles.gridBodyCell, width: colWidths.name, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '1rem', cursor: 'pointer', overflow: openApprovalMenuTaskId === task.id ? 'visible' : 'hidden', position: openApprovalMenuTaskId === task.id ? 'relative' : 'static', zIndex: openApprovalMenuTaskId === task.id ? 9999 : 'auto' }}
+          onClick={() => {
+            if (onOpenTaskPane) onOpenTaskPane(task.id);
+          }}
+        >
+          {task.type === 'APPROVAL' ? (
+            <div style={{ position: 'relative', zIndex: openApprovalMenuTaskId === task.id ? 9999 : 'auto' }}>
+              <div
+                style={{
+                  width: '18px', height: '18px', borderRadius: '4px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: isReadOnly ? 'default' : 'pointer', flexShrink: 0,
+                  backgroundColor: task.approvalStatus === 'APPROVED' ? 'var(--accent-success)' : task.approvalStatus === 'REJECTED' ? 'var(--accent-danger)' : task.approvalStatus === 'CHANGES_REQUESTED' ? '#F59E0B' : 'transparent',
+                  border: task.approvalStatus === 'PENDING' || !task.approvalStatus ? '1px solid var(--text-tertiary)' : 'none',
+                  color: task.approvalStatus === 'PENDING' || !task.approvalStatus ? 'var(--text-secondary)' : '#fff',
+                }}
+                title={task.approvalStatus || 'PENDING'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isReadOnly && onOpenApprovalMenu) {
+                    closeAllMenus();
+                    onOpenApprovalMenu(e, task);
+                  }
+                }}
+              >
+                {task.approvalStatus === 'APPROVED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> : task.approvalStatus === 'REJECTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> : task.approvalStatus === 'CHANGES_REQUESTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"></path></svg> : <span style={{ fontSize: '12px', lineHeight: 1 }}>⚖️</span>}
+              </div>
+            </div>
+          ) : task.type === 'MILESTONE' ? (
+            <div
+              onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleTaskCompleteInline(task, sectionId); }}
+              style={{
+                width: '12px', height: '12px', flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer',
+                transform: 'rotate(45deg)',
+                backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent',
+                border: task.isCompleted ? '2px solid var(--accent-success)' : '2px solid #6366F1',
+              }}
+              title="Milestone"
+            />
+          ) : (
+            <div
+              onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleTaskCompleteInline(task, sectionId); }}
+              style={{
+                width: '18px', height: '18px', borderRadius: '50%', border: '1px solid',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: isReadOnly ? 'default' : 'pointer', flexShrink: 0,
+                borderColor: task.isCompleted ? 'var(--accent-success)' : 'var(--text-tertiary)',
+                backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent',
+                color: '#fff',
+              }}
+            >
+              {task.isCompleted && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+            </div>
+          )}
+
+          {editingTaskId === task.id ? (
+            <input
+              ref={editingTaskId === task.id ? inputRef : null}
+              type="text"
+              value={editTaskTitleValue}
+              autoFocus
+              onChange={(e) => setEditTaskTitleValue(e.target.value)}
+              onBlur={() => submitTaskRename(task, sectionId)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  submitTaskRename(task, sectionId);
+                  if (handleTopAddTaskGlobal) handleTopAddTaskGlobal();
+                }
+                if (e.key === 'Escape') setEditingTaskId(null);
+              }}
+              style={{
+                minWidth: '200px',
+                fontSize: '0.85rem',
+                fontFamily: 'inherit',
+                padding: '0',
+                backgroundColor: 'transparent',
+                color: 'var(--text-primary)',
+                border: 'none',
+                outline: 'none'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isReadOnly) {
+                  let offset = null;
+                  if (document.caretRangeFromPoint) {
+                    const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                    if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
+                      offset = range.startOffset;
+                    }
+                  } else if (document.caretPositionFromPoint) {
+                    const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+                    if (pos && pos.offsetNode.nodeType === Node.TEXT_NODE) {
+                      offset = pos.offset;
+                    }
+                  }
+                  setEditCursorPos(offset !== null ? offset : task.title.length);
+                  setEditingTaskId(task.id);
+                  setEditTaskTitleValue(task.title);
+                }
+                if (onOpenTaskPane) onOpenTaskPane(task.id);
+              }}
+              style={{ fontSize: '0.85rem', color: 'var(--text-primary)', textDecoration: task.isCompleted ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: isReadOnly ? 'default' : 'text', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              {task.title}
+              {task.tags && task.tags.map(tag => (
+                <span key={tag.id} style={{ color: tag.color, fontSize: '0.75rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path></svg> {tag.name}
+                </span>
+              ))}
+            </span>
+          )}
+        </div>
+
+        {/* Data Cells (Dynamic based on columnOrder) */}
+        {columnOrder.map(colId => {
+          if (colId === 'assignee') {
+            return (
+              <div key="assignee" style={{ ...styles.gridBodyCell, width: colWidths.assignee, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'assignee', task, sectionId)}>
+                {task.assignee ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', height: '22px' }}>
+                    <div style={styles.listAvatarIcon}>{task.assignee.name?.[0].toUpperCase()}</div>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.assignee.name}</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', height: '22px' }}>
+                    <span style={{ color: '#9CA3AF', fontSize: '0.8rem' }}>👤 Unassigned</span>
+                  </div>
+                )}
+              </div>
+            );
+          } else if (colId === 'dueDate') {
+            return (
+              <div key="dueDate" style={{ ...styles.gridBodyCell, width: colWidths.dueDate, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer', color: (task.dueDate && new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0) && !task.isCompleted) ? '#EF4444' : '#4F46E5', fontSize: '0.8rem', fontWeight: '500' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'date', task, sectionId)}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatFriendlyDate(task.startDate, task.dueDate)}</span>
+              </div>
+            );
+          } else {
+            const cf = customFields.find(f => f.id === colId);
+            if (!cf) return null;
+            let parsedFields = {};
+            if (typeof task.customFields === 'string') {
+              try { parsedFields = JSON.parse(task.customFields); } catch (e) { }
+            } else if (task.customFields) {
+              parsedFields = task.customFields;
+            }
+
+            return (
+              <div key={cf.id} style={{ ...styles.gridBodyCell, width: colWidths[cf.id] || 140, flexShrink: 0, position: 'relative', cursor: (isReadOnly || cf.type === 'id' || cf.type === 'formula') ? 'default' : 'pointer', overflow: 'visible' }} onClick={(e) => {
+                if (isReadOnly || cf.type === 'id' || cf.type === 'formula') return;
+                if (cf.type === 'date') {
+                  if (handleOpenPopoverInline) handleOpenPopoverInline(e, 'custom-date', task, sectionId, { customFieldId: cf.id });
+                } else {
+                  handleOpenCellMenu(e, `${task.id}-${cf.id}`);
+                }
+              }}>
+                {(() => {
+                  const val = parsedFields[cf.id];
+                  
+                  if (cf.type === 'id') {
+                    const idValue = val || task.id?.slice(-6).toUpperCase();
+                    return <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: '0.05em' }}>{idValue}</span>;
+                  }
+                  if (cf.type === 'formula') {
+                    return <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{val || '—'}</span>;
+                  }
+                  
+                  if (!val) return null;
+
+                  if (cf.type === 'SELECT' || cf.type === 'single-select') {
+                    const opt = cf.options?.find(o => (o.label || o.value) === val);
+                    const displayValue = opt ? (opt.label || opt.value) : val;
+                    const displayColor = opt ? opt.color : '#F3F4F6';
+                    return (
+                      <span style={{ fontSize: '0.75rem', fontWeight: '500', padding: '2px 8px', borderRadius: '4px', backgroundColor: displayColor, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        {displayValue}
+                      </span>
+                    );
+                  } else if (cf.type === 'MULTI_SELECT' || cf.type === 'multi-select') {
+                    const selectedValues = Array.isArray(val) ? val : [val];
+                    return (
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'nowrap', overflow: 'hidden' }}>
+                        {selectedValues.map((v, i) => {
+                          const opt = cf.options?.find(o => (o.label || o.value) === v);
+                          const displayColor = opt ? opt.color : '#F3F4F6';
+                          return (
+                            <span key={i} style={{ fontSize: '0.75rem', fontWeight: '500', padding: '2px 8px', borderRadius: '4px', backgroundColor: displayColor, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                              {opt ? (opt.label || opt.value) : v}
+                            </span>
+                          );
+                        })}
                       </div>
+                    );
+                  } else if (cf.type === 'people') {
+                    const selectedPeople = Array.isArray(val) ? val : [val];
+                    const members = selectedProject?.members?.map(m => m.user) || [];
+                    return (
+                      <div style={{ display: 'flex', gap: '4px', overflow: 'hidden' }}>
+                        {selectedPeople.map((uid, i) => {
+                          const member = members.find(m => m.id === uid);
+                          return (
+                            <span key={i} style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold', flexShrink: 0 }} title={member?.name || 'Unknown'}>
+                              {member?.name?.charAt(0).toUpperCase() || '?'}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    );
+                  } else if (cf.type === 'timer') {
+                    const timerData = (typeof val === 'object' && val !== null) ? val : { running: false, elapsed: 0, lastStart: null };
+                    const elapsed = timerData.elapsed || 0;
+                    const h = Math.floor(elapsed / 3600);
+                    const m = Math.floor((elapsed % 3600) / 60);
+                    const s = elapsed % 60;
+                    return <span style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{`${h}h ${m}m ${s}s`}</span>;
+                  } else if (cf.type === 'date') {
+                    const formatted = val ? new Date(val).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+                    return <span>{formatted}</span>;
+                  } else if (typeof val === 'object') {
+                    return <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{JSON.stringify(val)}</span>;
+                  }
 
-                      {/* Hücre 1: Checkbox & Başlık */}
-                      <div
-                        style={{ ...styles.gridBodyCell, width: colWidths.name, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '1rem', cursor: 'pointer', overflow: openApprovalMenuTaskId === task.id ? 'visible' : 'hidden', position: openApprovalMenuTaskId === task.id ? 'relative' : 'static', zIndex: openApprovalMenuTaskId === task.id ? 9999 : 'auto' }}
-                        onClick={() => {
-                          if (onOpenTaskPane) onOpenTaskPane(task.id);
-                        }}
-                      >
-                        {task.type === 'APPROVAL' ? (
-                          <div style={{ position: 'relative', zIndex: openApprovalMenuTaskId === task.id ? 9999 : 'auto' }}>
-                            <div
-                              style={{
-                                width: '18px', height: '18px', borderRadius: '4px',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                cursor: isReadOnly ? 'default' : 'pointer', flexShrink: 0,
-                                backgroundColor: task.approvalStatus === 'APPROVED' ? 'var(--accent-success)' : task.approvalStatus === 'REJECTED' ? 'var(--accent-danger)' : task.approvalStatus === 'CHANGES_REQUESTED' ? '#F59E0B' : 'transparent',
-                                border: task.approvalStatus === 'PENDING' || !task.approvalStatus ? '1px dashed var(--text-tertiary)' : 'none',
-                                color: task.approvalStatus === 'PENDING' || !task.approvalStatus ? 'var(--text-secondary)' : '#fff',
+                  return <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(val)}</span>;
+                })()}
+                {openCellMenuId === `${task.id}-${cf.id}` && (
+                  <div style={{ ...styles.cellDropdownMenu, ...(menuPosition === 'top' ? { bottom: '100%', top: 'auto', marginBottom: '4px' } : { top: '100%', marginTop: '4px' }) }} onClick={(e) => e.stopPropagation()}>
+                    {(cf.type === 'SELECT' || cf.type === 'single-select' || cf.type === 'MULTI_SELECT' || cf.type === 'multi-select') && (() => {
+                      const isMulti = cf.type === 'MULTI_SELECT' || cf.type === 'multi-select';
+                      const val = parsedFields[cf.id];
+                      const selectedValues = Array.isArray(val) ? val : (val ? [val] : []);
+                      
+                      const validOptionValues = (cf.options || []).map(o => o.label || o.value);
+                      const orphanedValues = selectedValues.filter(v => !validOptionValues.includes(v));
+                      
+                      const allOptionsToRender = [
+                        ...(cf.options || []),
+                        ...orphanedValues.map(v => ({ id: `orphan-${v}`, label: v, color: '#F3F4F6' }))
+                      ];
+
+                      return allOptionsToRender.map(o => {
+                        const isSelected = selectedValues.includes(o.label || o.value);
+                        
+                        return (
+                          <button
+                          key={o.id}
+                          onClick={() => { 
+                            if (isMulti) {
+                              let newArr = [...selectedValues];
+                              if (isSelected) newArr = newArr.filter(v => v !== (o.label || o.value));
+                              else newArr.push(o.label || o.value);
+                              handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, newArr);
+                            } else {
+                              handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, o.label); 
+                              setOpenCellMenuId(null); 
+                            }
+                          }}
+                          style={{ ...styles.dropdownItem, color: 'var(--text-primary)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: isSelected ? 'var(--bg-secondary)' : 'transparent' }}
+                        >
+                          {isMulti && (
+                            <div style={{ width: '14px', height: '14px', border: '1px solid var(--border-color)', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? 'var(--accent-primary)' : 'transparent' }}>
+                              {isSelected && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                            </div>
+                          )}
+                          <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', flexShrink: 0 }}></div>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
+                        </button>
+                      );
+                    });
+                  })()}
+                  {cf.type === 'people' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', padding: '4px 0' }}>
+                        <div style={{ padding: '0 8px 4px', fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '600' }}>SELECT PEOPLE</div>
+                        {(selectedProject?.members?.map(m => m.user) || []).map(m => {
+                          const val = parsedFields[cf.id];
+                          const selectedPeople = Array.isArray(val) ? val : (val ? [val] : []);
+                          const isSelected = selectedPeople.includes(m.id);
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => {
+                                let newArr = [...selectedPeople];
+                                if (isSelected) newArr = newArr.filter(id => id !== m.id);
+                                else newArr.push(m.id);
+                                handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, newArr);
                               }}
-                              title={task.approvalStatus || 'PENDING'}
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
-                                if (!isReadOnly && onOpenApprovalMenu) {
-                                  closeAllMenus();
-                                  onOpenApprovalMenu(e, task);
-                                }
-                              }}
+                              style={{ ...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: isSelected ? 'var(--bg-secondary)' : 'transparent' }}
                             >
-                              {task.approvalStatus === 'APPROVED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> : task.approvalStatus === 'REJECTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> : task.approvalStatus === 'CHANGES_REQUESTED' ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l5.67-5.67"></path></svg> : <span style={{ fontSize: '12px', lineHeight: 1 }}>⚖️</span>}
-                            </div>
-                          </div>
-                        ) : task.type === 'MILESTONE' ? (
-                          <div
-                            onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleTaskCompleteInline(task, sectionId); }}
-                            style={{
-                              width: '12px', height: '12px', flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer',
-                              transform: 'rotate(45deg)',
-                              backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent',
-                              border: task.isCompleted ? '2px solid var(--accent-success)' : '2px solid #6366F1',
-                            }}
-                            title="Milestone"
-                          />
-                        ) : (
-                          <div
-                            onClick={(e) => { e.stopPropagation(); if (!isReadOnly) handleToggleTaskCompleteInline(task, sectionId); }}
-                            style={{
-                              width: '18px', height: '18px', borderRadius: '50%', border: '1px solid',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              cursor: isReadOnly ? 'default' : 'pointer', flexShrink: 0,
-                              borderColor: task.isCompleted ? 'var(--accent-success)' : 'var(--text-tertiary)',
-                              backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent',
-                              color: '#fff',
-                            }}
-                          >
-                            {task.isCompleted && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
-                          </div>
-                        )}
-
-                        {editingTaskId === task.id ? (
-                          <input
-                            ref={editingTaskId === task.id ? inputRef : null}
-                            type="text"
-                            value={editTaskTitleValue}
-                            autoFocus
-                            onChange={(e) => setEditTaskTitleValue(e.target.value)}
-                            onBlur={() => submitTaskRename(task, sectionId)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                submitTaskRename(task, sectionId);
-                                if (handleTopAddTaskGlobal) handleTopAddTaskGlobal();
-                              }
-                              if (e.key === 'Escape') setEditingTaskId(null);
-                            }}
-                            style={{
-                              minWidth: '200px',
-                              fontSize: '0.85rem',
-                              fontFamily: 'inherit',
-                              padding: '0',
-                              backgroundColor: 'transparent',
-                              color: 'var(--text-primary)',
-                              border: 'none',
-                              outline: 'none'
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        ) : (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!isReadOnly) {
-                                let offset = null;
-                                if (document.caretRangeFromPoint) {
-                                  const range = document.caretRangeFromPoint(e.clientX, e.clientY);
-                                  if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
-                                    offset = range.startOffset;
-                                  }
-                                } else if (document.caretPositionFromPoint) {
-                                  const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
-                                  if (pos && pos.offsetNode.nodeType === Node.TEXT_NODE) {
-                                    offset = pos.offset;
-                                  }
-                                }
-                                setEditCursorPos(offset !== null ? offset : task.title.length);
-                                setEditingTaskId(task.id);
-                                setEditTaskTitleValue(task.title);
-                              }
-                              if (onOpenTaskPane) onOpenTaskPane(task.id);
-                            }}
-                            style={{ fontSize: '0.85rem', color: 'var(--text-primary)', textDecoration: task.isCompleted ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: isReadOnly ? 'default' : 'text', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                          >
-                            {task.title}
-                            {task.tags && task.tags.map(tag => (
-                              <span key={tag.id} style={{ color: tag.color, fontSize: '0.75rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path></svg> {tag.name}
+                              <div style={{ width: '14px', height: '14px', border: '1px solid var(--border-color)', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? 'var(--accent-primary)' : 'transparent' }}>
+                                {isSelected && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                              </div>
+                              <span style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                                {m.name?.charAt(0).toUpperCase() || '?'}
                               </span>
-                            ))}
-                          </span>
-                        )}
+                              <span style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{m.name}</span>
+                            </button>
+                          );
+                        })}
                       </div>
-
-                      {/* Data Cells (Dynamic based on columnOrder) */}
-                      {columnOrder.map(colId => {
-                        if (colId === 'assignee') {
+                    )}
+                    {(cf.type === 'text' || cf.type === 'number') && (
+                      <div style={{ padding: '8px' }}>
+                        <input
+                          autoFocus
+                          type={cf.type === 'number' ? 'number' : 'text'}
+                          defaultValue={parsedFields[cf.id] || ''}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, e.target.value);
+                              setOpenCellMenuId(null);
+                            }
+                          }}
+                          placeholder={`Enter ${cf.title}...`}
+                          style={{ width: '100%', padding: '0.4rem', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.85rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)', boxSizing: 'border-box' }}
+                        />
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '4px', textAlign: 'right' }}>Press Enter to save</div>
+                      </div>
+                    )}
+                    {cf.type === 'timer' && (
+                      <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {(() => {
+                          const timerData = (typeof parsedFields[cf.id] === 'object' && parsedFields[cf.id] !== null) ? parsedFields[cf.id] : { running: false, elapsed: 0, lastStart: null };
+                          const elapsed = timerData.elapsed || 0;
+                          const isRunning = timerData.running || false;
+                          const h = Math.floor(elapsed / 3600);
+                          const m = Math.floor((elapsed % 3600) / 60);
+                          const s = elapsed % 60;
                           return (
-                            <div key="assignee" style={{ ...styles.gridBodyCell, width: colWidths.assignee, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'assignee', task, sectionId)}>
-                              {task.assignee ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', height: '22px' }}>
-                                  <div style={styles.listAvatarIcon}>{task.assignee.name?.[0].toUpperCase()}</div>
-                                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.assignee.name}</span>
-                                </div>
-                              ) : (
-                                <div style={{ display: 'flex', alignItems: 'center', height: '22px' }}>
-                                  <span style={{ color: '#9CA3AF', fontSize: '0.8rem' }}>👤 Unassigned</span>
-                                </div>
-                              )}
-                            </div>
+                            <>
+                              <div style={{ fontSize: '1rem', fontFamily: 'monospace', textAlign: 'center', color: isRunning ? '#10B981' : 'var(--text-primary)' }}>
+                                {`${h}h ${m}m ${s}s`}
+                              </div>
+                              <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                <button
+                                  onClick={() => {
+                                    if (isRunning) {
+                                      const now = Math.floor(Date.now() / 1000);
+                                      const added = timerData.lastStart ? now - timerData.lastStart : 0;
+                                      handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, { running: false, elapsed: elapsed + added, lastStart: null });
+                                    } else {
+                                      handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, { running: true, elapsed, lastStart: Math.floor(Date.now() / 1000) });
+                                    }
+                                  }}
+                                  style={{ padding: '4px 12px', border: 'none', borderRadius: '4px', backgroundColor: isRunning ? '#FEF2F2' : '#ECFDF5', color: isRunning ? '#EF4444' : '#10B981', cursor: 'pointer', fontWeight: 'bold' }}
+                                >
+                                  {isRunning ? 'Pause' : 'Start'}
+                                </button>
+                                <button
+                                  onClick={() => handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, { running: false, elapsed: 0, lastStart: null })}
+                                  style={{ padding: '4px 12px', border: 'none', borderRadius: '4px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            </>
                           );
-                        } else if (colId === 'dueDate') {
-                          return (
-                            <div key="dueDate" style={{ ...styles.gridBodyCell, width: colWidths.dueDate, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer', color: (task.dueDate && new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0) && !task.isCompleted) ? '#EF4444' : '#4F46E5', fontSize: '0.8rem', fontWeight: '500' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'date', task, sectionId)}>
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatFriendlyDate(task.startDate, task.dueDate)}</span>
-                            </div>
-                          );
-                        } else {
-                          const cf = customFields.find(f => f.id === colId);
-                          if (!cf) return null;
-                          let parsedFields = {};
-                          if (typeof task.customFields === 'string') {
-                            try { parsedFields = JSON.parse(task.customFields); } catch (e) { }
-                          } else if (task.customFields) {
-                            parsedFields = task.customFields;
-                          }
-
-                          return (
-                            <div key={cf.id} style={{ ...styles.gridBodyCell, width: colWidths[cf.id] || 140, flexShrink: 0, position: 'relative', cursor: isReadOnly ? 'default' : 'pointer', overflow: 'visible' }} onClick={(e) => !isReadOnly && handleOpenCellMenu(e, `${task.id}-${cf.id}`)}>
-                              {(() => {
-                                const val = parsedFields[cf.id];
-                                if (!val) return null;
-
-                                if (cf.type === 'SELECT' || cf.type === 'single-select') {
-                                  const opt = cf.options?.find(o => (o.label || o.value) === val);
-                                  const displayValue = opt ? (opt.label || opt.value) : val;
-                                  const displayColor = opt ? opt.color : '#F3F4F6';
-                                  return (
-                                    <span style={{ fontSize: '0.75rem', fontWeight: '500', padding: '2px 8px', borderRadius: '4px', backgroundColor: displayColor, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                      {displayValue}
-                                    </span>
-                                  );
-                                }
-
-                                return <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</span>;
-                              })()}
-                              {openCellMenuId === `${task.id}-${cf.id}` && (
-                                <div style={{ ...styles.cellDropdownMenu, ...(menuPosition === 'top' ? { bottom: '100%', top: 'auto', marginBottom: '4px' } : { top: '100%', marginTop: '4px' }) }} onClick={(e) => e.stopPropagation()}>
-                                  {(cf.type === 'SELECT' || cf.type === 'single-select') && cf.options?.map(o => (
-                                    <button
-                                      key={o.id}
-                                      onClick={() => { handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, o.label); setOpenCellMenuId(null); }}
-                                      style={{ ...styles.dropdownItem, color: 'var(--text-primary)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                                    >
-                                      <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', flexShrink: 0 }}></div>
-                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
-                                    </button>
-                                  ))}
-                                  <div style={{ borderTop: '1px solid #E5E7EB', margin: '4px 0' }}></div>
-                                  <button onClick={() => { handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, ''); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                    Clear value
-                                  </button>
-                                  <button onClick={() => { setFieldTitle(cf.title); setFieldOptionsList(cf.options); setEditingFieldOptions(true); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                    <span style={{ fontSize: '1rem' }}>✏️</span> Edit field
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        }
-                      })}
-                    </div>
+                        })()}
+                      </div>
+                    )}
+                    <div style={{ borderTop: '1px solid #E5E7EB', margin: '4px 0' }}></div>
+                    <button onClick={() => { handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, ''); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      Clear value
+                    </button>
+                    <button onClick={() => { setFieldTitle(cf.title); setFieldOptionsList(cf.options || []); setEditingFieldOptions(true); setOpenCellMenuId(null); }} style={{ ...styles.dropdownItem, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ fontSize: '1rem' }}>✏️</span> Edit field
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          }
+        })}
+      </div>
     );
   };
 
@@ -780,239 +960,235 @@ export default function ProjectListView({
 
       <div style={{ minWidth: 'max-content', flex: 1 }}>
         {/* Grid Tablo Başlık Sütunları */}
-      <div style={styles.listTableHeaderRow}>
-        <div style={{ width: '32px', flexShrink: 0, boxSizing: 'border-box' }} />
-        <div
-          style={{ ...styles.gridHeaderCell, width: colWidths.name, flexShrink: 0, paddingLeft: '42px', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-          onMouseEnter={() => setHoveredColumnName('name')}
-          onMouseLeave={() => setHoveredColumnName(null)}
-          onClick={() => handleSortOptionClick && handleSortOptionClick('Alphabetical')}
-        >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, fontWeight: activeSort?.field === 'Alphabetical' ? '700' : '500' }}>
-            Name {activeSort?.field === 'Alphabetical' && (activeSort.direction === 'asc' ? '↑' : '↓')}
-          </span>
-          {(hoveredColumnName === 'name' || openColumnMenuName === 'name') && (
-            <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>▼</button>
-          )}
-          {openColumnMenuName === 'name' && renderColumnDropdownMenu('name')}
-          <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, 'name')} onClick={(e) => e.stopPropagation()} />
-        </div>
-        {columnOrder.map(colId => {
-          let title = '';
-          let menuName = colId;
+        <div style={styles.listTableHeaderRow}>
+          <div style={{ width: '32px', flexShrink: 0, boxSizing: 'border-box' }} />
+          <div
+            style={{ ...styles.gridHeaderCell, width: colWidths.name, flexShrink: 0, paddingLeft: '42px', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+            onMouseEnter={() => setHoveredColumnName('name')}
+            onMouseLeave={() => setHoveredColumnName(null)}
+            onClick={() => handleSortOptionClick && handleSortOptionClick('Alphabetical')}
+          >
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, fontWeight: activeSort?.field === 'Alphabetical' ? '700' : '500' }}>
+              Name {activeSort?.field === 'Alphabetical' && (activeSort.direction === 'asc' ? '↑' : '↓')}
+            </span>
+            {(hoveredColumnName === 'name' || openColumnMenuName === 'name') && (
+              <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>▼</button>
+            )}
+            {openColumnMenuName === 'name' && renderColumnDropdownMenu('name')}
+            <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, 'name')} onClick={(e) => e.stopPropagation()} />
+          </div>
+          {columnOrder.map(colId => {
+            let title = '';
+            let menuName = colId;
 
-          if (colId === 'assignee') title = 'Assignee';
-          else if (colId === 'dueDate') title = 'Due date';
-          else {
-            const cf = customFields.find(f => f.id === colId);
-            if (cf) {
-              title = cf.title;
-              menuName = cf.title;
-            } else {
-              return null;
+            if (colId === 'assignee') title = 'Assignee';
+            else if (colId === 'dueDate') title = 'Due date';
+            else {
+              const cf = customFields.find(f => f.id === colId);
+              if (cf) {
+                title = cf.title;
+                menuName = cf.title;
+              } else {
+                return null;
+              }
             }
-          }
 
-          return (
-            <div
-              key={colId}
-              draggable
-              onDragStart={(e) => handleColDragStart(e, colId)}
-              onDragOver={(e) => handleColDragOver(e, colId)}
-              onDrop={(e) => handleColDrop(e, colId)}
-              onDragEnd={handleColDragEnd}
-              onClick={() => handleSortOptionClick && handleSortOptionClick(title)}
-              style={{ ...styles.gridHeaderCell, width: colWidths[colId] || 140, flexShrink: 0, position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: draggingColId === colId ? 0.5 : 1, cursor: draggingColId === colId ? 'grabbing' : 'pointer', boxShadow: dropTargetCol.id === colId ? (dropTargetCol.position === 'left' ? 'inset 3px 0 0 #4F46E5' : 'inset -3px 0 0 #4F46E5') : 'none' }}
-              onMouseEnter={() => setHoveredColumnName(menuName)}
-              onMouseLeave={() => setHoveredColumnName(null)}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, pointerEvents: 'none', fontWeight: activeSort?.field === title ? '700' : '500' }}>
-                {title} {activeSort?.field === title && (activeSort.direction === 'asc' ? '↑' : '↓')}
-              </span>
-              {(hoveredColumnName === menuName || openColumnMenuName === menuName) && (
-                <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === menuName; closeAllMenus(); if (!isOpen) setOpenColumnMenuName(menuName); }} style={styles.columnHeaderMenuBtn}>▼</button>
-              )}
-              {openColumnMenuName === menuName && renderColumnDropdownMenu(menuName)}
-              <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, colId)} onClick={(e) => e.stopPropagation()} />
-            </div>
-          );
-        })}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '200px', flexShrink: 0, position: 'relative', borderBottom: '1px solid var(--border-color)' }}>
-          <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = showAddFieldMenu; closeAllMenus(); setShowAddFieldMenu(!isOpen); }} style={{ ...styles.addFieldButton, width: '40px' }} title="Add column">
-            +
-          </button>
-          {showAddFieldMenu && (
-            <div style={styles.addFieldMenu} onClick={(e) => e.stopPropagation()}>
-              <div style={styles.addFieldMenuHeader}>Field types</div>
-              <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>▼</span> Single-select</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>▼</span> Multi-select</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>📅</span> Date</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>👤</span> People</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🔗</span> Reference</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>A</span> Text</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>#</span> Number</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>ƒ(x)</span> Formula</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⏱️</span> Timer</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⏱️</span> Time tracking</button>
-              <button style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🔍</span> Rollup</button>
-              <div style={styles.addFieldMenuShowMore}>Show more</div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Bölümler ve Görevler Gövdesi */}
-      <div style={styles.listSpreadsheetBody}>
-        {(groupedSections || selectedProject.sections)?.map((section, idx) => {
-          const filteredTasks = groupedSections ? section.tasks : (applyTaskSort ? applyTaskSort(applyTaskFilter(section.tasks)) : applyTaskFilter(section.tasks))
-          const isCollapsed = collapsedSections[section.id]
-          const isEditing = editingSectionId === section.id
-
-          return (
-            <div
-              key={section.id}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                opacity: draggingSectionId === section.id ? 0.4 : 1
-              }}
-              onClickCapture={() => setLastInteractedSectionId(section.id)}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (draggingSectionId && draggingSectionId !== section.id && !isVirtualGrouping) {
-                  const sortedSections = [...(selectedProject.sections || [])].sort((a, b) => a.order - b.order);
-                  handleLiveSectionSwap(draggingSectionId, section.id);
-                }
-              }}
-              onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
-            >
-              {/* BÖLÜM (SECTION) BAÅLIK SATIRI */}
-              <div style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
-                <div
-                  draggable={!isReadOnly && !isEditing && !isVirtualGrouping}
-                  onDragStart={(e) => {
-                    setDraggingSectionId(section.id);
-                    e.dataTransfer.setData('drag-type', 'section');
-                    e.dataTransfer.setData('section-id', section.id);
-
-                    const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
-                    if (ghostEl) {
-                      ghostEl.textContent = section.name;
-                      e.dataTransfer.setDragImage(ghostEl, 20, 15);
-                    }
-                  }}
-                  onDragEnd={() => {
-                    handleFinalSectionMove();
-                    setDraggingSectionId(null);
-                  }}
-                  style={styles.drag6DotHandleCell}
-                >
-                  ⋮⋮
-                </div>
-
-                <div
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: isEditing ? 'default' : 'pointer' }}
-                  onClick={() => !isEditing && setCollapsedSections({ ...collapsedSections, [section.id]: !isCollapsed })}
-                >
-                  <span style={styles.accordionArrowIcon}>{isCollapsed ? '▶' : '▼'}</span>
-
-                  {isEditing ? (
-                    <input
-                      autoFocus
-                      value={editSectionNameValue}
-                      onChange={(e) => setEditSectionNameValue(e.target.value)}
-                      onBlur={() => submitRename(section)}
-                      onKeyDown={(e) => e.key === 'Enter' && submitRename(section)}
-                      style={styles.sectionRenameInput}
-                    />
-                  ) : (
-                    <span style={styles.sectionTitleText}>{section.name}</span>
-                  )}
-
-                  {!isEditing && <span style={styles.sectionTaskCountBadge}>{filteredTasks.length}</span>}
-
-                  {/* THREE DOTS MENU */}
-                  {!isReadOnly && !isEditing && !isVirtualGrouping && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); const isOpen = openSectionMenuId === section.id; closeAllMenus(); if (!isOpen) setOpenSectionMenuId(section.id); }}
-                      style={styles.threeDotButton}
-                    >
-                      ⋮
-                    </button>
-                  )}
-                </div>
-
-                {openSectionMenuId === section.id && (
-                  <div style={{ ...styles.dropdownMenu, left: '250px', right: 'auto', top: '2rem' }} onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => { setEditingSectionId(section.id); setEditSectionNameValue(section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Yeniden Adlandır</button>
-                    <button onClick={() => { if (onDeleteSection) onDeleteSection(section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>Bölümü Sil</button>
-                  </div>
+            return (
+              <div
+                key={colId}
+                draggable
+                onDragStart={(e) => handleColDragStart(e, colId)}
+                onDragOver={(e) => handleColDragOver(e, colId)}
+                onDrop={(e) => handleColDrop(e, colId)}
+                onDragEnd={handleColDragEnd}
+                onClick={() => handleSortOptionClick && handleSortOptionClick(title)}
+                style={{ ...styles.gridHeaderCell, width: colWidths[colId] || 140, flexShrink: 0, position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: draggingColId === colId ? 0.5 : 1, cursor: draggingColId === colId ? 'grabbing' : 'pointer', boxShadow: dropTargetCol.id === colId ? (dropTargetCol.position === 'left' ? 'inset 3px 0 0 #4F46E5' : 'inset -3px 0 0 #4F46E5') : 'none' }}
+                onMouseEnter={() => setHoveredColumnName(menuName)}
+                onMouseLeave={() => setHoveredColumnName(null)}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, pointerEvents: 'none', fontWeight: activeSort?.field === title ? '700' : '500' }}>
+                  {title} {activeSort?.field === title && (activeSort.direction === 'asc' ? '↑' : '↓')}
+                </span>
+                {(hoveredColumnName === menuName || openColumnMenuName === menuName) && (
+                  <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === menuName; closeAllMenus(); if (!isOpen) setOpenColumnMenuName(menuName); }} style={styles.columnHeaderMenuBtn}>▼</button>
                 )}
+                {openColumnMenuName === menuName && renderColumnDropdownMenu(menuName)}
+                <div style={styles.resizeHandle} onMouseDown={(e) => handleResizeStart(e, colId)} onClick={(e) => e.stopPropagation()} />
               </div>
+            );
+          })}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', width: '200px', flexShrink: 0, position: 'relative', borderBottom: '1px solid var(--border-color)' }}>
+            <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = showAddFieldMenu; closeAllMenus(); setShowAddFieldMenu(!isOpen); }} style={{ ...styles.addFieldButton, width: '40px' }} title="Add column">
+              +
+            </button>
+            {showAddFieldMenu && (
+              <div style={styles.addFieldMenu} onClick={(e) => e.stopPropagation()}>
+                <div style={styles.addFieldMenuHeader}>Field types</div>
+                <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⊘</span> Single-select</button>
+                <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>☑</span> Multi-select</button>
+                <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>📅</span> Date</button>
+                <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>👤</span> People</button>
+                <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>A</span> Text</button>
+                <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>#</span> Number</button>
+                <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>fx</span> Formula</button>
+                <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>🆔</span> ID</button>
+                <button onClick={() => { setIsAddFieldModalOpen(true); setShowAddFieldMenu(false); }} style={styles.addFieldMenuItem}><span style={styles.fieldMenuIcon}>⏱</span> Timer</button>
+              </div>
+            )}
+          </div>
+        </div>
 
-              {/* Görev Satırları Gövdesi */}
-              {!isCollapsed && (
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {section.subgroups ? (
-                    section.subgroups.map(subgroup => (
-                      <div key={subgroup.id}>
-                        <div style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                          <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>↳</span>
-                          <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>{subgroup.name}</span>
-                          <span style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' }}>{subgroup.tasks.length}</span>
-                        </div>
-                        {subgroup.tasks.map(t => renderTaskRow(t, section.id))}
-                      </div>
-                    ))
-                  ) : (
-                    filteredTasks.map(t => renderTaskRow(t, section.id))
-                  )}
-                  {/* Satır İçi Hızlı Görev Ekleme */}
-                  {!isReadOnly && !isVirtualGrouping && (
-                    <div
-                      style={{ ...styles.quickAddTaskRowList, cursor: 'text' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLastInteractedSectionId(section.id);
-                        const inp = document.getElementById(`quick-add-${section.id}`);
-                        if (inp) inp.focus();
-                      }}
-                    >
-                      <span style={{ paddingLeft: '3.5rem', color: '#9CA3AF', fontSize: '0.85rem' }}>+</span>
+        {/* Bölümler ve Görevler Gövdesi */}
+        <div style={styles.listSpreadsheetBody}>
+          {(groupedSections || selectedProject.sections)?.map((section, idx) => {
+            const filteredTasks = groupedSections ? section.tasks : (applyTaskSort ? applyTaskSort(applyTaskFilter(section.tasks)) : applyTaskFilter(section.tasks))
+            const isCollapsed = collapsedSections[section.id]
+            const isEditing = editingSectionId === section.id
+
+            return (
+              <div
+                key={section.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  opacity: draggingSectionId === section.id ? 0.4 : 1
+                }}
+                onClickCapture={() => setLastInteractedSectionId(section.id)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggingSectionId && draggingSectionId !== section.id && !isVirtualGrouping) {
+                    const sortedSections = [...(selectedProject.sections || [])].sort((a, b) => a.order - b.order);
+                    handleLiveSectionSwap(draggingSectionId, section.id);
+                  }
+                }}
+                onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
+              >
+                {/* BÖLÜM (SECTION) BAÅLIK SATIRI */}
+                <div style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
+                  <div
+                    draggable={!isReadOnly && !isEditing && !isVirtualGrouping}
+                    onDragStart={(e) => {
+                      setDraggingSectionId(section.id);
+                      e.dataTransfer.setData('drag-type', 'section');
+                      e.dataTransfer.setData('section-id', section.id);
+
+                      const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
+                      if (ghostEl) {
+                        ghostEl.textContent = section.name;
+                        e.dataTransfer.setDragImage(ghostEl, 20, 15);
+                      }
+                    }}
+                    onDragEnd={() => {
+                      handleFinalSectionMove();
+                      setDraggingSectionId(null);
+                    }}
+                    style={styles.drag6DotHandleCell}
+                  >
+                    ⋮⋮
+                  </div>
+
+                  <div
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: isEditing ? 'default' : 'pointer' }}
+                    onClick={() => !isEditing && setCollapsedSections({ ...collapsedSections, [section.id]: !isCollapsed })}
+                  >
+                    <span style={styles.accordionArrowIcon}>{isCollapsed ? '▶' : '▼'}</span>
+
+                    {isEditing ? (
                       <input
-                        id={`quick-add-${section.id}`}
-                        type="text"
-                        placeholder="Add task..."
-                        value={quickTaskInputs[section.id] || ''}
-                        onChange={(e) => setQuickTaskInputs({ ...quickTaskInputs, [section.id]: e.target.value })}
-                        onKeyDown={(e) => e.key === 'Enter' && handleCreateQuickTask(section.id)}
-                        onFocus={() => setLastInteractedSectionId(section.id)}
-                        style={styles.quickAddTaskInpCell}
+                        autoFocus
+                        value={editSectionNameValue}
+                        onChange={(e) => setEditSectionNameValue(e.target.value)}
+                        onBlur={() => submitRename(section)}
+                        onKeyDown={(e) => e.key === 'Enter' && submitRename(section)}
+                        style={styles.sectionRenameInput}
                       />
+                    ) : (
+                      <span style={styles.sectionTitleText}>{section.name}</span>
+                    )}
+
+                    {!isEditing && <span style={styles.sectionTaskCountBadge}>{filteredTasks.length}</span>}
+
+                    {/* THREE DOTS MENU */}
+                    {!isReadOnly && !isEditing && !isVirtualGrouping && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); const isOpen = openSectionMenuId === section.id; closeAllMenus(); if (!isOpen) setOpenSectionMenuId(section.id); }}
+                        style={styles.threeDotButton}
+                      >
+                        ⋮
+                      </button>
+                    )}
+                  </div>
+
+                  {openSectionMenuId === section.id && (
+                    <div style={{ ...styles.dropdownMenu, left: '250px', right: 'auto', top: '2rem' }} onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => { setEditingSectionId(section.id); setEditSectionNameValue(section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Yeniden Adlandır</button>
+                      <button onClick={() => { if (onDeleteSection) onDeleteSection(section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>Bölümü Sil</button>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          )
-        })}
-        {isAddFieldModalOpen && (
-          <AddFieldModal
-            onClose={() => setIsAddFieldModalOpen(false)}
-            onCreateField={(title, defaultVal, options) => {
-              const newField = {
-                id: Date.now().toString(),
-                title: title || 'Unnamed Field',
-                type: 'single-select',
-                options: options && options.length > 0 ? options : [{ id: '1', label: defaultVal, color: '#E0E7FF' }]
-              };
-              const newCustomFields = [...customFields, newField];
-              setCustomFields(newCustomFields);
-              handleSaveProjectSettings({ customFieldSettings: newCustomFields });
-              setIsAddFieldModalOpen(false);
-            }}
-          />
-        )}
+
+                {/* Görev Satırları Gövdesi */}
+                {!isCollapsed && (
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {section.subgroups ? (
+                      section.subgroups.map(subgroup => (
+                        <div key={subgroup.id}>
+                          <div style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>↳</span>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>{subgroup.name}</span>
+                            <span style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' }}>{subgroup.tasks.length}</span>
+                          </div>
+                          {subgroup.tasks.map(t => renderTaskRow(t, section.id))}
+                        </div>
+                      ))
+                    ) : (
+                      filteredTasks.map(t => renderTaskRow(t, section.id))
+                    )}
+                    {/* Satır İçi Hızlı Görev Ekleme */}
+                    {!isReadOnly && !isVirtualGrouping && (
+                      <div
+                        style={{ ...styles.quickAddTaskRowList, cursor: 'text' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLastInteractedSectionId(section.id);
+                          const inp = document.getElementById(`quick-add-${section.id}`);
+                          if (inp) inp.focus();
+                        }}
+                      >
+                        <span style={{ paddingLeft: '3.5rem', color: '#9CA3AF', fontSize: '0.85rem' }}>+</span>
+                        <input
+                          id={`quick-add-${section.id}`}
+                          type="text"
+                          placeholder="Add task..."
+                          value={quickTaskInputs[section.id] || ''}
+                          onChange={(e) => setQuickTaskInputs({ ...quickTaskInputs, [section.id]: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Enter' && handleCreateQuickTask(section.id)}
+                          onFocus={() => setLastInteractedSectionId(section.id)}
+                          style={styles.quickAddTaskInpCell}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {isAddFieldModalOpen && (
+            <AddFieldModal
+              onClose={() => setIsAddFieldModalOpen(false)}
+              onCreateField={(fieldData) => {
+                const newField = {
+                  id: Date.now().toString(),
+                  ...fieldData,
+                  title: fieldData.title || 'Unnamed Field',
+                };
+                const newCustomFields = [...customFields, newField];
+                setCustomFields(newCustomFields);
+                handleSaveProjectSettings({ customFieldSettings: newCustomFields });
+                setIsAddFieldModalOpen(false);
+              }}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -610,7 +610,83 @@ router.patch('/:id', authenticateToken, async (req, res) => {
         if (isArchived !== undefined) updateData.isArchived = isArchived;
         if (defaultView !== undefined) updateData.defaultView = defaultView;
         if (activeViews !== undefined) updateData.activeViews = activeViews;
-        if (customFieldSettings !== undefined) updateData.customFieldSettings = customFieldSettings;
+        if (customFieldSettings !== undefined) {
+            updateData.customFieldSettings = customFieldSettings;
+
+            // Cascade option renames/deletes to all tasks in the project
+            const currentProject = await prisma.project.findUnique({
+                where: { id: req.params.id },
+                select: { customFieldSettings: true }
+            });
+
+            if (currentProject && currentProject.customFieldSettings) {
+                const oldSettings = typeof currentProject.customFieldSettings === 'string' ? JSON.parse(currentProject.customFieldSettings) : currentProject.customFieldSettings;
+                const newSettings = typeof customFieldSettings === 'string' ? JSON.parse(customFieldSettings) : customFieldSettings;
+
+                const renames = {};
+
+                (Array.isArray(oldSettings) ? oldSettings : []).forEach(oldCf => {
+                    const newCf = (Array.isArray(newSettings) ? newSettings : []).find(f => f.id === oldCf.id);
+                    if (newCf && ['SELECT', 'single-select', 'MULTI_SELECT', 'multi-select'].includes(oldCf.type)) {
+                        const oldOpts = oldCf.options || [];
+                        const newOpts = newCf.options || [];
+                        oldOpts.forEach(oldOpt => {
+                            const newOpt = newOpts.find(o => o.id === oldOpt.id);
+                            if (newOpt && newOpt.label !== oldOpt.label) {
+                                if (!renames[oldCf.id]) renames[oldCf.id] = {};
+                                renames[oldCf.id][oldOpt.label] = newOpt.label;
+                            } else if (!newOpt) {
+                                if (!renames[oldCf.id]) renames[oldCf.id] = {};
+                                renames[oldCf.id][oldOpt.label] = null;
+                            }
+                        });
+                    }
+                });
+
+                if (Object.keys(renames).length > 0) {
+                    const tasksToUpdate = await prisma.task.findMany({
+                        where: { section: { projectId: req.params.id } },
+                        select: { id: true, customFields: true }
+                    });
+
+                    for (const task of tasksToUpdate) {
+                        if (task.customFields) {
+                            let changed = false;
+                            const fields = typeof task.customFields === 'string' ? JSON.parse(task.customFields) : task.customFields;
+                            
+                            for (const cfId of Object.keys(renames)) {
+                                if (fields[cfId] !== undefined) {
+                                    const val = fields[cfId];
+                                    if (Array.isArray(val)) {
+                                        const newVal = val.map(v => renames[cfId][v] !== undefined ? renames[cfId][v] : v).filter(v => v !== null);
+                                        if (JSON.stringify(val) !== JSON.stringify(newVal)) {
+                                            fields[cfId] = newVal;
+                                            changed = true;
+                                        }
+                                    } else {
+                                        if (renames[cfId][val] !== undefined) {
+                                            if (renames[cfId][val] === null) {
+                                                delete fields[cfId];
+                                            } else {
+                                                fields[cfId] = renames[cfId][val];
+                                            }
+                                            changed = true;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (changed) {
+                                await prisma.task.update({
+                                    where: { id: task.id },
+                                    data: { customFields: JSON.stringify(fields) }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (priorityFieldSettings !== undefined) updateData.priorityFieldSettings = priorityFieldSettings;
         if (formSettings !== undefined) updateData.formSettings = formSettings;
         if (workspaceId !== undefined) updateData.workspaceId = workspaceId;
@@ -1507,9 +1583,81 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Görev güncellenirken hata oluştu.', details: error.message });
     }
 });
+// POST /api/projects/tasks/:taskId/convert-to-project - Convert task to project
+router.post('/tasks/:taskId/convert-to-project', authenticateToken, async (req, res) => {
+    try {
+        const { taskId } = req.params;
+        const task = await prisma.task.findUnique({
+            where: { id: taskId },
+            include: { section: { include: { project: true } } }
+        });
+        
+        if (!task) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
 
+        const role = await getProjectRoleFromTask(req.user.userId, taskId);
+        if (!hasRole(role, 'EDITOR')) {
+            return res.status(403).json({ error: 'Bu işlemi yapmak için yetkiniz yok.' });
+        }
 
+        const newProject = await prisma.project.create({
+            data: {
+                name: task.title,
+                ownerId: req.user.userId,
+                workspaceId: task.section?.project?.workspaceId || null,
+                sections: {
+                    create: [{ name: 'To Do', order: 0 }, { name: 'In Progress', order: 1 }, { name: 'Done', order: 2 }]
+                }
+            }
+        });
 
+        const updatedTask = await prisma.task.update({
+            where: { id: taskId },
+            data: { isCompleted: true },
+            include: {
+                assignee: { select: { id: true, name: true, email: true } },
+                creator: { select: { id: true, name: true, email: true } },
+                subtasks: { orderBy: { order: 'asc' }, include: { assignee: { select: { id: true, name: true, email: true } } } },
+                comments: {
+                    orderBy: { createdAt: 'asc' },
+                    include: {
+                        user: { select: { id: true, name: true, email: true } },
+                        reactions: { include: { user: { select: { id: true, name: true, email: true } } } }
+                    }
+                },
+                collaborators: { include: { user: { select: { id: true, name: true, email: true } } } },
+                blockedBy: { include: { blockingTask: { select: { id: true, title: true, isCompleted: true } } } },
+                blocking: { include: { blockedByTask: { select: { id: true, title: true, isCompleted: true } } } },
+                tags: true,
+                attachments: { orderBy: { createdAt: 'desc' }, include: { uploader: { select: { id: true, name: true, email: true } } } },
+                activities: { orderBy: { createdAt: 'desc' }, include: { user: { select: { id: true, name: true, email: true } } } },
+                secondaryProjects: {
+                    include: {
+                        project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } },
+                        section: { select: { id: true, name: true } }
+                    }
+                }
+            }
+        });
+
+        await prisma.taskActivity.create({
+            data: { action: `converted this task to a project: ${newProject.name}`, taskId: taskId, userId: req.user.userId }
+        });
+
+        if (req.app.get('io')) {
+            req.app.get('io').to(req.user.userId).emit('project_created', newProject);
+            if (task.section?.projectId) {
+                req.app.get('io').to(task.section.projectId).emit('task_updated', updatedTask);
+            }
+        }
+
+        res.json(updatedTask);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error during conversion' });
+    }
+});
 // DELETE /api/projects/tasks/:taskId — Delete a task
 router.delete('/tasks/:taskId', authenticateToken, async (req, res) => {
     try {
@@ -1744,7 +1892,10 @@ router.delete('/tasks/:taskId/dependencies/:dependencyId', authenticateToken, as
         // Return updated task
         const updatedTask = await prisma.task.findUnique({
             where: { id: req.params.taskId },
-            include: fullTaskInclude
+            include: {
+                ...fullTaskInclude,
+                blockedBy: true
+            }
         });
 
         if (updatedTask && updatedTask.blockedBy.length === 0 && updatedTask.section?.projectId) {

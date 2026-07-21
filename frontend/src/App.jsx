@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { io } from 'socket.io-client'
 import Auth from './components/Auth'
 import Dashboard from './components/Dashboard'
 import KanbanBoard from './components/KanbanBoard'
@@ -111,6 +112,24 @@ export default function App() {
         .catch(err => console.error("Workspaces yüklenemedi", err))
     }
   }, [token])
+
+  useEffect(() => {
+    if (user && user.id) {
+      const socket = io('http://localhost:5001');
+      socket.emit('join_user', user.id);
+      
+      socket.on('project_created', (newProj) => {
+        setProjects(prev => {
+          if (prev.find(p => p.id === newProj.id)) return prev;
+          return [...prev, newProj];
+        });
+      });
+      
+      return () => {
+        socket.disconnect();
+      }
+    }
+  }, [user]);
 
   const handleSelectProject = (project) => {
     if (project) {

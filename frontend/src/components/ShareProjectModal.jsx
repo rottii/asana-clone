@@ -65,10 +65,8 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
   }
 
   const formatRoleText = (role) => {
-    if (role === 'EDITOR') return 'Editor'
-    if (role === 'COMMENTER') return 'Commenter'
-    if (role === 'VIEWER') return 'Viewer'
-    return role
+    if (!role) return ''
+    return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()
   }
 
   const isProjectAdmin = project?.ownerId === currentUser?.id || 
@@ -116,7 +114,7 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
             </div>
 
             {/* Dinamik Eklenen Üyeler (Defansif Koruma Eklendi) */}
-            {project.members?.map(membership => {
+            {project.members?.filter(m => m?.user?.id !== project.owner?.id).map(membership => {
               if (!membership || !membership.user) return null; // Veri bozuksa render etme, çökme önle!
               return (
                 <div key={membership.user.id} style={styles.accessItemRow}>

@@ -42,6 +42,7 @@ export default function AssigneePopover({ task, token, coords, project, onAssign
 
   return (
     <div 
+      className="popover"
       style={{ 
         ...styles.popover, 
         top: coords.top !== undefined ? `${coords.top}px` : 'auto', 

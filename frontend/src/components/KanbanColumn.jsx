@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import TaskCard from './TaskCard'
 
-export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, priorityFieldSettings, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId }) {
+export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, priorityFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [isEditingName, setIsEditingName] = useState(false)
@@ -98,18 +98,19 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
               task={task} 
               token={token} 
               onTaskUpdate={onTaskUpdate} 
-            onTaskContextMenu={onTaskContextMenu} 
-            onOpenApprovalMenu={onOpenApprovalMenu}
-            onOpenPopover={onOpenPopover}
-            onOpenTaskPane={onOpenTaskPane}
-            isVirtualGrouping={isVirtualGrouping}
-            customFieldSettings={customFieldSettings}
-            priorityFieldSettings={priorityFieldSettings}
-            projectRole={projectRole} // Karta kadar yetki delegasyonu
-            handleLiveTaskSwap={handleLiveTaskSwap}
-            draggingTaskId={draggingTaskId}
-            setDraggingTaskId={setDraggingTaskId}
-          />
+              onTaskContextMenu={onTaskContextMenu} 
+              onOpenApprovalMenu={onOpenApprovalMenu}
+              onOpenPopover={onOpenPopover}
+              onOpenTaskPane={onOpenTaskPane}
+              isVirtualGrouping={isVirtualGrouping}
+              customFieldSettings={customFieldSettings}
+              priorityFieldSettings={priorityFieldSettings}
+              projectMembers={projectMembers}
+              projectRole={projectRole} // Karta kadar yetki delegasyonu
+              handleLiveTaskSwap={handleLiveTaskSwap}
+              draggingTaskId={draggingTaskId}
+              setDraggingTaskId={setDraggingTaskId}
+            />
           </div>
         ))}
       </div>

@@ -28,6 +28,7 @@ const io = new Server(httpServer, {
 
 // Attach io to the app so routes can access it
 app.set('io', io);
+global.io = io;
 
 io.on('connection', (socket) => {
   console.log(`User connected to socket: ${socket.id}`);

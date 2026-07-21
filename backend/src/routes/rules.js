@@ -22,20 +22,18 @@ router.get('/', async (req, res) => {
 // 2. Projeye yeni kural ekle
 router.post('/', async (req, res) => {
   const { projectId } = req.params;
-  const { triggerType, triggerValue, actionType, actionValue } = req.body;
+  const { ruleData } = req.body;
 
-  if (!triggerType || !actionType) {
-    return res.status(400).json({ error: 'Tetikleyici ve Aksiyon gereklidir.' });
+  if (!ruleData || !ruleData.trigger) {
+    return res.status(400).json({ error: 'Geçersiz kural yapısı. (ruleData.trigger eksik)' });
   }
 
   try {
     const newRule = await prisma.rule.create({
       data: {
         projectId,
-        triggerType,
-        triggerValue,
-        actionType,
-        actionValue
+        ruleData,
+        isActive: true
       }
     });
     res.status(201).json(newRule);
@@ -62,20 +60,18 @@ router.delete('/:ruleId', async (req, res) => {
 // 4. Projedeki kuralı güncelle
 router.put('/:ruleId', async (req, res) => {
   const { ruleId } = req.params;
-  const { triggerType, triggerValue, actionType, actionValue } = req.body;
+  const { ruleData, isActive } = req.body;
 
-  if (!triggerType || !actionType) {
-    return res.status(400).json({ error: 'Tetikleyici ve Aksiyon gereklidir.' });
+  if (!ruleData || !ruleData.trigger) {
+    return res.status(400).json({ error: 'Geçersiz kural yapısı. (ruleData.trigger eksik)' });
   }
 
   try {
     const updatedRule = await prisma.rule.update({
       where: { id: ruleId },
       data: {
-        triggerType,
-        triggerValue,
-        actionType,
-        actionValue
+        ruleData,
+        isActive: isActive !== undefined ? isActive : true
       }
     });
     res.json(updatedRule);

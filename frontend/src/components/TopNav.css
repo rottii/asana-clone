@@ -82,6 +82,7 @@
   width: 100%;
   max-width: 600px;
   transition: background-color 0.2s;
+  gap: 8px;
 }
 
 .topnav-search-bar:hover, .topnav-search-bar:focus-within {
@@ -91,7 +92,12 @@
 .search-icon {
   color: var(--nav-text-secondary);
   font-size: 0.9rem;
-  margin-right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  left: 16px;
+  pointer-events: none;
 }
 
 .topnav-search-input {
@@ -101,6 +107,7 @@
   font-size: 0.9rem;
   width: 100%;
   outline: none;
+  padding-left: 24px;
 }
 
 .topnav-search-input::placeholder {

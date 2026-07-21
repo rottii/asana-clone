@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import RichTextEditor from './RichTextEditor';
 
 export default function TaskDetailPane({ task, selectedProject, onClose, onTaskUpdate, onDeleteTask, onConvertTask, token, projectRole, customFieldSettings, onOpenPopover, currentUser }) {
+  const paneRef = useRef(null);
   const [editForm, setEditForm] = useState({
     title: '',
     description: '',
@@ -13,18 +14,18 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   const [tagInputValue, setTagInputValue] = useState('');
   const [tagColorValue, setTagColorValue] = useState('#3B82F6');
   const [availableTags, setAvailableTags] = useState([]);
-  
+
   const [showProjectInput, setShowProjectInput] = useState(false);
   const [availableProjects, setAvailableProjects] = useState([]);
   const [expandedProjects, setExpandedProjects] = useState({});
-  
+
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [activeTab, setActiveTab] = useState('comments');
   const [openSectionMenuId, setOpenSectionMenuId] = useState(null);
   const [hoveredCommentId, setHoveredCommentId] = useState(null);
   const [reactionPickerId, setReactionPickerId] = useState(null);
-  
+
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isConvertMenuOpen, setIsConvertMenuOpen] = useState(false);
 
@@ -32,14 +33,14 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   const [githubPrUrlValue, setGithubPrUrlValue] = useState('');
   const [isFetchingPr, setIsFetchingPr] = useState(false);
   const [openPrMenuIdx, setOpenPrMenuIdx] = useState(null);
-  
+
   const githubPRs = typeof task?.githubPRs === 'string' ? JSON.parse(task.githubPRs || '[]') : (task?.githubPRs || []);
 
   const getCustomFieldSettingsForProject = (proj) => {
     if (!proj || !proj.customFieldSettings) return [];
     try {
-      return typeof proj.customFieldSettings === 'string' 
-        ? JSON.parse(proj.customFieldSettings) 
+      return typeof proj.customFieldSettings === 'string'
+        ? JSON.parse(proj.customFieldSettings)
         : proj.customFieldSettings;
     } catch {
       return [];
@@ -112,6 +113,22 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [openFieldMenuId, openSectionMenuId, isMoreMenuOpen]);
 
+  // Click outside to close the entire pane
+  useEffect(() => {
+    const handlePaneClickOutside = (e) => {
+      // Ignore clicks inside the pane itself
+      if (paneRef.current && paneRef.current.contains(e.target)) return;
+      
+      // Ignore clicks on popovers, dropdowns, or other floating menus that belong to the pane
+      // Also ignore clicks on the sidebar hamburger toggle
+      if (e.target.closest('.dropdownMenu') || e.target.closest('.popover') || e.target.closest('.more-menu-container') || e.target.closest('.flatpickr-calendar') || e.target.closest('.topnav-hamburger')) return;
+
+      onClose();
+    };
+    document.addEventListener('mousedown', handlePaneClickOutside);
+    return () => document.removeEventListener('mousedown', handlePaneClickOutside);
+  }, [onClose]);
+
   if (!task) return null;
 
   const handleAddGithubPr = async () => {
@@ -129,7 +146,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
         setIsFetchingPr(false);
         return;
       }
-      
+
       const newPRs = [...githubPRs, data];
       const patchResponse = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
@@ -167,7 +184,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
           refreshedPRs.push(pr); // keep old if fetch fails
         }
       }
-      
+
       const patchResponse = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -281,7 +298,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     return fields;
   };
 
-  const handleDirectFieldUpdate = async (fieldId, value) => {
+  const handleDirectFieldUpdate = async (fieldId, value, shouldCloseMenu = true) => {
     if (isReadOnly) return;
     const bodyData = {};
     const parsedFields = getParsedCustomFields(task.customFields);
@@ -297,7 +314,9 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
       const data = await response.json();
       if (response.ok) {
         onTaskUpdate(task.id, data);
-        setOpenFieldMenuId(null);
+        if (shouldCloseMenu) {
+          setOpenFieldMenuId(null);
+        }
       } else {
         alert(data.error || "Update failed.");
       }
@@ -575,8 +594,8 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
           createdAt: new Date().toISOString(),
           user: currentUser
         }));
-        const updatedTask = { 
-          ...task, 
+        const updatedTask = {
+          ...task,
           attachments: [...newAttachments, ...(task.attachments || [])],
           activities: [...(task.activities || []), ...simulatedActivities]
         };
@@ -601,9 +620,9 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
           createdAt: new Date().toISOString(),
           user: currentUser
         } : null;
-        
-        const updatedTask = { 
-          ...task, 
+
+        const updatedTask = {
+          ...task,
           attachments: updatedAttachments,
           activities: simulatedActivity ? [...(task.activities || []), simulatedActivity] : task.activities
         };
@@ -619,16 +638,16 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
   return (
     <>
-      <div style={styles.pane}>
+      <div style={styles.pane} ref={paneRef}>
         <div style={styles.header}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {task.type === 'APPROVAL' ? (
-              <div 
+              <div
                 style={{
-                  ...styles.completeBtn, 
-                  backgroundColor: task.approvalStatus === 'APPROVED' ? 'var(--accent-success)' : task.approvalStatus === 'REJECTED' ? 'var(--accent-danger)' : task.approvalStatus === 'CHANGES_REQUESTED' ? '#F59E0B' : 'transparent', 
+                  ...styles.completeBtn,
+                  backgroundColor: task.approvalStatus === 'APPROVED' ? 'var(--accent-success)' : task.approvalStatus === 'REJECTED' ? 'var(--accent-danger)' : task.approvalStatus === 'CHANGES_REQUESTED' ? '#F59E0B' : 'transparent',
                   color: task.approvalStatus === 'PENDING' || !task.approvalStatus ? 'var(--text-primary)' : '#FFF',
-                  border: task.approvalStatus === 'PENDING' || !task.approvalStatus ? '1px dashed var(--border-color)' : '1px solid transparent',
+                  border: task.approvalStatus === 'PENDING' || !task.approvalStatus ? '1px solid var(--border-color)' : '1px solid transparent',
                   cursor: 'default'
                 }}
               >
@@ -636,9 +655,9 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
               </div>
             ) : task.type === 'MILESTONE' ? (
               <button
-                style={{ 
-                  ...styles.completeBtn, 
-                  backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent', 
+                style={{
+                  ...styles.completeBtn,
+                  backgroundColor: task.isCompleted ? 'var(--accent-success)' : 'transparent',
                   color: task.isCompleted ? '#FFF' : '#6366F1',
                   border: task.isCompleted ? '1px solid var(--accent-success)' : '1px solid #6366F1',
                   display: 'flex', alignItems: 'center', gap: '6px'
@@ -661,34 +680,38 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
           </div>
           <div style={styles.headerActions}>
             <div className="more-menu-container" style={{ position: 'relative' }}>
-              <button 
-                style={{ ...styles.iconBtn, fontSize: '1.2rem', paddingBottom: '0.2rem' }} 
+              <button
+                style={{ ...styles.iconBtn, fontSize: '1.2rem', paddingBottom: '0.2rem' }}
                 onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
                 title="More actions"
               >
                 ⋯
               </button>
-              
+
               {isMoreMenuOpen && (
                 <div style={{ position: 'absolute', top: '100%', right: '0', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 100, padding: '0.4rem', minWidth: '150px', marginTop: '4px' }}>
-                  <div 
-                    style={{ position: 'relative' }} 
+                  <div
+                    style={{ position: 'relative' }}
                     onMouseEnter={() => setIsConvertMenuOpen(true)}
                     onMouseLeave={() => setIsConvertMenuOpen(false)}
                   >
                     <button style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: isConvertMenuOpen ? 'var(--bg-secondary)' : 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 8h16M4 16h16"></path><circle cx="6" cy="8" r="2"></circle><circle cx="18" cy="16" r="2"></circle></svg> 
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 8h16M4 16h16"></path><circle cx="6" cy="8" r="2"></circle><circle cx="18" cy="16" r="2"></circle></svg>
                         Convert to
                       </span>
                       <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', transform: 'rotate(180deg)' }}>›</span>
                     </button>
-                    
+
                     {isConvertMenuOpen && (
                       <div style={{ position: 'absolute', top: '-5px', right: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 101, padding: '0.4rem', minWidth: '150px' }}>
                         <button onClick={() => { onConvertTask('TASK', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>✓</span> Task</button>
                         <button onClick={() => { onConvertTask('MILESTONE', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>◇</span> Milestone</button>
                         <button onClick={() => { onConvertTask('APPROVAL', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>⚖️</span> Approval</button>
+                        <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }}></div>
+                        <button onClick={() => { alert('Coming soon'); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>⑂</span> Subtask</button>
+                        <button onClick={() => { onConvertTask('PROJECT', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>📋</span> Project</button>
+                        <button onClick={() => { alert('Coming soon'); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>◯</span> Task template</button>
                       </div>
                     )}
                   </div>
@@ -718,7 +741,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                 </span>
               </div>
             </div>
-            
+
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               {(!task.assigneeId || (currentUser && task.assigneeId === currentUser.id)) ? (
                 <>
@@ -840,7 +863,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
             <div style={{ padding: '1rem 0', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', marginTop: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '500', color: 'var(--text-primary)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                Projects <span style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '0 0.4rem', borderRadius: '4px', fontSize: '0.75rem' }}>{(task.secondaryProjects?.length || 0) + 1}</span> 
+                Projects <span style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '0 0.4rem', borderRadius: '4px', fontSize: '0.75rem' }}>{(task.secondaryProjects?.length || 0) + 1}</span>
                 {!isReadOnly && (
                   <div style={{ position: 'relative' }}>
                     <span style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', lineHeight: '1', marginLeft: '0.5rem' }} onClick={() => setShowProjectInput(true)}>+</span>
@@ -889,19 +912,19 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                 return (
                   <div key={`${project.id}-${index}`} style={{ width: '100%', marginBottom: '0.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0' }}>
-                      <span 
+                      <span
                         onClick={() => {
                           setExpandedProjects(prev => ({ ...prev, [project.id]: !expanded }));
-                        }} 
+                        }}
                         style={{ color: 'var(--text-secondary)', fontSize: '0.6rem', cursor: 'pointer', display: 'inline-block', transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', padding: '0.2rem' }}
                       >
                         ▼
                       </span>
                       <div style={{ width: '14px', height: '14px', borderRadius: '4px', backgroundColor: project.color || 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}></div>
                       <span style={{ color: 'var(--text-primary)' }}>{project.name}</span>
-                      
+
                       <div style={{ position: 'relative', marginLeft: '0.5rem' }}>
-                        <span 
+                        <span
                           onClick={(e) => { e.stopPropagation(); if (!isReadOnly) setOpenSectionMenuId(openSectionMenuId === project.id ? null : project.id); }}
                           style={{ color: 'var(--text-secondary)', cursor: isReadOnly ? 'default' : 'pointer' }}
                         >
@@ -924,66 +947,303 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                       </div>
 
                       {!isReadOnly && !isPrimary && (
-                          <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 'auto', paddingLeft: '8px', color: 'var(--text-secondary)' }} onClick={() => handleRemoveFromProject(project.id)}>×</span>
+                        <span style={{ cursor: 'pointer', opacity: 0.7, marginLeft: 'auto', paddingLeft: '8px', color: 'var(--text-secondary)' }} onClick={() => handleRemoveFromProject(project.id)}>×</span>
                       )}
                     </div>
-                    
+
                     {/* Custom Fields */}
                     {expanded && cfs?.length > 0 && (
                       <div style={{ width: '100%' }}>
                         {cfs.map((cf) => {
                           const value = parsedFields[cf.id] || '';
-                          const opt = cf.options?.find(o => (o.value || o.label) === value);
-                          const displayValue = opt ? (opt.label || opt.value) : (value || '—');
+                          const cfType = cf.type || 'single-select';
+
+                          // Icon based on field type
+                          const fieldIcon = {
+                            'single-select': <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="8 10 12 14 16 10"></polyline></svg>,
+                            'multi-select': <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>,
+                            'date': <span style={{ fontSize: '14px' }}>📅</span>,
+                            'people': <span style={{ fontSize: '14px' }}>👤</span>,
+                            'text': <span style={{ fontSize: '12px', fontWeight: 'bold', fontFamily: 'serif' }}>A</span>,
+                            'number': <span style={{ fontSize: '12px', fontWeight: 'bold' }}>#</span>,
+                            'formula': <span style={{ fontSize: '11px', fontWeight: 'bold', fontStyle: 'italic' }}>fx</span>,
+                            'id': <span style={{ fontSize: '14px' }}>🆔</span>,
+                            'timer': <span style={{ fontSize: '14px' }}>⏱</span>,
+                          }[cfType] || <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="8 10 12 14 16 10"></polyline></svg>;
+
+                          // Render value cell based on type
+                          const renderFieldValue = () => {
+                            // SINGLE-SELECT
+                            if (cfType === 'SELECT' || cfType === 'single-select') {
+                              const opt = cf.options?.find(o => (o.value || o.label) === value);
+                              const displayValue = opt ? (opt.label || opt.value) : (value || '—');
+                              return (
+                                <>
+                                  <span
+                                    onClick={(e) => { e.stopPropagation(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }}
+                                    style={{ cursor: isReadOnly ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', backgroundColor: (value && opt?.color) ? opt.color : 'transparent', color: value ? 'var(--text-primary)' : 'var(--text-secondary)', padding: value ? '0.2rem 0.5rem' : '0', borderRadius: '4px', fontSize: '0.85rem' }}
+                                  >
+                                    {displayValue}
+                                  </span>
+                                  {openFieldMenuId === cf.id && (
+                                    <div style={styles.dropdownMenu} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
+                                      <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>{cf.title}</div>
+                                      {cf.options?.map(o => (
+                                        <button
+                                          key={o.id}
+                                          onClick={() => handleDirectFieldUpdate(cf.id, o.label || o.value)}
+                                          style={{ ...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px' }}
+                                        >
+                                          <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', display: 'inline-block', flexShrink: 0 }}></div>
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
+                                        </button>
+                                      ))}
+                                      <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+                                      <button onClick={() => handleDirectFieldUpdate(cf.id, '')} style={{ ...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)' }}>Clear value</button>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            }
+
+                            // MULTI-SELECT
+                            if (cfType === 'multi-select') {
+                              const selectedValues = Array.isArray(value) ? value : (value ? [value] : []);
+                              return (
+                                <>
+                                  <div
+                                    onClick={(e) => { e.stopPropagation(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }}
+                                    style={{ cursor: isReadOnly ? 'default' : 'pointer', display: 'flex', flexWrap: 'wrap', gap: '4px', minHeight: '24px', alignItems: 'center' }}
+                                  >
+                                    {selectedValues.length > 0 ? selectedValues.map(sv => {
+                                      const opt = cf.options?.find(o => (o.label || o.value) === sv);
+                                      return (
+                                        <span key={sv} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: opt?.color || '#E0E7FF', color: 'var(--text-primary)', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>
+                                          {sv}
+                                        </span>
+                                      );
+                                    }) : <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>—</span>}
+                                  </div>
+                                  {openFieldMenuId === cf.id && (
+                                    <div style={styles.dropdownMenu} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
+                                      <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>{cf.title}</div>
+                                      {cf.options?.map(o => {
+                                        const label = o.label || o.value;
+                                        const isSelected = selectedValues.includes(label);
+                                        return (
+                                          <button
+                                            key={o.id}
+                                            onClick={() => {
+                                              const newVals = isSelected ? selectedValues.filter(v => v !== label) : [...selectedValues, label];
+                                              handleDirectFieldUpdate(cf.id, newVals, false);
+                                            }}
+                                            style={{ ...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px', backgroundColor: isSelected ? 'var(--bg-secondary)' : 'transparent' }}
+                                          >
+                                            <div style={{ width: 14, height: 14, borderRadius: '3px', border: isSelected ? 'none' : '1px solid #D1D5DB', backgroundColor: isSelected ? '#4F46E5' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '10px', color: '#fff' }}>
+                                              {isSelected && '✓'}
+                                            </div>
+                                            <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', display: 'inline-block', flexShrink: 0 }}></div>
+                                            <span>{label}</span>
+                                          </button>
+                                        );
+                                      })}
+                                      <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+                                      <button onClick={() => handleDirectFieldUpdate(cf.id, [])} style={{ ...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)' }}>Clear all</button>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            }
+
+                            // DATE
+                            if (cfType === 'date') {
+                              const formatted = value ? new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Set Date';
+                              return (
+                                <div 
+                                  onClick={(e) => { 
+                                    if (!isReadOnly) {
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const coords = { left: rect.left };
+                                      if (rect.bottom > window.innerHeight - 300) {
+                                        coords.bottom = window.innerHeight - rect.top;
+                                      } else {
+                                        coords.top = rect.bottom + 5;
+                                      }
+                                      onOpenPopover('custom-date', task, coords, { customFieldId: cf.id }); 
+                                    }
+                                  }}
+                                  style={{ ...styles.inlineInput, color: value ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: !isReadOnly ? 'pointer' : 'default', display: 'flex', alignItems: 'center', height: '32px' }}
+                                >
+                                  📅 {formatted}
+                                </div>
+                              );
+                            }
+
+                            // PEOPLE (multi-select from project members)
+                            if (cfType === 'people') {
+                              const selectedPeople = Array.isArray(value) ? value : (value ? [value] : []);
+                              const members = selectedProject?.members?.map(m => m.user) || [];
+                              return (
+                                <>
+                                  <div
+                                    onClick={(e) => { e.stopPropagation(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }}
+                                    style={{ cursor: isReadOnly ? 'default' : 'pointer', display: 'flex', flexWrap: 'wrap', gap: '4px', minHeight: '24px', alignItems: 'center' }}
+                                  >
+                                    {selectedPeople.length > 0 ? selectedPeople.map(uid => {
+                                      const member = members.find(m => m.id === uid);
+                                      return (
+                                        <span key={uid} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#EDE9FE', color: '#4F46E5', padding: '0.15rem 0.5rem', borderRadius: '12px', fontSize: '0.8rem' }}>
+                                          <span style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold' }}>
+                                            {member?.name?.charAt(0).toUpperCase() || '?'}
+                                          </span>
+                                          {member?.name || 'Unknown'}
+                                        </span>
+                                      );
+                                    }) : <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>—</span>}
+                                  </div>
+                                  {openFieldMenuId === cf.id && (
+                                    <div style={styles.dropdownMenu} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
+                                      <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>People</div>
+                                      {members.map(m => {
+                                        const isSelected = selectedPeople.includes(m.id);
+                                        return (
+                                          <button
+                                            key={m.id}
+                                            onClick={() => {
+                                              const newVals = isSelected ? selectedPeople.filter(v => v !== m.id) : [...selectedPeople, m.id];
+                                              handleDirectFieldUpdate(cf.id, newVals, false);
+                                            }}
+                                            style={{ ...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px', backgroundColor: isSelected ? 'var(--bg-secondary)' : 'transparent' }}
+                                          >
+                                            <div style={{ width: 14, height: 14, borderRadius: '3px', border: isSelected ? 'none' : '1px solid #D1D5DB', backgroundColor: isSelected ? '#4F46E5' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '10px', color: '#fff' }}>
+                                              {isSelected && '✓'}
+                                            </div>
+                                            <span style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold', flexShrink: 0 }}>
+                                              {m.name?.charAt(0).toUpperCase() || '?'}
+                                            </span>
+                                            <span>{m.name || m.email}</span>
+                                          </button>
+                                        );
+                                      })}
+                                      <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+                                      <button onClick={() => handleDirectFieldUpdate(cf.id, [])} style={{ ...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)' }}>Clear all</button>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            }
+
+                            // NUMBER
+                            if (cfType === 'number') {
+                              const formatNumber = (v) => {
+                                if (!v && v !== 0) return '';
+                                const fmt = cf.numberFormat || 'plain';
+                                const num = Number(v);
+                                if (isNaN(num)) return v;
+                                if (fmt === 'currency') return `$${num.toLocaleString()}`;
+                                if (fmt === 'percent') return `${num}%`;
+                                return num.toLocaleString();
+                              };
+                              return (
+                                <input
+                                  type="number"
+                                  value={value}
+                                  readOnly={isReadOnly}
+                                  placeholder="—"
+                                  onChange={e => {
+                                    const newFields = { ...parsedFields, [cf.id]: e.target.value };
+                                    task.customFields = JSON.stringify(newFields);
+                                    setEditForm({ ...editForm, _cfForceUpdate: Date.now() });
+                                  }}
+                                  onBlur={e => handleDirectFieldUpdate(cf.id, e.target.value ? Number(e.target.value) : '')}
+                                  onKeyDown={e => e.key === 'Enter' && handleDirectFieldUpdate(cf.id, e.target.value ? Number(e.target.value) : '')}
+                                  style={{ ...styles.inlineInput, color: value || value === 0 ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                                />
+                              );
+                            }
+
+                            // ID (read-only, auto-generated)
+                            if (cfType === 'id') {
+                              const idValue = value || task.id?.slice(-6).toUpperCase();
+                              return (
+                                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
+                                  {idValue}
+                                </span>
+                              );
+                            }
+
+                            // TIMER
+                            if (cfType === 'timer') {
+                              const timerData = (typeof value === 'object' && value !== null) ? value : { running: false, elapsed: 0, lastStart: null };
+                              const elapsed = timerData.elapsed || 0;
+                              const isRunning = timerData.running || false;
+                              const formatTime = (secs) => {
+                                const h = Math.floor(secs / 3600);
+                                const m = Math.floor((secs % 3600) / 60);
+                                const s = secs % 60;
+                                return `${h}h ${m}m ${s}s`;
+                              };
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontSize: '0.85rem', color: isRunning ? '#10B981' : 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                                    {formatTime(elapsed)}
+                                  </span>
+                                  {!isReadOnly && (
+                                    <button
+                                      onClick={() => {
+                                        if (isRunning) {
+                                          const now = Math.floor(Date.now() / 1000);
+                                          const addedTime = timerData.lastStart ? now - timerData.lastStart : 0;
+                                          handleDirectFieldUpdate(cf.id, { running: false, elapsed: elapsed + addedTime, lastStart: null });
+                                        } else {
+                                          handleDirectFieldUpdate(cf.id, { running: true, elapsed, lastStart: Math.floor(Date.now() / 1000) });
+                                        }
+                                      }}
+                                      style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '2px 8px', fontSize: '0.75rem', cursor: 'pointer', color: isRunning ? '#EF4444' : '#10B981' }}
+                                    >
+                                      {isRunning ? '⏹ Stop' : '▶ Start'}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            // FORMULA (read-only placeholder)
+                            if (cfType === 'formula') {
+                              return (
+                                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                                  {value || '—'}
+                                </span>
+                              );
+                            }
+
+                            // TEXT (default fallback)
+                            return (
+                              <input
+                                type="text"
+                                value={value}
+                                placeholder="—"
+                                readOnly={isReadOnly}
+                                onChange={e => {
+                                  const newFields = { ...parsedFields, [cf.id]: e.target.value };
+                                  setEditForm({ ...editForm, _cfForceUpdate: Date.now() });
+                                  task.customFields = JSON.stringify(newFields);
+                                }}
+                                onBlur={e => handleDirectFieldUpdate(cf.id, e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleDirectFieldUpdate(cf.id, e.target.value)}
+                                style={{ ...styles.inlineInput, color: value ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                              />
+                            );
+                          };
+
                           return (
                             <div key={cf.id} style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', borderTop: cf.id === cfs[0].id ? '1px solid var(--border-color)' : 'none', minHeight: '36px', alignItems: 'center' }}>
                               <div style={{ width: '150px', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-secondary)', fontSize: '0.8rem', paddingLeft: '0.5rem', flexShrink: 0 }}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="8 10 12 14 16 10"></polyline></svg>
+                                {fieldIcon}
                                 {cf.title}
                               </div>
                               <div style={{ flex: 1, position: 'relative', paddingLeft: '0.5rem', borderLeft: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', height: '100%' }}>
-                                {(cf.type === 'SELECT' || cf.type === 'single-select') ? (
-                                  <>
-                                    <span
-                                      onClick={(e) => { e.stopPropagation(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }}
-                                      style={{ cursor: isReadOnly ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', backgroundColor: (value && opt?.color) ? opt.color : 'transparent', color: value ? 'var(--text-primary)' : 'var(--text-secondary)', padding: value ? '0.2rem 0.5rem' : '0', borderRadius: '4px', fontSize: '0.85rem' }}
-                                    >
-                                      {displayValue}
-                                    </span>
-                                    {openFieldMenuId === cf.id && (
-                                      <div style={styles.dropdownMenu} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
-                                        <div style={{ padding: '4px 8px', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', marginBottom: '2px' }}>{cf.title}</div>
-                                        {cf.options?.map(o => (
-                                          <button
-                                            key={o.id}
-                                            onClick={() => handleDirectFieldUpdate(cf.id, o.label || o.value)}
-                                            style={{ ...styles.dropdownItem, display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '4px 8px' }}
-                                          >
-                                            <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', display: 'inline-block', flexShrink: 0 }}></div>
-                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
-                                          </button>
-                                        ))}
-                                        <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
-                                        <button onClick={() => handleDirectFieldUpdate(cf.id, '')} style={{ ...styles.dropdownItem, padding: '4px 8px', color: 'var(--text-secondary)' }}>Clear value</button>
-                                      </div>
-                                    )}
-                                  </>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={value}
-                                    placeholder="—"
-                                    readOnly={isReadOnly}
-                                    onChange={e => {
-                                      const newFields = { ...parsedFields, [cf.id]: e.target.value };
-                                      setEditForm({ ...editForm, _cfForceUpdate: Date.now() }); // Force render
-                                      task.customFields = JSON.stringify(newFields); // Optimistic local
-                                    }}
-                                    onBlur={e => handleDirectFieldUpdate(cf.id, e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleDirectFieldUpdate(cf.id, e.target.value)}
-                                    style={{ ...styles.inlineInput, color: value ? 'var(--text-primary)' : 'var(--text-secondary)' }}
-                                  />
-                                )}
+                                {renderFieldValue()}
                               </div>
                             </div>
                           );
@@ -1045,14 +1305,14 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
               <div style={{ flex: 1 }}>
                 {!isAddingGithubPr && githubPRs.length === 0 && (
                   <div style={styles.addAppPlaceholder} onClick={() => setIsAddingGithubPr(true)}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.379.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.379.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z" /></svg>
                     Add GitHub pull request
                   </div>
                 )}
                 {isAddingGithubPr && (
                   <div style={styles.addAppInputContainer}>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={githubPrUrlValue}
                       onChange={e => setGithubPrUrlValue(e.target.value)}
                       placeholder="Paste a GitHub pull request URL..."
@@ -1070,57 +1330,57 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                 )}
                 {githubPRs.map((pr, idx) => (
                   <div key={idx} style={styles.githubCard}>
-                     <div style={styles.githubCardHeader}>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.379.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
-                        <div style={styles.githubCardTitleArea}>
-                           <a href={pr.url} target="_blank" rel="noreferrer" style={{textDecoration: 'none'}}>
-                             <div style={styles.githubCardTitle}>#{pr.number} {pr.title}</div>
-                           </a>
-                            <div style={styles.githubCardSubtitle}>
-                              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style={{marginRight: 4}}><path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113.882 1.55l3.204 3.204a2.25 2.25 0 11-1.06 1.06L4.32 5.862A2.25 2.25 0 011.5 3.25zM12.25 8a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 114.5 0 2.25 2.25 0 01-4.5 0z"/></svg>
-                              Pull request in {pr.owner}/{pr.repo} • View in GitHub
-                           </div>
+                    <div style={styles.githubCardHeader}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.379.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z" /></svg>
+                      <div style={styles.githubCardTitleArea}>
+                        <a href={pr.url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                          <div style={styles.githubCardTitle}>#{pr.number} {pr.title}</div>
+                        </a>
+                        <div style={styles.githubCardSubtitle}>
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style={{ marginRight: 4 }}><path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113.882 1.55l3.204 3.204a2.25 2.25 0 11-1.06 1.06L4.32 5.862A2.25 2.25 0 011.5 3.25zM12.25 8a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 114.5 0 2.25 2.25 0 01-4.5 0z" /></svg>
+                          Pull request in {pr.owner}/{pr.repo} • View in GitHub
                         </div>
-                        <div style={{ position: 'relative' }}>
-                           <button onClick={() => setOpenPrMenuIdx(openPrMenuIdx === idx ? null : idx)} style={styles.githubCardMoreBtn}>•••</button>
-                           {openPrMenuIdx === idx && (
-                             <div style={{...styles.dropdownMenu, left: 'auto', right: 0, padding: 0, minWidth: '180px', overflow: 'hidden'}} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
-                                <a href={pr.url} target="_blank" rel="noreferrer" className="github-dropdown-item" style={{ ...styles.dropdownItem, textDecoration: 'none', fontSize: '0.9rem', gap: '0.6rem' }}>
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                                  View in GitHub
-                                </a>
-                                <button onClick={() => { navigator.clipboard.writeText(pr.url); setOpenPrMenuIdx(null); }} className="github-dropdown-item" style={{ ...styles.dropdownItem, fontSize: '0.9rem', gap: '0.6rem' }}>
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                                  Copy link
-                                </button>
-                                <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
-                                <button onClick={() => handleRemoveGithubPr(idx)} className="github-dropdown-item" style={{ ...styles.dropdownItem, color: 'var(--text-primary)', fontSize: '0.9rem', gap: '0.6rem' }}>
-                                  Remove from task
-                                </button>
-                             </div>
-                           )}
+                      </div>
+                      <div style={{ position: 'relative' }}>
+                        <button onClick={() => setOpenPrMenuIdx(openPrMenuIdx === idx ? null : idx)} style={styles.githubCardMoreBtn}>•••</button>
+                        {openPrMenuIdx === idx && (
+                          <div style={{ ...styles.dropdownMenu, left: 'auto', right: 0, padding: 0, minWidth: '180px', overflow: 'hidden' }} className="dropdownMenu" onClick={(e) => e.stopPropagation()}>
+                            <a href={pr.url} target="_blank" rel="noreferrer" className="github-dropdown-item" style={{ ...styles.dropdownItem, textDecoration: 'none', fontSize: '0.9rem', gap: '0.6rem' }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                              View in GitHub
+                            </a>
+                            <button onClick={() => { navigator.clipboard.writeText(pr.url); setOpenPrMenuIdx(null); }} className="github-dropdown-item" style={{ ...styles.dropdownItem, fontSize: '0.9rem', gap: '0.6rem' }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                              Copy link
+                            </button>
+                            <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
+                            <button onClick={() => handleRemoveGithubPr(idx)} className="github-dropdown-item" style={{ ...styles.dropdownItem, color: 'var(--text-primary)', fontSize: '0.9rem', gap: '0.6rem' }}>
+                              Remove from task
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={styles.githubCardMetrics}>
+                      <div style={styles.githubMetricCol}>
+                        <div style={styles.githubMetricLabel}>Review status</div>
+                        <div style={styles.githubMetricValue}>{pr.reviewStatus || 'In review'}</div>
+                      </div>
+                      <div style={styles.githubMetricCol}>
+                        <div style={styles.githubMetricLabel}>PR status</div>
+                        <div style={styles.githubMetricValue}>{pr.state === 'open' ? 'Open' : (pr.merged ? 'Merged' : 'Closed')}</div>
+                      </div>
+                      <div style={styles.githubMetricCol}>
+                        <div style={styles.githubMetricLabel}>Line changes</div>
+                        <div style={styles.githubMetricValue}>
+                          <span style={styles.githubAdditions}></span> +{pr.additions}
+                          <span style={styles.githubDeletions}></span> -{pr.deletions}
                         </div>
-                     </div>
-                     <div style={styles.githubCardMetrics}>
-                        <div style={styles.githubMetricCol}>
-                           <div style={styles.githubMetricLabel}>Review status</div>
-                           <div style={styles.githubMetricValue}>{pr.reviewStatus || 'In review'}</div>
-                        </div>
-                        <div style={styles.githubMetricCol}>
-                           <div style={styles.githubMetricLabel}>PR status</div>
-                           <div style={styles.githubMetricValue}>{pr.state === 'open' ? 'Open' : (pr.merged ? 'Merged' : 'Closed')}</div>
-                        </div>
-                        <div style={styles.githubMetricCol}>
-                           <div style={styles.githubMetricLabel}>Line changes</div>
-                           <div style={styles.githubMetricValue}>
-                              <span style={styles.githubAdditions}></span> +{pr.additions}
-                              <span style={styles.githubDeletions}></span> -{pr.deletions}
-                           </div>
-                        </div>
-                     </div>
-                     <div style={styles.githubCardFooter}>
-                        Created in GitHub {new Date(pr.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} at {new Date(pr.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                     </div>
+                      </div>
+                    </div>
+                    <div style={styles.githubCardFooter}>
+                      Created in GitHub {new Date(pr.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} at {new Date(pr.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1183,14 +1443,14 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                   const fileUrl = `http://localhost:5001/uploads/${att.filename}`;
                   const sizeStr = att.size < 1024 ? `${att.size} B`
                     : att.size < 1024 * 1024 ? `${(att.size / 1024).toFixed(1)} KB`
-                    : `${(att.size / (1024 * 1024)).toFixed(1)} MB`;
+                      : `${(att.size / (1024 * 1024)).toFixed(1)} MB`;
                   const fileIcon = att.mimeType?.includes('pdf') ? '📄'
                     : att.mimeType?.includes('word') || att.mimeType?.includes('document') ? '📝'
-                    : att.mimeType?.includes('spreadsheet') || att.mimeType?.includes('excel') ? '📊'
-                    : att.mimeType?.includes('zip') || att.mimeType?.includes('archive') ? '📦'
-                    : att.mimeType?.includes('video') ? '🎬'
-                    : att.mimeType?.includes('audio') ? '🎵'
-                    : '📎';
+                      : att.mimeType?.includes('spreadsheet') || att.mimeType?.includes('excel') ? '📊'
+                        : att.mimeType?.includes('zip') || att.mimeType?.includes('archive') ? '📦'
+                          : att.mimeType?.includes('video') ? '🎬'
+                            : att.mimeType?.includes('audio') ? '🎵'
+                              : '📎';
 
                   return (
                     <div key={att.id} style={styles.attachmentItem}>
@@ -1252,14 +1512,14 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                     }, {}) : {};
 
                     return (
-                      <div 
-                        key={`comment-${item.id}`} 
+                      <div
+                        key={`comment-${item.id}`}
                         style={styles.commentItem}
                         onMouseEnter={() => setHoveredCommentId(item.id)}
                         onMouseLeave={() => setHoveredCommentId(null)}
                       >
                         <div style={styles.commentAvatar}>{item.user?.name?.charAt(0).toUpperCase() || '?'}</div>
-                        <div style={{...styles.commentContent, position: 'relative'}}>
+                        <div style={{ ...styles.commentContent, position: 'relative' }}>
                           <div style={styles.commentHeader}>
                             <span style={styles.commentAuthor}>{item.user?.name || 'Unknown'}</span>
                             <span style={styles.commentTime}>
@@ -1267,7 +1527,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                             </span>
                           </div>
                           <div className="rich-text-content" style={styles.commentText} dangerouslySetInnerHTML={{ __html: item.text }} />
-                          
+
                           {/* Reactions Display */}
                           {Object.keys(reactionGroups).length > 0 && (
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '6px' }}>
@@ -1295,7 +1555,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
                         <div style={{ display: 'flex', gap: '4px', opacity: hoveredCommentId === item.id || reactionPickerId === item.id ? 1 : 0, transition: 'opacity 0.15s', alignSelf: 'flex-start' }}>
                           <div style={{ position: 'relative' }}>
-                            <button 
+                            <button
                               onClick={() => setReactionPickerId(reactionPickerId === item.id ? null : item.id)}
                               style={styles.reactionBtn}
                               title="Like"
@@ -1320,7 +1580,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                     );
                   } else if (item.action === "attached_github_pr") {
                     let pr = null;
-                    try { pr = JSON.parse(item.newValue); } catch(e){}
+                    try { pr = JSON.parse(item.newValue); } catch (e) { }
                     return (
                       <div key={`activity-${item.id}`} style={styles.activityItem}>
                         <div style={styles.activityAvatar}>{item.user?.name?.charAt(0).toUpperCase() || '?'}</div>
@@ -1330,17 +1590,17 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                             {' '}• {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           </span>
                           {pr && (
-                             <div style={{ ...styles.githubCard, marginTop: '1rem', width: '90%' }}>
-                               <div style={styles.githubCardHeader}>
-                                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.379.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
-                                  <div style={styles.githubCardTitleArea}>
-                                     <div style={styles.githubCardTitle}>#{pr.number} {pr.title}</div>
-                                     <div style={styles.githubCardSubtitle}>
-                                        Pull request in {pr.owner}/{pr.repo} • View in GitHub
-                                     </div>
+                            <div style={{ ...styles.githubCard, marginTop: '1rem', width: '90%' }}>
+                              <div style={styles.githubCardHeader}>
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.379.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z" /></svg>
+                                <div style={styles.githubCardTitleArea}>
+                                  <div style={styles.githubCardTitle}>#{pr.number} {pr.title}</div>
+                                  <div style={styles.githubCardSubtitle}>
+                                    Pull request in {pr.owner}/{pr.repo} • View in GitHub
                                   </div>
-                               </div>
-                             </div>
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1432,7 +1692,7 @@ const styles = {
   commentDeleteBtn: { background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1rem', padding: '0 0.25rem' },
   commentForm: { display: 'flex', gap: '0.75rem', alignItems: 'flex-start', marginTop: '1rem' },
   commentInput: { flex: 1, padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.9rem', resize: 'vertical', outline: 'none', background: 'var(--bg-primary)', color: 'var(--text-primary)' },
-  
+
   // Activity Feed Styles
   activityItem: { display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0' },
   activityAvatar: { width: '24px', height: '24px', borderRadius: '50%', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '500', fontSize: '0.7rem', flexShrink: 0 },

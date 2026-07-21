@@ -246,10 +246,8 @@ model TaskDependency {
 // --- YENİ MODEL: KURAL MOTORU ---
 model Rule {
   id           String   @id @default(uuid())
-  triggerType  String
-  triggerValue String?
-  actionType   String
-  actionValue  String?
+  ruleData     Json
+  isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
   projectId    String
