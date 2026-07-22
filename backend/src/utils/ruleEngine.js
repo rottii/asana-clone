@@ -64,7 +64,8 @@ const checkTrigger = (trigger, event) => {
 
   if (exactMatchTriggers.includes(trigger.type) && event.type === trigger.type) {
     if (trigger.type === 'custom_field_changed') {
-        if (!trigger.value || trigger.value === event.fieldName) {
+        const triggerFieldId = trigger.value ? trigger.value.split(':')[0] : null;
+        if (!triggerFieldId || triggerFieldId === event.fieldName) {
             return true;
         }
     } else {
@@ -182,6 +183,23 @@ const checkConditions = async (conditions, taskId, projectId) => {
                   cfMatched = parsed[fieldId] === fieldValue;
                }
              } catch(e) {}
+             
+             // Fallback for Github PR custom fields
+             if (!cfMatched && task.githubPRs) {
+                let prs = [];
+                try { prs = typeof task.githubPRs === 'string' ? JSON.parse(task.githubPRs) : task.githubPRs; } catch(e){}
+                if (prs.length > 0) {
+                    const firstPr = prs[0];
+                    let label = 'Open';
+                    if (firstPr.merged) label = 'Merged';
+                    else if (firstPr.state === 'closed') label = 'Closed';
+                    else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
+                    
+                    if (label === fieldValue) cfMatched = true;
+                } else if (fieldValue === 'Empty') {
+                    cfMatched = true;
+                }
+             }
           }
           if (!cfMatched) return false;
           break;

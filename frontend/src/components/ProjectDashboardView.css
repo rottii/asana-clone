@@ -1,0 +1,1000 @@
+/* ============================
+   PROJECT DASHBOARD VIEW
+   Asana-style interactive chart dashboard
+   ============================ */
+
+.proj-dash-container {
+  padding: 2rem;
+  flex: 1;
+  overflow-y: auto;
+  background-color: var(--bg-secondary);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* --- HEADER --- */
+.proj-dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.75rem;
+}
+
+.proj-dash-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.proj-dash-header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.proj-dash-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.proj-dash-add-btn:hover {
+  background-color: var(--bg-tertiary);
+  border-color: var(--text-tertiary);
+}
+
+.proj-dash-add-btn .plus-icon {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* --- RECOMMENDED (top section) --- */
+.proj-dash-recommended {
+  margin-bottom: 2rem;
+}
+
+.proj-dash-recommended-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.proj-dash-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 0rem;
+}
+
+.proj-dash-summary-card {
+  background-color: var(--bg-primary);
+  padding: 1.25rem 1.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.proj-dash-summary-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.proj-dash-summary-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 0.4rem;
+}
+
+.proj-dash-summary-value {
+  font-size: 2.2rem;
+  color: var(--text-primary);
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* --- GRID WRAPPER --- */
+.proj-dash-grid-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+/* --- BACKGROUND GRID --- */
+.proj-dash-bg-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(20, 1fr);
+  gap: 1.25rem;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.proj-dash-bg-grid.visible {
+  opacity: 1;
+}
+
+.proj-dash-bg-column {
+  background-color: var(--bg-tertiary);
+  opacity: 0.2;
+  border-radius: 4px;
+}
+
+/* --- CHART GRID --- */
+.proj-dash-chart-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.proj-dash-chart-grid.is-dragging {
+  user-select: none;
+}
+
+.proj-dash-chart-card {
+  background-color: var(--bg-primary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-sizing: border-box;
+  margin: 0;
+  transition: box-shadow 0.2s ease, opacity 0.2s ease;
+  animation: projDashCardEnter 0.3s ease both;
+  overflow: hidden;
+}
+
+.proj-dash-chart-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.proj-dash-chart-card:hover .proj-dash-card-drag-handle,
+.proj-dash-chart-card:hover .proj-dash-card-remove {
+  opacity: 1;
+}
+
+@keyframes projDashCardEnter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.proj-dash-chart-card:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.proj-dash-chart-card:nth-child(2) {
+  animation-delay: 0.05s;
+}
+
+.proj-dash-chart-card:nth-child(3) {
+  animation-delay: 0.1s;
+}
+
+.proj-dash-chart-card:nth-child(4) {
+  animation-delay: 0.15s;
+}
+
+.proj-dash-chart-card:nth-child(5) {
+  animation-delay: 0.2s;
+}
+
+.proj-dash-chart-card:nth-child(6) {
+  animation-delay: 0.25s;
+}
+
+/* --- CARD DRAG HANDLE --- */
+.proj-dash-card-drag-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 5;
+}
+
+.proj-dash-card-drag-handle:active {
+  cursor: grabbing;
+}
+
+.proj-dash-card-drag-dots {
+  display: flex;
+  gap: 2px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.proj-dash-chart-card:hover .proj-dash-card-drag-dots {
+  opacity: 0.6;
+}
+
+.proj-dash-card-drag-dots span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background-color: var(--text-tertiary);
+}
+
+/* --- CARD REMOVE BUTTON --- */
+.proj-dash-card-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  opacity: 0;
+  transition: all 0.15s ease;
+  z-index: 6;
+}
+
+.proj-dash-card-remove:hover {
+  background: var(--accent-danger);
+  color: #fff;
+}
+
+/* --- CARD HEADER --- */
+.proj-dash-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.proj-dash-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.proj-dash-card-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* --- CARD MENU --- */
+.proj-dash-card-menu-btn {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.proj-dash-card-menu-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.proj-dash-card-menu {
+  position: absolute;
+  top: 36px;
+  right: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  min-width: 170px;
+  z-index: 100;
+  overflow: hidden;
+  animation: projDashMenuIn 0.12s ease;
+}
+
+@keyframes projDashMenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.proj-dash-card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  transition: background 0.1s ease;
+}
+
+.proj-dash-card-menu-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.proj-dash-card-menu-item.danger {
+  color: var(--accent-danger);
+}
+
+.proj-dash-card-menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.proj-dash-card-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 3px 0;
+}
+
+/* --- CHART AREA --- */
+.proj-dash-chart-area {
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- ADD CHART PICKER (modal) --- */
+.proj-dash-picker-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: projDashOverlayIn 0.18s ease;
+}
+
+@keyframes projDashOverlayIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.proj-dash-picker-modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  animation: projDashModalIn 0.22s ease;
+}
+
+@keyframes projDashModalIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.proj-dash-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.15rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.proj-dash-picker-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.proj-dash-picker-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  transition: all 0.15s ease;
+}
+
+.proj-dash-picker-close:hover {
+  background: var(--border-color);
+  color: var(--text-primary);
+}
+
+.proj-dash-picker-body {
+  padding: 1rem 1.5rem 1.5rem;
+}
+
+.proj-dash-picker-section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.proj-dash-picker-section-label:first-child {
+  margin-top: 0;
+}
+
+.proj-dash-picker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.proj-dash-picker-card {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--bg-primary);
+}
+
+.proj-dash-picker-card:hover {
+  border-color: var(--accent-primary);
+  background: rgba(79, 70, 229, 0.03);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.08);
+}
+
+.proj-dash-picker-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.proj-dash-picker-info h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.proj-dash-picker-info p {
+  margin: 1px 0 0;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+/* ========== ADD WIDGET DROPDOWN (Asana style) ========== */
+.add-widget-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+
+.add-widget-dropdown-item:hover {
+  background: var(--bg-secondary);
+}
+
+.add-widget-dropdown-item svg {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* ========== ADD CHART MODAL (Asana style) ========== */
+.add-chart-modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  width: 900px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
+  animation: projDashModalIn 0.22s ease;
+  overflow: hidden;
+}
+
+.add-chart-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.add-chart-modal-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.add-chart-modal-dots {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  letter-spacing: 1px;
+}
+
+.add-chart-modal-dots:hover {
+  background: var(--bg-secondary);
+}
+
+.add-chart-modal-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Left: Live Preview */
+.add-chart-modal-preview {
+  flex: 1;
+  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+}
+
+.add-chart-preview-title {
+  margin: 0 0 20px 0;
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.add-chart-preview-chart {
+  flex: 1;
+  min-height: 280px;
+  display: flex;
+  align-items: stretch;
+}
+
+/* Right: Configuration Sidebar */
+.add-chart-modal-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  padding: 20px 24px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+.add-chart-section {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.add-chart-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.add-chart-section-title {
+  margin: 0 0 12px 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Toggle group (Work / Time entries) */
+.add-chart-toggle-group {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.add-chart-toggle {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.add-chart-toggle.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.add-chart-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Labels */
+.add-chart-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  margin-top: 12px;
+}
+
+/* Select wrapper */
+.add-chart-select-wrap {
+  position: relative;
+}
+
+.add-chart-select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  appearance: auto;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.add-chart-select:focus {
+  border-color: var(--accent-primary);
+}
+
+.add-chart-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Add metric / Add filter buttons */
+.add-chart-add-metric {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  transition: color 0.15s ease;
+}
+
+.add-chart-add-metric:hover {
+  color: var(--accent-primary);
+}
+
+/* Checkbox */
+.add-chart-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.add-chart-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+/* Footer */
+.add-chart-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.add-chart-cancel-btn {
+  padding: 7px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.add-chart-cancel-btn:hover {
+  background: var(--bg-secondary);
+}
+
+.add-chart-confirm-btn {
+  padding: 7px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #4F46E5;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.add-chart-confirm-btn:hover {
+  background: #4338CA;
+}
+
+/* ========== TEXT WIDGET ========== */
+.proj-dash-text-widget {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.proj-dash-text-widget-editor {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  outline: none;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  line-height: 1.6;
+  resize: none;
+  min-height: 40px;
+  cursor: text;
+}
+
+.proj-dash-text-widget-editor:empty::before {
+  content: attr(placeholder);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+/* --- DROP TARGET --- */
+/* --- REACT-GRID-LAYOUT STATES --- */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(79, 70, 229, 0.08);
+  border: 2px dashed var(--accent-primary);
+  border-radius: 10px;
+  opacity: 1 !important;
+  z-index: 0;
+  box-sizing: border-box;
+}
+
+/* --- RGL RESIZE HANDLES --- */
+.react-resizable-handle {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 5;
+  background-image: none !important;
+  /* hide default arrows */
+}
+
+.proj-dash-chart-card:hover .react-resizable-handle {
+  opacity: 0.4;
+}
+
+.react-resizable-handle:hover,
+.react-resizable-handle:active {
+  background-color: rgba(79, 70, 229, 0.1);
+  opacity: 1 !important;
+}
+
+/* Base positioning for RGL handles */
+.react-resizable-handle-e {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  cursor: ew-resize;
+}
+
+.react-resizable-handle-w {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  cursor: ew-resize;
+}
+
+.react-resizable-handle-s {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  cursor: ns-resize;
+}
+
+.react-resizable-handle-se {
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 6;
+}
+
+.react-resizable-handle-sw {
+  bottom: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nesw-resize;
+  z-index: 6;
+}
+
+/* Visual indicators */
+.react-resizable-handle-e::after,
+.react-resizable-handle-w::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  background-color: var(--text-tertiary);
+}
+
+.react-resizable-handle-s::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  height: 4px;
+  width: 24px;
+  border-radius: 2px;
+  background-color: var(--text-tertiary);
+}
+
+.react-resizable-handle-se::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-tertiary);
+  border-bottom: 2px solid var(--text-tertiary);
+}
+
+.react-resizable-handle-sw::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  width: 8px;
+  height: 8px;
+  border-left: 2px solid var(--text-tertiary);
+  border-bottom: 2px solid var(--text-tertiary);
+}
+
+/* --- EMPTY CHART STATE --- */
+.proj-dash-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  gap: 0.5rem;
+  padding: 2rem 0;
+}
+
+.proj-dash-empty-icon {
+  font-size: 2rem;
+  opacity: 0.5;
+}
+
+/* --- RESPONSIVE --- */
+@media (max-width: 900px) {
+  .proj-dash-container {
+    padding: 1.5rem 1rem;
+  }
+
+  .proj-dash-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .proj-dash-chart-card.span-2 {
+    grid-column: span 1;
+  }
+
+  .proj-dash-picker-modal {
+    width: 90vw;
+  }
+
+  .proj-dash-picker-grid {
+    grid-template-columns: 1fr;
+  }
+}

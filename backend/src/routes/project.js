@@ -1382,6 +1382,18 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
                         activitiesToLog.push({ action: 'attached_github_pr', newValue: JSON.stringify(pr) });
                     }
                 }
+
+                // Check if any github_pr custom fields exist and trigger rule engine
+                if (oldPrsStr !== newPrsStr) {
+                    const proj = await prisma.project.findUnique({ where: { id: projectId } });
+                    if (proj && proj.customFieldSettings) {
+                        const cfs = typeof proj.customFieldSettings === 'string' ? JSON.parse(proj.customFieldSettings) : proj.customFieldSettings;
+                        const prFields = (Array.isArray(cfs) ? cfs : []).filter(f => f.type === 'github_pr');
+                        for (const prField of prFields) {
+                            await evaluateRules(projectId, req.params.taskId, { type: 'custom_field_changed', fieldName: prField.id });
+                        }
+                    }
+                }
             } catch(e) { console.error('Error diffing PRs', e); }
         }
 

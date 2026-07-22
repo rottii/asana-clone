@@ -30,7 +30,8 @@ router.post('/pr', async (req, res) => {
     const response = await fetch(apiUrl, {
       headers: {
         'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'Asana-Clone-App'
+        'User-Agent': 'Asana-Clone-App',
+        ...(process.env.GITHUB_TOKEN && { 'Authorization': `Bearer ${process.env.GITHUB_TOKEN}` })
       }
     });
 
@@ -52,7 +53,8 @@ router.post('/pr', async (req, res) => {
       const reviewsResponse = await fetch(`${apiUrl}/reviews`, {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'Asana-Clone-App'
+          'User-Agent': 'Asana-Clone-App',
+          ...(process.env.GITHUB_TOKEN && { 'Authorization': `Bearer ${process.env.GITHUB_TOKEN}` })
         }
       });
       if (reviewsResponse.ok) {

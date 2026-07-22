@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@tiptap/extension-floating-menu": "^3.27.3",
+    "@tiptap/extension-highlight": "^3.27.3",
     "@tiptap/extension-image": "^3.27.3",
     "@tiptap/extension-link": "^3.27.3",
     "@tiptap/extension-mention": "^3.27.3",
@@ -23,6 +24,8 @@
     "@tiptap/starter-kit": "^3.27.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-grid-layout": "^2.2.3",
+    "react-resizable": "^4.0.2",
     "recharts": "^3.9.1",
     "socket.io-client": "^4.8.3",
     "tippy.js": "^6.3.7"

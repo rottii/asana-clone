@@ -624,8 +624,8 @@ export default function ProjectListView({
             }
 
             return (
-              <div key={cf.id} style={{ ...styles.gridBodyCell, width: colWidths[cf.id] || 140, flexShrink: 0, position: 'relative', cursor: (isReadOnly || cf.type === 'id' || cf.type === 'formula') ? 'default' : 'pointer', overflow: 'visible' }} onClick={(e) => {
-                if (isReadOnly || cf.type === 'id' || cf.type === 'formula') return;
+              <div key={cf.id} style={{ ...styles.gridBodyCell, width: colWidths[cf.id] || 140, flexShrink: 0, position: 'relative', cursor: (isReadOnly || cf.type === 'id' || cf.type === 'formula' || cf.type === 'github_pr') ? 'default' : 'pointer', overflow: 'visible' }} onClick={(e) => {
+                if (isReadOnly || cf.type === 'id' || cf.type === 'formula' || cf.type === 'github_pr') return;
                 if (cf.type === 'date') {
                   if (handleOpenPopoverInline) handleOpenPopoverInline(e, 'custom-date', task, sectionId, { customFieldId: cf.id });
                 } else {
@@ -694,6 +694,34 @@ export default function ProjectListView({
                   } else if (cf.type === 'date') {
                     const formatted = val ? new Date(val).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
                     return <span>{formatted}</span>;
+                  } else if (cf.type === 'github_pr') {
+                    const prs = typeof task.githubPRs === 'string' ? JSON.parse(task.githubPRs || '[]') : (task.githubPRs || []);
+                    if (!prs || prs.length === 0) return <span style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>—</span>;
+                    
+                    const firstPr = prs[0];
+                    let statusColor = '#6E7681'; 
+                    if (firstPr.state === 'closed' && firstPr.merged) statusColor = '#8250DF'; 
+                    else if (firstPr.state === 'closed') statusColor = '#CF222E'; 
+                    else if (firstPr.reviewStatus === 'Approved') statusColor = '#2DA44E'; 
+                    else if (firstPr.reviewStatus === 'Changes requested') statusColor = '#CF222E'; 
+                    else statusColor = '#1A7F37'; 
+                    
+                    let label = '';
+                    if (firstPr.merged) label = 'Merged';
+                    else if (firstPr.state === 'closed') label = 'Closed';
+                    else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
+                    else label = 'Open';
+        
+                    if (prs.length > 1) label += ` (+${prs.length - 1})`;
+
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill={statusColor} style={{ flexShrink: 0 }}>
+                          <path fillRule="evenodd" d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.25 2.25 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 7.425A3.155 3.155 0 0012.75 12h.75a.75.75 0 01.75.75v.5a.75.75 0 01-.75.75H12a4.655 4.655 0 01-4.655-4.655V5.372a2.25 2.25 0 111.5 0v3.983c0 .713.273 1.398.75 1.916V7.425z"></path>
+                        </svg>
+                        <span style={{ fontSize: '0.8rem', color: statusColor, fontWeight: '500' }}>{label}</span>
+                      </div>
+                    );
                   } else if (typeof val === 'object') {
                     return <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{JSON.stringify(val)}</span>;
                   }

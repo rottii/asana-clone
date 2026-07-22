@@ -11,6 +11,7 @@ const FIELD_TYPES = [
   { value: 'formula', label: 'Formula', icon: 'fx' },
   { value: 'id', label: 'ID', icon: '🆔' },
   { value: 'timer', label: 'Timer', icon: '⏱' },
+  { value: 'github_pr', label: 'GitHub PR', icon: '🐙' },
 ];
 
 export default function AddFieldModal({ onClose, onCreateField, onUpdateField, editField }) {
@@ -219,6 +220,12 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
           {fieldType === 'date' && (
             <div style={{ marginTop: '1.25rem', padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
               📅 Date fields store a single date value that can be set per task.
+            </div>
+          )}
+
+          {fieldType === 'github_pr' && (
+            <div style={{ marginTop: '1.25rem', padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              🐙 GitHub PR fields automatically sync with any Pull Requests linked to the task. This field is read-only.
             </div>
           )}
 

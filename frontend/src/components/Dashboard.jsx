@@ -1,84 +1,245 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts'
+import './Dashboard.css'
+
+// ========================
+// WIDGET REGISTRY
+// ========================
+const WIDGET_REGISTRY = [
+  { type: 'my-tasks', label: 'My tasks', icon: '✓', color: '#FBCFE8', description: 'View your upcoming, overdue, and completed tasks' },
+  { type: 'projects', label: 'Projects', icon: '📁', color: '#BFDBFE', description: 'See your recent projects at a glance' },
+  { type: 'assigned-tasks', label: "Tasks I've assigned", icon: '📤', color: '#FDE68A', description: 'Track work you\'ve delegated' },
+  { type: 'people', label: 'People', icon: '👥', color: '#D1FAE5', description: 'See who\'s on track and who needs support' },
+  { type: 'notepad', label: 'Notepad', icon: '📝', color: '#E9D5FF', description: 'Personal scratchpad for quick notes' },
+  { type: 'goals', label: 'Goals', icon: '🎯', color: '#FECACA', description: 'Track progress on team and company goals' },
+  { type: 'charts', label: 'Charts', icon: '📊', color: '#CFFAFE', description: 'Visualize task data with charts' },
+  { type: 'draft-comments', label: 'Draft comments', icon: '💬', color: '#FED7AA', description: 'Saved draft comments from tasks' },
+  { type: 'forms', label: 'Forms', icon: '📋', color: '#C7D2FE', description: 'Quick access to your project forms' },
+]
+
+const DEFAULT_LAYOUT = [
+  { id: 'my-tasks', type: 'my-tasks', colSpan: 1, rowSpan: 1 },
+  { id: 'projects', type: 'projects', colSpan: 1, rowSpan: 1 },
+  { id: 'assigned-tasks', type: 'assigned-tasks', colSpan: 1, rowSpan: 1 },
+  { id: 'people', type: 'people', colSpan: 1, rowSpan: 1 },
+]
 
 export default function Dashboard({ user, projects, setProjects, setSelectedProject, token, handleLogout, setActiveView }) {
-  const [newProjectName, setNewProjectName] = useState('')
+  // --- Layout State ---
+  const [widgetLayout, setWidgetLayout] = useState(DEFAULT_LAYOUT)
+  const [notepadContent, setNotepadContent] = useState('')
+  const [layoutLoaded, setLayoutLoaded] = useState(false)
+
+  // --- Drag State ---
+  const [dragIndex, setDragIndex] = useState(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
+
+  // --- UI State ---
+  const [showWidgetPicker, setShowWidgetPicker] = useState(false)
+  const [openMenu, setOpenMenu] = useState(null)
   const [activeTab, setActiveTab] = useState('Upcoming')
+  const [chartTab, setChartTab] = useState('by-project')
 
-  const handleCreateProject = async () => {
-    if (setActiveView) {
-      setActiveView('create_project');
-    }
-  }
+  // --- Refs ---
+  const saveTimerRef = useRef(null)
+  const notepadTimerRef = useRef(null)
+  const menuRef = useRef(null)
 
-  // --- Dynamic Greeting & Date ---
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  const hour = today.getHours();
-  let greeting = 'Good evening';
-  if (hour < 12) greeting = 'Good morning';
-  else if (hour < 18) greeting = 'Good afternoon';
+  // ========================
+  // LOAD LAYOUT FROM SERVER
+  // ========================
+  useEffect(() => {
+    if (!token) return
+    fetch('http://localhost:5001/api/dashboard', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.layout && Array.isArray(data.layout) && data.layout.length > 0) {
+          setWidgetLayout(data.layout)
+        }
+        if (data.notepad) {
+          setNotepadContent(data.notepad)
+        }
+        setLayoutLoaded(true)
+      })
+      .catch(err => {
+        console.error('Failed to load dashboard layout:', err)
+        setLayoutLoaded(true)
+      })
+  }, [token])
 
-  const safeProjects = Array.isArray(projects) ? projects : [];
-  const activeProjects = safeProjects.filter(p => !p.isArchived);
+  // ========================
+  // SAVE LAYOUT TO SERVER (debounced)
+  // ========================
+  const saveLayout = useCallback((layout) => {
+    if (!token) return
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      fetch('http://localhost:5001/api/dashboard', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ layout })
+      }).catch(err => console.error('Failed to save layout:', err))
+    }, 500)
+  }, [token])
 
-  // --- EXTRACT ALL TASKS ---
-  const allTasks = [];
-  safeProjects.forEach(p => {
-    p.sections?.forEach(s => {
-      s.tasks?.forEach(t => {
-        allTasks.push({ ...t, projectName: p.name });
+  const saveNotepad = useCallback((text) => {
+    if (!token) return
+    clearTimeout(notepadTimerRef.current)
+    notepadTimerRef.current = setTimeout(() => {
+      fetch('http://localhost:5001/api/dashboard', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ notepad: text })
+      }).catch(err => console.error('Failed to save notepad:', err))
+    }, 1000)
+  }, [token])
+
+  // ========================
+  // DATA EXTRACTION
+  // ========================
+  const today = new Date()
+  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const hour = today.getHours()
+  let greeting = 'Good evening'
+  if (hour < 12) greeting = 'Good morning'
+  else if (hour < 18) greeting = 'Good afternoon'
+
+  const safeProjects = Array.isArray(projects) ? projects : []
+  const activeProjects = safeProjects.filter(p => !p.isArchived)
+
+  const allTasks = useMemo(() => {
+    const tasks = []
+    safeProjects.forEach(p => {
+      p.sections?.forEach(s => {
+        s.tasks?.forEach(t => {
+          tasks.push({ ...t, projectName: p.name, projectColor: p.color || '#4F46E5' })
+        })
       })
     })
-  });
+    return tasks
+  }, [safeProjects])
 
-  // --- MY TASKS ---
-  const myAllTasks = allTasks.filter(t => t.assigneeId === user.id);
-  
-  const now = new Date();
-  now.setHours(0,0,0,0);
+  const now = useMemo(() => {
+    const d = new Date()
+    d.setHours(0,0,0,0)
+    return d
+  }, [])
 
-  const myCompleted = myAllTasks.filter(t => t.isCompleted);
-  const myIncomplete = myAllTasks.filter(t => !t.isCompleted);
-  const myOverdue = myIncomplete.filter(t => t.dueDate && new Date(t.dueDate) < now);
-  const myUpcoming = myIncomplete.filter(t => !t.dueDate || new Date(t.dueDate) >= now);
+  const myAllTasks = allTasks.filter(t => t.assigneeId === user.id)
+  const myCompleted = myAllTasks.filter(t => t.isCompleted)
+  const myIncomplete = myAllTasks.filter(t => !t.isCompleted)
+  const myOverdue = myIncomplete.filter(t => t.dueDate && new Date(t.dueDate) < now)
+  const myUpcoming = myIncomplete.filter(t => !t.dueDate || new Date(t.dueDate) >= now)
 
-  let displayedMyTasks = myUpcoming;
-  if (activeTab.startsWith('Overdue')) displayedMyTasks = myOverdue;
-  if (activeTab === 'Completed') displayedMyTasks = myCompleted;
+  let displayedMyTasks = myUpcoming
+  if (activeTab.startsWith('Overdue')) displayedMyTasks = myOverdue
+  if (activeTab === 'Completed') displayedMyTasks = myCompleted
 
-  // --- TASKS I'VE ASSIGNED (Assigned to others) ---
-  const assignedToOthers = allTasks.filter(t => t.assigneeId && t.assigneeId !== user.id);
+  const assignedToOthers = allTasks.filter(t => t.assigneeId && t.assigneeId !== user.id)
 
-  // --- PEOPLE STATS ---
-  const peopleMap = {};
+  const peopleMap = {}
   allTasks.forEach(t => {
     if (t.assigneeId && t.assigneeId !== user.id && t.assignee) {
       if (!peopleMap[t.assigneeId]) {
-        peopleMap[t.assigneeId] = { id: t.assigneeId, user: t.assignee, overdue: 0, completed: 0, upcoming: 0 };
+        peopleMap[t.assigneeId] = { id: t.assigneeId, user: t.assignee, overdue: 0, completed: 0, upcoming: 0 }
       }
       if (t.isCompleted) {
-        peopleMap[t.assigneeId].completed++;
+        peopleMap[t.assigneeId].completed++
       } else if (t.dueDate && new Date(t.dueDate) < now) {
-        peopleMap[t.assigneeId].overdue++;
+        peopleMap[t.assigneeId].overdue++
       } else {
-        peopleMap[t.assigneeId].upcoming++;
+        peopleMap[t.assigneeId].upcoming++
       }
     }
-  });
-  const peopleList = Object.values(peopleMap);
+  })
+  const peopleList = Object.values(peopleMap)
 
+  // ========================
+  // CHART DATA
+  // ========================
+  const chartDataByProject = useMemo(() => {
+    const map = {}
+    safeProjects.forEach(p => {
+      let total = 0, completed = 0
+      p.sections?.forEach(s => {
+        s.tasks?.forEach(t => {
+          total++
+          if (t.isCompleted) completed++
+        })
+      })
+      if (total > 0) {
+        map[p.name] = { name: p.name.length > 14 ? p.name.substring(0,12) + '..' : p.name, total, completed, incomplete: total - completed }
+      }
+    })
+    return Object.values(map).slice(0, 8)
+  }, [safeProjects])
+
+  const chartDataByStatus = useMemo(() => {
+    const completed = allTasks.filter(t => t.isCompleted).length
+    const overdue = allTasks.filter(t => !t.isCompleted && t.dueDate && new Date(t.dueDate) < now).length
+    const upcoming = allTasks.filter(t => !t.isCompleted && (!t.dueDate || new Date(t.dueDate) >= now)).length
+    return [
+      { name: 'Completed', value: completed, color: '#10B981' },
+      { name: 'Overdue', value: overdue, color: '#EF4444' },
+      { name: 'Upcoming', value: upcoming, color: '#6366F1' },
+    ].filter(d => d.value > 0)
+  }, [allTasks, now])
+
+  const chartDataCompletionTrend = useMemo(() => {
+    const days = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      d.setHours(0,0,0,0)
+      const dayStr = d.toLocaleDateString('en-US', { weekday: 'short' })
+      const completedOnDay = allTasks.filter(t => {
+        if (!t.completedAt) return false
+        const ct = new Date(t.completedAt)
+        ct.setHours(0,0,0,0)
+        return ct.getTime() === d.getTime()
+      }).length
+      const createdOnDay = allTasks.filter(t => {
+        if (!t.createdAt) return false
+        const ct = new Date(t.createdAt)
+        ct.setHours(0,0,0,0)
+        return ct.getTime() === d.getTime()
+      }).length
+      days.push({ name: dayStr, completed: completedOnDay, created: createdOnDay })
+    }
+    return days
+  }, [allTasks])
+
+  // ========================
+  // GOALS DATA
+  // ========================
+  const [goalsData, setGoalsData] = useState([])
+  useEffect(() => {
+    if (!token) return
+    fetch('http://localhost:5001/api/goals', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setGoalsData(data)
+      })
+      .catch(() => {})
+  }, [token])
+
+  // ========================
+  // HANDLERS
+  // ========================
   const handleToggleComplete = async (e, task) => {
-    e.stopPropagation();
-
+    e.stopPropagation()
     if (!task.isCompleted) {
-      const activeBlockers = task.blockedBy?.filter(dep => !dep.blockingTask?.isCompleted) || [];
+      const activeBlockers = task.blockedBy?.filter(dep => !dep.blockingTask?.isCompleted) || []
       if (activeBlockers.length > 0) {
         if (!window.confirm("This task is blocked by another task. Are you sure you want to complete it?")) {
-          return;
+          return
         }
       }
     }
-
     try {
       const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
@@ -93,265 +254,640 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
             ...s,
             tasks: s.tasks?.map(t => t.id === task.id ? data : t)
           }))
-        })));
+        })))
       }
     } catch (err) { console.error(err) }
-  };
+  }
+
+  const handleCreateProject = () => {
+    if (setActiveView) setActiveView('create_project')
+  }
 
   const formatFriendlyDate = (dueDate) => {
-    if (!dueDate) return 'No due date';
-    const date = new Date(dueDate);
-    date.setHours(0,0,0,0);
-    const diffDays = Math.round((date - now) / 86400000);
-    if (diffDays === 0) return { text: 'Today', color: '#10B981' };
-    if (diffDays === -1) return { text: 'Yesterday', color: '#EF4444' };
-    if (diffDays === 1) return { text: 'Tomorrow', color: 'var(--text-secondary)' };
-    if (diffDays > 1 && diffDays < 7) {
-      return { text: date.toLocaleDateString('en-US', { weekday: 'long' }), color: 'var(--text-secondary)' };
-    }
-    if (diffDays < -1) return { text: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), color: '#EF4444' };
-    return { text: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), color: 'var(--text-secondary)' };
+    if (!dueDate) return 'No due date'
+    const date = new Date(dueDate)
+    date.setHours(0,0,0,0)
+    const diffDays = Math.round((date - now) / 86400000)
+    if (diffDays === 0) return { text: 'Today', color: '#10B981' }
+    if (diffDays === -1) return { text: 'Yesterday', color: '#EF4444' }
+    if (diffDays === 1) return { text: 'Tomorrow', color: 'var(--text-secondary)' }
+    if (diffDays > 1 && diffDays < 7) return { text: date.toLocaleDateString('en-US', { weekday: 'long' }), color: 'var(--text-secondary)' }
+    if (diffDays < -1) return { text: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), color: '#EF4444' }
+    return { text: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), color: 'var(--text-secondary)' }
   }
 
   const formatTaskRange = (start, due) => {
-    if (!start && !due) return 'icon';
-    if (!start && due) return new Date(due).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    if (start && !due) return new Date(start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const s = new Date(start);
-    const d = new Date(due);
-    if (s.getMonth() === d.getMonth()) {
-      return `${s.getDate()} - ${d.getDate()} ${s.toLocaleDateString('en-US', { month: 'short' })}`;
-    }
-    return `${s.getDate()} ${s.toLocaleDateString('en-US', { month: 'short' })} - ${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'short' })}`;
+    if (!start && !due) return 'icon'
+    if (!start && due) return new Date(due).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    if (start && !due) return new Date(start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    const s = new Date(start)
+    const d = new Date(due)
+    if (s.getMonth() === d.getMonth()) return `${s.getDate()} - ${d.getDate()} ${s.toLocaleDateString('en-US', { month: 'short' })}`
+    return `${s.getDate()} ${s.toLocaleDateString('en-US', { month: 'short' })} - ${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'short' })}`
   }
 
-  return (
-    <div style={styles.container}>
-      {/* HEADER */}
-      <div style={styles.header}>
+  // ========================
+  // LAYOUT OPERATIONS
+  // ========================
+  const addWidget = (type) => {
+    const existing = widgetLayout.find(w => w.type === type)
+    if (existing) return
+
+    const newWidget = {
+      id: type + '-' + Date.now(),
+      type,
+      colSpan: 1,
+      rowSpan: 1,
+    }
+    const newLayout = [...widgetLayout, newWidget]
+    setWidgetLayout(newLayout)
+    saveLayout(newLayout)
+    setShowWidgetPicker(false)
+  }
+
+  const removeWidget = (widgetId) => {
+    const newLayout = widgetLayout.filter(w => w.id !== widgetId)
+    setWidgetLayout(newLayout)
+    saveLayout(newLayout)
+    setOpenMenu(null)
+  }
+
+  const toggleWidgetSize = (widgetId, prop, val) => {
+    const newLayout = widgetLayout.map(w =>
+      w.id === widgetId ? { ...w, [prop]: val } : w
+    )
+    setWidgetLayout(newLayout)
+    saveLayout(newLayout)
+    setOpenMenu(null)
+  }
+
+  // ========================
+  // DRAG & DROP
+  // ========================
+  const handleDragStart = (e, index) => {
+    setDragIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
+    // Set a small transparent image as drag image
+    const emptyImg = document.createElement('img')
+    emptyImg.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
+    e.dataTransfer.setDragImage(emptyImg, 0, 0)
+  }
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverIndex !== index) {
+      setDragOverIndex(index)
+    }
+  }
+
+  const handleDragLeave = () => {
+    // Don't clear immediately, causes flicker
+  }
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault()
+    if (dragIndex === null || dragIndex === dropIndex) {
+      setDragIndex(null)
+      setDragOverIndex(null)
+      return
+    }
+
+    const newLayout = [...widgetLayout]
+    const [draggedItem] = newLayout.splice(dragIndex, 1)
+    newLayout.splice(dropIndex, 0, draggedItem)
+
+    setWidgetLayout(newLayout)
+    saveLayout(newLayout)
+    setDragIndex(null)
+    setDragOverIndex(null)
+  }
+
+  const handleDragEnd = () => {
+    setDragIndex(null)
+    setDragOverIndex(null)
+  }
+
+  // ========================
+  // CLICK OUTSIDE MENU
+  // ========================
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (openMenu && menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openMenu])
+
+  // ========================
+  // WIDGET CONTENT RENDERERS
+  // ========================
+  const renderMyTasks = (widget) => (
+    <>
+      <div className="widget-header">
+        <div className="widget-header-left">
+          <div className="widget-user-avatar">{user?.name ? user.name.substring(0,2).toUpperCase() : 'AK'}</div>
+          <h2 className="widget-title">My tasks <span style={{fontSize:'1rem', color:'var(--text-tertiary)'}}>🔒</span></h2>
+        </div>
+        {renderWidgetMenuBtn(widget)}
+      </div>
+      <div className="widget-tabs-row">
+        {['Upcoming', `Overdue (${myOverdue.length})`, 'Completed'].map(tab => (
+          <div
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`widget-tab-item ${activeTab === tab ? 'active' : ''}`}
+          >
+            {tab}
+          </div>
+        ))}
+      </div>
+      <div className="widget-body">
+        <div className="widget-create-row">+ Create task</div>
+        {displayedMyTasks.length === 0 && <div className="widget-empty-state">No tasks in this category.</div>}
+        {displayedMyTasks.map(t => (
+          <div key={t.id} className="widget-task-row">
+            <div className="widget-task-left">
+              <div
+                className={`widget-task-checkbox ${t.isCompleted ? 'completed' : ''}`}
+                onClick={(e) => handleToggleComplete(e, t)}
+              >✓</div>
+              <span className={`widget-task-title ${t.isCompleted ? 'completed' : ''}`}>{t.title}</span>
+            </div>
+            <div className="widget-task-right">
+              <div className="widget-project-pill">
+                <div className="widget-project-pill-dot" />
+                {t.projectName}
+              </div>
+              <div className="widget-task-date">
+                {formatTaskRange(t.startDate, t.dueDate) === 'icon' ? '📅' : formatTaskRange(t.startDate, t.dueDate)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+
+  const renderProjects = (widget) => (
+    <>
+      <div className="widget-header">
+        <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
+          <h2 className="widget-title">Projects</h2>
+          <span style={{fontSize:'0.85rem', color:'var(--text-secondary)', cursor:'pointer', marginTop:'4px'}}>Recents <span style={{fontSize:'0.6rem'}}>▼</span></span>
+        </div>
+        {renderWidgetMenuBtn(widget)}
+      </div>
+      <div className="widget-projects-grid">
+        <div className="widget-create-project-card" onClick={handleCreateProject}>
+          <div className="widget-dashed-square">+</div>
+          <span style={{fontSize:'0.9rem', color:'var(--text-primary)'}}>Create project</span>
+        </div>
+        {activeProjects.map(p => (
+          <div key={p.id} className="widget-project-card" onClick={() => setSelectedProject(p)}>
+            <div className="widget-project-icon" style={{backgroundColor: p.color || '#4F46E5'}}>
+              <span>{p.icon || '📋'}</span>
+            </div>
+            <div>
+              <div className="widget-project-name">{p.name}</div>
+              <div className="widget-project-sub">{p.sections?.reduce((acc, sec) => acc + (sec.tasks?.length || 0), 0) || 0} tasks</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+
+  const renderAssignedTasks = (widget) => (
+    <>
+      <div className="widget-header">
         <div>
-          <div style={styles.headerDate}>{dateStr}</div>
-          <h1 style={styles.headerGreeting}>{greeting}, {user?.name || 'User'}</h1>
+          <h2 className="widget-title">Tasks I've assigned</h2>
+          <div className="widget-subtitle">Track work you've delegated so you can see what needs prioritizing</div>
         </div>
-        <div style={styles.headerActions}>
-          <button style={styles.headerBtn}>My week <span style={{fontSize:'0.6rem'}}>▼</span></button>
-          <button style={styles.headerBtn}><span style={{color:'var(--accent-success)'}}>✓</span> {myCompleted.length} tasks completed</button>
-          <button style={styles.headerBtn}>👥 {peopleList.length} collaborators</button>
-          <button style={{...styles.headerBtn, backgroundColor:'var(--bg-tertiary)'}}>⚙ Customize</button>
+        {renderWidgetMenuBtn(widget)}
+      </div>
+      <div className="widget-body">
+        {assignedToOthers.length === 0 && <div className="widget-empty-state">No delegated tasks found.</div>}
+        {assignedToOthers.slice(0, 5).map(t => {
+          const status = formatFriendlyDate(t.dueDate)
+          return (
+            <div key={t.id} className="widget-task-row" style={{opacity: t.isCompleted ? 0.5 : 1}}>
+              <div className="widget-task-left">
+                <div
+                  className={`widget-task-checkbox ${t.isCompleted ? 'completed' : ''}`}
+                  onClick={(e) => handleToggleComplete(e, t)}
+                >✓</div>
+                <span className={`widget-task-title ${t.isCompleted ? 'completed' : ''}`}>{t.title}</span>
+              </div>
+              <div className="widget-task-right">
+                <span style={{fontSize:'0.8rem', color: t.isCompleted ? 'var(--text-tertiary)' : status.color}}>
+                  {t.isCompleted ? 'Completed' : status.text}
+                </span>
+                <div className="widget-mini-avatar">
+                  {t.assignee?.name ? t.assignee.name.substring(0,2).toUpperCase() : '👤'}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{marginTop:'auto', paddingTop:'1rem'}}>
+        <button className="widget-outline-btn">Invite a teammate</button>
+      </div>
+    </>
+  )
+
+  const renderPeople = (widget) => (
+    <>
+      <div className="widget-header">
+        <div>
+          <h2 className="widget-title">People</h2>
+          <div className="widget-subtitle">See who's on track and who needs support at a glance.</div>
+        </div>
+        {renderWidgetMenuBtn(widget)}
+      </div>
+      <div className="widget-body">
+        {peopleList.length === 0 && <div className="widget-empty-state">No collaborators found.</div>}
+        {peopleList.map(p => {
+          const total = p.overdue + p.completed + p.upcoming
+          return (
+            <div key={p.id} className="widget-people-row">
+              <div style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
+                <div className="widget-mini-avatar">{p.user?.name ? p.user.name.substring(0,2).toUpperCase() : '👤'}</div>
+                <div className="widget-people-bar">
+                  <div className="widget-people-bar-inner">
+                    {p.overdue > 0 && <div style={{width: `${(p.overdue/total)*100}%`, backgroundColor:'var(--accent-danger)'}} />}
+                    {p.completed > 0 && <div style={{width: `${(p.completed/total)*100}%`, backgroundColor:'var(--accent-success)'}} />}
+                    {p.upcoming > 0 && <div style={{width: `${(p.upcoming/total)*100}%`, backgroundColor:'var(--border-color)'}} />}
+                  </div>
+                </div>
+              </div>
+              <div className="widget-people-stats">
+                <span style={{color: p.overdue > 0 ? 'var(--accent-danger)' : 'var(--text-tertiary)'}}>{p.overdue} overdue</span>
+                <span style={{color: p.completed > 0 ? 'var(--accent-success)' : 'var(--text-tertiary)'}}>{p.completed} completed</span>
+                <span style={{color:'var(--text-tertiary)'}}>{p.upcoming} upcoming</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{marginTop:'auto', paddingTop:'1rem'}}>
+        <button className="widget-outline-btn">Invite a teammate</button>
+      </div>
+    </>
+  )
+
+  const renderNotepad = (widget) => (
+    <>
+      <div className="widget-header">
+        <div className="widget-header-left">
+          <h2 className="widget-title">📝 Notepad</h2>
+        </div>
+        {renderWidgetMenuBtn(widget)}
+      </div>
+      <textarea
+        className="widget-notepad-textarea"
+        placeholder="Write your notes here..."
+        value={notepadContent}
+        onChange={(e) => {
+          setNotepadContent(e.target.value)
+          saveNotepad(e.target.value)
+        }}
+      />
+    </>
+  )
+
+  const renderGoals = (widget) => (
+    <>
+      <div className="widget-header">
+        <div className="widget-header-left">
+          <h2 className="widget-title">🎯 Goals</h2>
+        </div>
+        {renderWidgetMenuBtn(widget)}
+      </div>
+      <div className="widget-body">
+        {goalsData.length === 0 && <div className="widget-empty-state">No goals found. Create goals to track progress.</div>}
+        {goalsData.map(goal => {
+          const pct = goal.targetValue > 0 ? Math.round((goal.currentValue / goal.targetValue) * 100) : 0
+          const statusColor = goal.status === 'On track' ? '#10B981' : goal.status === 'At risk' ? '#F59E0B' : '#EF4444'
+          return (
+            <div key={goal.id} className="widget-goal-row">
+              <div className="widget-goal-status" style={{backgroundColor: statusColor}} />
+              <div className="widget-goal-info">
+                <div className="widget-goal-title">{goal.title}</div>
+                <div className="widget-goal-meta">{goal.status} · {goal.timePeriod || 'No period'}</div>
+              </div>
+              <div className="widget-goal-progress-bar">
+                <div className="widget-goal-progress-fill" style={{width: `${pct}%`, backgroundColor: statusColor}} />
+              </div>
+              <div className="widget-goal-percentage">{pct}%</div>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+
+  const CHART_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316']
+
+  const renderCharts = (widget) => (
+    <>
+      <div className="widget-header">
+        <div className="widget-header-left">
+          <h2 className="widget-title">📊 Charts</h2>
+        </div>
+        {renderWidgetMenuBtn(widget)}
+      </div>
+      <div className="widget-chart-container">
+        <div className="widget-chart-tabs">
+          {[
+            { key: 'by-project', label: 'By project' },
+            { key: 'by-status', label: 'By status' },
+            { key: 'trend', label: 'Completion trend' },
+          ].map(t => (
+            <button
+              key={t.key}
+              className={`widget-chart-tab ${chartTab === t.key ? 'active' : ''}`}
+              onClick={() => setChartTab(t.key)}
+            >{t.label}</button>
+          ))}
+        </div>
+        <div className="widget-chart-area">
+          {chartTab === 'by-project' && (
+            chartDataByProject.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartDataByProject} margin={{top: 5, right: 10, left: -10, bottom: 5}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                  <XAxis dataKey="name" tick={{fontSize: 11, fill: 'var(--text-secondary)'}} />
+                  <YAxis tick={{fontSize: 11, fill: 'var(--text-secondary)'}} />
+                  <Tooltip
+                    contentStyle={{background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.85rem'}}
+                    labelStyle={{color: 'var(--text-primary)'}}
+                  />
+                  <Bar dataKey="completed" fill="#10B981" radius={[4,4,0,0]} name="Completed" />
+                  <Bar dataKey="incomplete" fill="#6366F1" radius={[4,4,0,0]} name="Incomplete" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="widget-empty-state">No project data to display.</div>
+            )
+          )}
+          {chartTab === 'by-status' && (
+            chartDataByStatus.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartDataByStatus}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius="40%"
+                    outerRadius="70%"
+                    paddingAngle={3}
+                    dataKey="value"
+                    label={({ name, value }) => `${name}: ${value}`}
+                    labelLine={false}
+                  >
+                    {chartDataByStatus.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.85rem'}}
+                  />
+                  <Legend wrapperStyle={{fontSize: '0.8rem'}} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="widget-empty-state">No task data to display.</div>
+            )
+          )}
+          {chartTab === 'trend' && (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartDataCompletionTrend} margin={{top: 5, right: 10, left: -10, bottom: 5}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                <XAxis dataKey="name" tick={{fontSize: 11, fill: 'var(--text-secondary)'}} />
+                <YAxis tick={{fontSize: 11, fill: 'var(--text-secondary)'}} />
+                <Tooltip
+                  contentStyle={{background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.85rem'}}
+                  labelStyle={{color: 'var(--text-primary)'}}
+                />
+                <Line type="monotone" dataKey="completed" stroke="#10B981" strokeWidth={2} name="Completed" dot={{r: 3}} />
+                <Line type="monotone" dataKey="created" stroke="#6366F1" strokeWidth={2} name="Created" dot={{r: 3}} />
+                <Legend wrapperStyle={{fontSize: '0.8rem'}} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
+    </>
+  )
 
-      {/* 2x2 GRID */}
-      <div style={styles.grid}>
-        
-        {/* WIDGET 1: MY TASKS */}
-        <div style={styles.widgetCard}>
-          <div style={styles.widgetHeader}>
-            <div style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
-              <div style={styles.userAvatarInitials}>{user?.name ? user.name.substring(0,2).toUpperCase() : 'AK'}</div>
-              <h2 style={styles.widgetTitle}>My tasks <span style={{fontSize:'1rem', color:'var(--text-tertiary)'}}>🔒</span></h2>
-            </div>
-            <button style={styles.menuBtn}>•••</button>
-          </div>
-          
-          <div style={styles.tabsRow}>
-            {['Upcoming', `Overdue (${myOverdue.length})`, 'Completed'].map(tab => (
-              <div 
-                key={tab} 
-                onClick={() => setActiveTab(tab)}
-                style={{...styles.tabItem, borderBottom: activeTab === tab ? '2px solid var(--text-primary)' : '2px solid transparent', color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)'}}
-              >
-                {tab}
-              </div>
-            ))}
-          </div>
-          
-          <div style={styles.widgetBody}>
-            <div style={styles.createTaskRow}>+ Create task</div>
-            
-            {displayedMyTasks.length === 0 && <div style={{padding:'1rem 0', color:'var(--text-secondary)', fontSize:'0.9rem'}}>No tasks in this category.</div>}
-            
-            {displayedMyTasks.map((t, idx) => (
-              <div key={t.id} style={{...styles.taskRow, borderTop: idx !== 0 ? '1px solid var(--border-color)' : 'none'}}>
-                <div style={styles.taskRowLeft}>
-                  <div 
-                    style={{...styles.taskCheckbox, backgroundColor: t.isCompleted ? 'var(--accent-success)' : 'transparent', border: `1px solid ${t.isCompleted ? 'var(--accent-success)' : 'var(--border-color)'}`, color: t.isCompleted ? '#FFF' : 'var(--border-color)', cursor: 'pointer'}}
-                    onClick={(e) => handleToggleComplete(e, t)}
-                  >✓</div>
-                  <span style={{...styles.taskTitle, textDecoration: t.isCompleted ? 'line-through' : 'none', color: t.isCompleted ? 'var(--text-tertiary)' : 'var(--text-primary)'}}>{t.title}</span>
-                </div>
-                <div style={styles.taskRowRight}>
-                  <div style={styles.projectPill}><div style={{width:8, height:8, borderRadius:2, backgroundColor:'#34D399', marginRight:4}}/>{t.projectName}</div>
-                  <div style={styles.taskDate}>{formatTaskRange(t.startDate, t.dueDate) === 'icon' ? '📅' : formatTaskRange(t.startDate, t.dueDate)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+  const renderDraftComments = (widget) => (
+    <>
+      <div className="widget-header">
+        <div className="widget-header-left">
+          <h2 className="widget-title">💬 Draft comments</h2>
         </div>
-
-        {/* WIDGET 2: PROJECTS */}
-        <div style={styles.widgetCard}>
-          <div style={styles.widgetHeader}>
-            <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
-              <h2 style={styles.widgetTitle}>Projects</h2>
-              <span style={{fontSize:'0.85rem', color:'var(--text-secondary)', cursor:'pointer', marginTop:'4px'}}>Recents <span style={{fontSize:'0.6rem'}}>▼</span></span>
-            </div>
-            <button style={styles.menuBtn}>•••</button>
-          </div>
-          
-          <div style={styles.widgetBodyProjects}>
-            
-            {/* Create Project Card */}
-            <div style={styles.createProjectCard} onClick={handleCreateProject}>
-              <div style={styles.dashedSquare}>+</div>
-              <span style={styles.createProjectText}>Create project</span>
-            </div>
-
-            {/* Actual Projects from Database */}
-            {activeProjects.map(p => (
-              <div key={p.id} style={styles.projectCard} onClick={() => setSelectedProject(p)}>
-                <div style={{...styles.projectIconSquare, backgroundColor: p.color || '#4F46E5'}}>
-                  <span style={{color: '#FFF', fontSize:'1.2rem'}}>{p.icon || '📋'}</span>
-                </div>
-                <div style={styles.projectCardText}>
-                  <div style={styles.projectName}>{p.name}</div>
-                  <div style={styles.projectSub}>{p.sections?.reduce((acc, sec) => acc + (sec.tasks?.length || 0), 0) || 0} tasks</div>
-                </div>
-              </div>
-            ))}
-
-          </div>
-        </div>
-
-        {/* WIDGET 3: TASKS I'VE ASSIGNED */}
-        <div style={styles.widgetCard}>
-          <div style={styles.widgetHeader}>
-            <div>
-              <h2 style={styles.widgetTitle}>Tasks I've assigned</h2>
-              <div style={styles.widgetSubtitle}>Track work you've delegated so you can see what needs prioritizing</div>
-            </div>
-            <button style={styles.menuBtn}>•••</button>
-          </div>
-          
-          <div style={styles.widgetBody}>
-            {assignedToOthers.length === 0 && <div style={{padding:'1rem 0', color:'var(--text-secondary)', fontSize:'0.9rem'}}>No delegated tasks found.</div>}
-            {assignedToOthers.slice(0, 5).map((t, idx) => {
-              const status = formatFriendlyDate(t.dueDate);
-              return (
-                <div key={t.id} style={{...styles.assignedRow, opacity: t.isCompleted ? 0.5 : 1, borderTop: idx !== 0 ? '1px solid var(--border-color)' : 'none'}}>
-                  <div style={styles.assignedRowLeft}>
-                    <div 
-                      style={{...styles.taskCheckbox, backgroundColor: t.isCompleted ? 'var(--accent-success)' : 'transparent', border: `1px solid ${t.isCompleted ? 'var(--accent-success)' : 'var(--border-color)'}`, color: t.isCompleted ? '#FFF' : 'var(--border-color)', cursor: 'pointer'}}
-                      onClick={(e) => handleToggleComplete(e, t)}
-                    >✓</div>
-                    <span style={{...styles.assignedTaskTitle, textDecoration: t.isCompleted ? 'line-through' : 'none'}}>{t.title}</span>
-                  </div>
-                  <div style={styles.assignedRowRight}>
-                    <span style={{fontSize:'0.8rem', color: t.isCompleted ? 'var(--text-tertiary)' : status.color}}>{t.isCompleted ? 'Completed' : status.text}</span>
-                    <div style={{...styles.miniAvatar, color:'var(--text-primary)'}}>{t.assignee?.name ? t.assignee.name.substring(0,2).toUpperCase() : '👤'}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <div style={{marginTop:'auto', paddingTop:'1rem'}}>
-            <button style={styles.outlineBtn}>Invite a teammate</button>
-          </div>
-        </div>
-
-        {/* WIDGET 4: PEOPLE */}
-        <div style={styles.widgetCard}>
-          <div style={styles.widgetHeader}>
-            <div>
-              <h2 style={styles.widgetTitle}>People</h2>
-              <div style={styles.widgetSubtitle}>See who's on track and who needs support at a glance.</div>
-            </div>
-            <button style={styles.menuBtn}>•••</button>
-          </div>
-          
-          <div style={styles.widgetBody}>
-            {peopleList.length === 0 && <div style={{padding:'1rem 0', color:'var(--text-secondary)', fontSize:'0.9rem'}}>No collaborators found.</div>}
-            {peopleList.map((p, idx) => (
-              <div key={p.id} style={{...styles.peopleRow}}>
-                <div style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
-                  <div style={{...styles.miniAvatar, color:'var(--text-primary)'}}>{p.user?.name ? p.user.name.substring(0,2).toUpperCase() : '👤'}</div>
-                  <div style={styles.blurredBar}>
-                    {/* Basic visual bar logic representing workload */}
-                    <div style={{display:'flex', height:'100%', borderRadius:'6px', overflow:'hidden'}}>
-                      {p.overdue > 0 && <div style={{width: `${(p.overdue/(p.overdue+p.completed+p.upcoming))*100}%`, backgroundColor:'var(--accent-danger)'}}></div>}
-                      {p.completed > 0 && <div style={{width: `${(p.completed/(p.overdue+p.completed+p.upcoming))*100}%`, backgroundColor:'var(--accent-success)'}}></div>}
-                      {p.upcoming > 0 && <div style={{width: `${(p.upcoming/(p.overdue+p.completed+p.upcoming))*100}%`, backgroundColor:'var(--border-color)'}}></div>}
-                    </div>
-                  </div>
-                </div>
-                <div style={styles.peopleStats}>
-                  <span style={{color: p.overdue > 0 ? 'var(--accent-danger)' : 'var(--text-tertiary)'}}>{p.overdue} overdue</span>
-                  <span style={{color: p.completed > 0 ? 'var(--accent-success)' : 'var(--text-tertiary)'}}>{p.completed} completed</span>
-                  <span style={{color:'var(--text-tertiary)'}}>{p.upcoming} upcoming</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{marginTop:'auto', paddingTop:'1rem'}}>
-            <button style={styles.outlineBtn}>Invite a teammate</button>
-          </div>
-        </div>
-
+        {renderWidgetMenuBtn(widget)}
       </div>
+      <div className="widget-body">
+        <div className="widget-empty-state" style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flex:1, textAlign:'center', gap:'0.5rem', padding:'2rem 0'}}>
+          <span style={{fontSize:'2rem'}}>💬</span>
+          <span>Your draft comments on tasks will appear here</span>
+        </div>
+      </div>
+    </>
+  )
+
+  const renderForms = (widget) => {
+    const projectsWithForms = safeProjects.filter(p => p.formSettings)
+    return (
+      <>
+        <div className="widget-header">
+          <div className="widget-header-left">
+            <h2 className="widget-title">📋 Forms</h2>
+          </div>
+          {renderWidgetMenuBtn(widget)}
+        </div>
+        <div className="widget-body">
+          {projectsWithForms.length === 0 ? (
+            <div className="widget-empty-state" style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flex:1, textAlign:'center', gap:'0.5rem', padding:'2rem 0'}}>
+              <span style={{fontSize:'2rem'}}>📋</span>
+              <span>Create forms in your projects to collect information</span>
+            </div>
+          ) : (
+            projectsWithForms.map(p => (
+              <div key={p.id} className="widget-task-row" style={{cursor:'pointer'}} onClick={() => setSelectedProject(p)}>
+                <div className="widget-task-left">
+                  <div className="widget-project-icon" style={{backgroundColor: p.color || '#4F46E5', width: 28, height: 28, borderRadius: 6}}>
+                    <span style={{fontSize:'0.8rem'}}>{p.icon || '📋'}</span>
+                  </div>
+                  <span className="widget-task-title">{p.name} form</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </>
+    )
+  }
+
+  // ========================
+  // WIDGET MENU BUTTON
+  // ========================
+  const renderWidgetMenuBtn = (widget) => (
+    <div style={{position:'relative'}} ref={openMenu === widget.id ? menuRef : null}>
+      <button className="widget-menu-btn" onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === widget.id ? null : widget.id) }}>•••</button>
+      {openMenu === widget.id && (
+        <div className="widget-menu-dropdown" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="widget-menu-item"
+            onClick={() => toggleWidgetSize(widget.id, 'colSpan', widget.colSpan === 2 ? 1 : 2)}
+          >
+            {widget.colSpan === 2 ? '↔ Half width' : '↔ Full width'}
+          </button>
+          <button
+            className="widget-menu-item"
+            onClick={() => toggleWidgetSize(widget.id, 'rowSpan', widget.rowSpan === 2 ? 1 : 2)}
+          >
+            {widget.rowSpan === 2 ? '↕ Short' : '↕ Tall'}
+          </button>
+          <div className="widget-menu-divider" />
+          <button className="widget-menu-item danger" onClick={() => removeWidget(widget.id)}>
+            ✕ Remove widget
+          </button>
+        </div>
+      )}
     </div>
   )
-}
 
-const styles = {
-  container: { backgroundColor: 'var(--bg-secondary)', height: '100%', padding: '2rem 3rem 6rem 3rem', fontFamily: 'system-ui', boxSizing: 'border-box', overflowY: 'auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' },
-  headerDate: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' },
-  headerGreeting: { fontSize: '2rem', fontWeight: '400', margin: 0, color: 'var(--text-primary)' },
-  headerActions: { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' },
-  headerBtn: { padding: '0.4rem 0.8rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' },
-  grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'start' },
-  
-  widgetCard: { backgroundColor: 'var(--bg-primary)', borderRadius: '12px', border: '1px solid var(--border-color)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '1.5rem', paddingRight: '1rem', display: 'flex', flexDirection: 'column', height: '400px' },
-  widgetHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' },
-  widgetTitle: { fontSize: '1.25rem', fontWeight: '400', margin: 0, color: 'var(--text-primary)' },
-  widgetSubtitle: { fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.5rem' },
-  menuBtn: { background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 0.5rem' },
-  userAvatarInitials: { width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#FBCFE8', color: '#BE185D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: '600' },
-  
-  tabsRow: { display: 'flex', gap: '1.5rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1rem' },
-  tabItem: { paddingBottom: '0.5rem', fontSize: '0.9rem', cursor: 'pointer', fontWeight: '500' },
-  
-  widgetBody: { display: 'flex', flexDirection: 'column', overflowY: 'auto', flex: 1, paddingRight: '0.5rem' },
-  createTaskRow: { padding: '0.75rem 0', color: 'var(--text-secondary)', fontSize: '0.9rem', cursor: 'pointer' },
-  
-  taskRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0' },
-  taskRowLeft: { display: 'flex', alignItems: 'center', gap: '0.75rem' },
-  taskCheckbox: { width: '18px', height: '18px', border: '1px solid var(--border-color)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'var(--text-tertiary)' },
-  taskTitle: { fontSize: '0.9rem', color: 'var(--text-primary)' },
-  taskRowRight: { display: 'flex', alignItems: 'center', gap: '1rem' },
-  projectPill: { display: 'flex', alignItems: 'center', backgroundColor: '#A7F3D0', color: '#065F46', fontSize: '0.75rem', padding: '0.1rem 0.5rem', borderRadius: '12px' },
-  taskDate: { fontSize: '0.8rem', color: 'var(--text-secondary)', width: '60px', textAlign: 'right' },
+  // ========================
+  // RENDER WIDGET CONTENT
+  // ========================
+  const renderWidgetContent = (widget) => {
+    switch (widget.type) {
+      case 'my-tasks': return renderMyTasks(widget)
+      case 'projects': return renderProjects(widget)
+      case 'assigned-tasks': return renderAssignedTasks(widget)
+      case 'people': return renderPeople(widget)
+      case 'notepad': return renderNotepad(widget)
+      case 'goals': return renderGoals(widget)
+      case 'charts': return renderCharts(widget)
+      case 'draft-comments': return renderDraftComments(widget)
+      case 'forms': return renderForms(widget)
+      default: return <div className="widget-empty-state">Unknown widget type</div>
+    }
+  }
 
-  widgetBodyProjects: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', marginTop: '0.5rem', overflowY: 'auto', flex: 1, alignContent: 'start', paddingRight: '0.5rem' },
-  createProjectCard: { display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' },
-  dashedSquare: { width: '48px', height: '48px', border: '1px dashed var(--text-tertiary)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '1.5rem' },
-  createProjectText: { fontSize: '0.9rem', color: 'var(--text-primary)' },
-  
-  projectCard: { display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' },
-  projectIconSquare: { width: '48px', height: '48px', backgroundColor: '#6EE7B7', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  projectCardText: { display: 'flex', flexDirection: 'column' },
-  projectName: { fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: '500' },
-  projectSub: { fontSize: '0.8rem', color: 'var(--text-secondary)' },
+  // ========================
+  // ACTIVE WIDGET TYPES (for picker)
+  // ========================
+  const activeWidgetTypes = widgetLayout.map(w => w.type)
 
-  assignedRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0' },
-  assignedRowLeft: { display: 'flex', alignItems: 'center', gap: '0.75rem' },
-  assignedTaskTitle: { fontSize: '0.9rem', color: 'var(--text-primary)' },
-  assignedRowRight: { display: 'flex', alignItems: 'center', gap: '0.75rem' },
-  miniAvatar: { width: '24px', height: '24px', borderRadius: '50%', backgroundColor: 'var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' },
+  // ========================
+  // RENDER
+  // ========================
+  return (
+    <div className="dashboard-container">
+      {/* HEADER */}
+      <div className="dashboard-header">
+        <div>
+          <div className="dashboard-header-date">{dateStr}</div>
+          <h1 className="dashboard-header-greeting">{greeting}, {user?.name || 'User'}</h1>
+        </div>
+        <div className="dashboard-header-actions">
+          <button className="dashboard-header-btn">My week <span style={{fontSize:'0.6rem'}}>▼</span></button>
+          <button className="dashboard-header-btn"><span style={{color:'var(--accent-success)'}}>✓</span> {myCompleted.length} tasks completed</button>
+          <button className="dashboard-header-btn">👥 {peopleList.length} collaborators</button>
+          <button className="dashboard-header-btn customize-btn" onClick={() => setShowWidgetPicker(true)}>
+            ⚙ Customize
+          </button>
+        </div>
+      </div>
 
-  peopleRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0' },
-  blurredBar: { width: '120px', height: '12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px' },
-  peopleStats: { display: 'flex', gap: '0.75rem', fontSize: '0.8rem' },
+      {/* GRID */}
+      <div className={`dashboard-grid ${dragIndex !== null ? 'is-dragging' : ''}`}>
+        {widgetLayout.map((widget, index) => (
+          <div
+            key={widget.id}
+            className={`dashboard-widget ${widget.colSpan === 2 ? 'span-2' : ''} ${widget.rowSpan === 2 ? 'row-2' : 'row-1'} ${dragIndex === index ? 'widget-dragging' : ''} ${dragOverIndex === index && dragIndex !== index ? 'widget-drop-target' : ''}`}
+            draggable
+            onDragStart={(e) => handleDragStart(e, index)}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, index)}
+            onDragEnd={handleDragEnd}
+            style={{
+              border: dragOverIndex === index && dragIndex !== index ? '2px dashed var(--accent-primary)' : undefined,
+              background: dragOverIndex === index && dragIndex !== index ? 'rgba(79, 70, 229, 0.04)' : undefined,
+            }}
+          >
+            {/* Drag Handle */}
+            <div className="widget-drag-handle">
+              <div className="widget-drag-handle-dots">
+                <span /><span /><span /><span /><span /><span />
+              </div>
+            </div>
 
-  outlineBtn: { padding: '0.4rem 1rem', border: '1px solid var(--border-color)', backgroundColor: 'transparent', borderRadius: '6px', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: '500' }
+            {/* Remove Button */}
+            <button className="widget-remove-btn" onClick={() => removeWidget(widget.id)} title="Remove widget">✕</button>
+
+            {/* Resize Handle */}
+            <div
+              className="widget-resize-handle"
+              onMouseDown={(e) => {
+                e.stopPropagation()
+                // Toggle size on double click as a simple resize mechanic
+              }}
+              onDoubleClick={() => {
+                const newColSpan = widget.colSpan === 2 ? 1 : 2
+                toggleWidgetSize(widget.id, 'colSpan', newColSpan)
+              }}
+              title="Double-click to toggle width"
+            />
+
+            {/* Widget Content */}
+            {renderWidgetContent(widget)}
+          </div>
+        ))}
+      </div>
+
+      {/* WIDGET PICKER MODAL */}
+      {showWidgetPicker && (
+        <div className="widget-picker-overlay" onClick={() => setShowWidgetPicker(false)}>
+          <div className="widget-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="widget-picker-header">
+              <h2>Add widget</h2>
+              <button className="widget-picker-close" onClick={() => setShowWidgetPicker(false)}>✕</button>
+            </div>
+            <div className="widget-picker-body">
+              <div className="widget-picker-grid">
+                {WIDGET_REGISTRY.map(reg => {
+                  const isActive = activeWidgetTypes.includes(reg.type)
+                  return (
+                    <div
+                      key={reg.type}
+                      className={`widget-picker-card ${isActive ? 'disabled' : ''}`}
+                      onClick={() => !isActive && addWidget(reg.type)}
+                    >
+                      <div className="widget-picker-icon" style={{backgroundColor: reg.color}}>
+                        {reg.icon}
+                      </div>
+                      <div className="widget-picker-info">
+                        <h3>{reg.label}{isActive ? ' ✓' : ''}</h3>
+                        <p>{reg.description}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

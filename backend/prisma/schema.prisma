@@ -37,6 +37,7 @@ model User {
   
   commentReactions CommentReaction[]
   activities    TaskActivity[]
+  dashboardLayout DashboardLayout?
 }
 
 model Workspace {
@@ -479,4 +480,16 @@ model Attachment {
   task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   uploaderId   String
   uploader     User     @relation("UploadedAttachments", fields: [uploaderId], references: [id], onDelete: Cascade)
+}
+
+// --- DASHBOARD LAYOUT (Per-user widget layout) ---
+model DashboardLayout {
+  id        String   @id @default(uuid())
+  layout    Json     // Array of widget positions: [{ id, type, col, row, colSpan, rowSpan }]
+  notepad   String?  @default("") // Notepad widget content
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

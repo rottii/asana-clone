@@ -1170,6 +1170,20 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           }
         });
         groupsMap['empty'] = { id: 'group-empty', name: 'Empty', tasks: [] };
+      } else if (cf && cf.type === 'github_pr') {
+        const statuses = [
+          { key: 'Merged', sortValue: 1 },
+          { key: 'Approved', sortValue: 2 },
+          { key: 'Changes requested', sortValue: 3 },
+          { key: 'In review', sortValue: 4 },
+          { key: 'No reviews', sortValue: 5 },
+          { key: 'Open', sortValue: 6 },
+          { key: 'Closed', sortValue: 7 }
+        ];
+        statuses.forEach(s => {
+          groupsMap[s.key] = { id: `group-${s.key}`, name: s.key, tasks: [], sortValue: s.sortValue };
+        });
+        groupsMap['empty'] = { id: 'group-empty', name: 'Empty', tasks: [], sortValue: 99 };
       }
     }
 
@@ -1225,6 +1239,25 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           const customFieldsList = Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings : [];
           const cf = customFieldsList.find(f => f.title === activeGroup);
           if (cf) {
+            if (cf.type === 'github_pr') {
+              let prs = [];
+              if (typeof task.githubPRs === 'string') { try { prs = JSON.parse(task.githubPRs); } catch (e) { } } else if (task.githubPRs) { prs = task.githubPRs; }
+              
+              if (!prs || prs.length === 0) return { key: 'empty', name: 'Empty' };
+              
+              const firstPr = prs[0];
+              let label = '';
+              if (firstPr.merged) label = 'Merged';
+              else if (firstPr.state === 'closed') label = 'Closed';
+              else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
+              else label = 'Open';
+              
+              const sortValueMap = { 'Merged': 1, 'Approved': 2, 'Changes requested': 3, 'In review': 4, 'No reviews': 5, 'Open': 6, 'Closed': 7 };
+              const sortVal = sortValueMap[label] || 8;
+              
+              return { key: label, name: label, sortValue: sortVal };
+            }
+
             let taskFields = {};
             if (typeof task.customFields === 'string') { try { taskFields = JSON.parse(task.customFields); } catch (e) { } } else if (task.customFields) taskFields = task.customFields;
             const val = taskFields[cf.id];
@@ -1503,12 +1536,41 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#818CF8'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6366F1'}
                 >
-                  <span style={{ fontWeight: '700' }}>+</span> Add widget <span style={{ fontSize: '0.6rem' }}>▼</span>
+                  <span style={{ fontWeight: '700' }}>+</span> Add widget
                 </button>
                 {isAddWidgetMenuOpen && (
-                  <div style={styles.addWidgetDropdownMenu} onClick={(e) => e.stopPropagation()}>
-                    <div style={styles.addWidgetDropdownItem}>Chart</div>
-                    <div style={styles.addWidgetDropdownItem}>Text</div>
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    marginTop: '4px',
+                    background: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                    zIndex: 10001,
+                    minWidth: '160px',
+                    padding: '4px 0',
+                    animation: 'fadeIn 0.15s ease',
+                  }}>
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 16px', border: 'none', background: 'none', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      onClick={() => { setIsAddWidgetMenuOpen(false); window.dispatchEvent(new CustomEvent('openAddChartModal')); }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="6" width="4" height="15" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
+                      Chart
+                    </button>
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 16px', border: 'none', background: 'none', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      onClick={() => { setIsAddWidgetMenuOpen(false); window.dispatchEvent(new CustomEvent('openAddTextWidget')); }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+                      Text
+                    </button>
                   </div>
                 )}
               </div>
@@ -1914,7 +1976,11 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           handleTopAddTaskGlobal={handleTopAddTaskGlobal}
         />
       ) : activeViewObj.type === 'Dashboard' ? (
-        <ProjectDashboardView selectedProject={selectedProject} />
+        <ProjectDashboardView 
+          selectedProject={selectedProject} 
+          showPicker={isAddWidgetMenuOpen}
+          setShowPicker={setIsAddWidgetMenuOpen}
+        />
       ) : activeViewObj.type === 'Calendar' ? (
         <ProjectCalendarView selectedProject={selectedProject} applyTaskFilter={applyTaskFilter} applyTaskSort={applyTaskSort} onOpenTaskPane={setActiveTaskPaneId} handleTaskUpdate={handleTaskUpdate} token={token} />
       ) : activeViewObj.type === 'Timeline' ? (

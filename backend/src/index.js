@@ -14,6 +14,7 @@ const goalsRoutes = require('./routes/goals');
 const tagsRoutes = require('./routes/tags');
 const reportingRoutes = require('./routes/reporting');
 const workspacesRoutes = require('./routes/workspaces');
+const dashboardRoutes = require('./routes/dashboard');
 const { startCronScheduler } = require('./utils/cronScheduler');
 const { startReminderCron } = require('./utils/reminders');
 
@@ -77,6 +78,7 @@ app.use('/api/tags', tagsRoutes);
 app.use('/api/reporting', reportingRoutes);
 app.use('/api/search', require('./routes/search'));
 app.use('/api/workspaces', workspacesRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/github', require('./routes/github'));
 
 // Health Check

@@ -346,9 +346,19 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
           {(value||'').split(':')[0] && (
             <select className="node-value-selector" style={{ margin: 0 }} value={(value||'').split(':')[1] || ''} onChange={e => onChange(`${(value||'').split(':')[0]}:${e.target.value}`)}>
               <option value="">Select value...</option>
-              {customFields.find(cf => (cf.id || cf.title || cf.name) === (value||'').split(':')[0])?.options?.map(opt => (
-                <option key={opt.id || opt.label} value={opt.label || opt}>{opt.label || opt}</option>
-              ))}
+              {(() => {
+                const selectedCf = customFields.find(cf => (cf.id || cf.title || cf.name) === (value||'').split(':')[0]);
+                if (!selectedCf) return null;
+                if (selectedCf.type === 'github_pr') {
+                  const prStatuses = ['Merged', 'Approved', 'Changes requested', 'In review', 'No reviews', 'Open', 'Closed'];
+                  return prStatuses.map(status => (
+                    <option key={status} value={status}>{status}</option>
+                  ));
+                }
+                return selectedCf.options?.map(opt => (
+                  <option key={opt.id || opt.label} value={opt.label || opt.value || opt}>{opt.label || opt.value || opt}</option>
+                ));
+              })()}
             </select>
           )}
         </div>

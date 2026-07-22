@@ -1,1 +1,0 @@
-const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.rule.deleteMany().then(() => console.log('Rules deleted')).catch(console.error).finally(() => prisma.$disconnect());

@@ -203,6 +203,17 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
     }
   }
 
+  const getParsedGithubPRs = (prs) => {
+    if (!prs) return [];
+    if (typeof prs === 'string') {
+      try { return JSON.parse(prs); } catch (e) { return []; }
+    }
+    return prs;
+  };
+  const githubPRsCount = getParsedGithubPRs(task.githubPRs).length;
+  const attachmentsCount = task.attachments?.length || 0;
+  const totalFilesCount = attachmentsCount + githubPRsCount;
+
   return (
     <div
       ref={cardRef}
@@ -386,7 +397,11 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
           const parsedFields = getParsedCustomFields(task.customFields);
           const value = parsedFields[cf.id];
           const cfType = cf.type || 'single-select';
-          const isEmpty = !value || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0);
+          
+          let isEmpty = !value || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0);
+          if (cfType === 'github_pr') {
+             isEmpty = getParsedGithubPRs(task.githubPRs).length === 0;
+          }
 
           if (isEmpty && !isEditingMode) return null;
 
@@ -636,6 +651,38 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
             );
           }
 
+          // GITHUB_PR
+          if (cfType === 'github_pr') {
+            const prs = getParsedGithubPRs(task.githubPRs);
+            if (prs.length === 0 && !isEditingMode) return null;
+            if (prs.length === 0 && isEditingMode) return <span key={cf.id} style={{ ...styles.staticCustomBadge, opacity: 0.7 }}>🐙 GitHub PR</span>;
+
+            const firstPr = prs[0];
+            let statusColor = '#6E7681'; 
+            if (firstPr.state === 'closed' && firstPr.merged) statusColor = '#8250DF'; 
+            else if (firstPr.state === 'closed') statusColor = '#CF222E'; 
+            else if (firstPr.reviewStatus === 'Approved') statusColor = '#2DA44E'; 
+            else if (firstPr.reviewStatus === 'Changes requested') statusColor = '#CF222E'; 
+            else statusColor = '#1A7F37'; 
+            
+            let label = '';
+            if (firstPr.merged) label = 'Merged';
+            else if (firstPr.state === 'closed') label = 'Closed';
+            else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
+            else label = 'Open';
+
+            if (prs.length > 1) label += ` (+${prs.length - 1})`;
+
+            return (
+              <span key={cf.id} style={{ ...styles.staticCustomBadge, backgroundColor: 'transparent', color: statusColor, border: `1px solid ${statusColor}`, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                  <path fillRule="evenodd" d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.25 2.25 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 7.425A3.155 3.155 0 0012.75 12h.75a.75.75 0 01.75.75v.5a.75.75 0 01-.75.75H12a4.655 4.655 0 01-4.655-4.655V5.372a2.25 2.25 0 111.5 0v3.983c0 .713.273 1.398.75 1.916V7.425z"></path>
+                </svg>
+                {label}
+              </span>
+            );
+          }
+
           // TIMER
           if (cfType === 'timer') {
             const timerData = (typeof value === 'object' && value !== null) ? value : { elapsed: 0, running: false, lastStart: null };
@@ -726,9 +773,9 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {task.attachments?.length > 0 && (
+          {totalFilesCount > 0 && (
             <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-              📎 {task.attachments.length}
+              📎 {totalFilesCount}
             </span>
           )}
           <span
