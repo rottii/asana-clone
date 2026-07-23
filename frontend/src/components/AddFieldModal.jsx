@@ -113,7 +113,7 @@ export default function AddFieldModal({ onClose, onCreateField, onUpdateField, e
               <label style={styles.fieldLabel}>Field title <span style={{ color: '#EF4444' }}>*</span></label>
               <input
                 type="text"
-                placeholder="Priority, Stage, Status..."
+                placeholder="Stage, Status, Cost..."
                 value={fieldTitle}
                 onChange={e => setFieldTitle(e.target.value)}
                 style={styles.mainInput}

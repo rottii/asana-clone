@@ -153,17 +153,34 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
                 </div>
               </div>
               <div className="bp-col-members">
-                <div className="bp-member-avatar">
-                  {user?.name?.[0]?.toUpperCase() || 'A'}k
-                </div>
-                <div className="bp-member-more">...</div>
+                {project.members && project.members.length > 0 ? (
+                  <>
+                    {project.members.slice(0, 3).map((m, i) => (
+                      <div key={i} className="bp-member-avatar" title={m.user?.name}>
+                        {m.user?.name?.[0]?.toUpperCase() || '?'}
+                      </div>
+                    ))}
+                    {project.members.length > 3 && (
+                      <div className="bp-member-more">+{project.members.length - 3}</div>
+                    )}
+                  </>
+                ) : (
+                  <div className="bp-member-avatar" title={project.owner?.name || 'Owner'}>
+                    {project.owner?.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                )}
               </div>
               <div className="bp-col-portfolios">
-                {/* Dummy portfolio for visual match */}
-                {index === 1 ? <span className="bp-portfolio-pill">📁 My first portfolio</span> : ''}
+                {project.portfolios && project.portfolios.length > 0 ? (
+                  project.portfolios.map(pItem => (
+                    <span key={pItem.portfolio?.id} className="bp-portfolio-pill">📁 {pItem.portfolio?.name}</span>
+                  ))
+                ) : ''}
               </div>
               <div className="bp-col-lastmod bp-text-muted">
-                Today
+                {project.updatedAt 
+                  ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(project.updatedAt)) 
+                  : 'N/A'}
               </div>
             </div>
           ))}

@@ -22,6 +22,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [activeTab, setActiveTab] = useState('comments');
+  const [activityTab, setActivityTab] = useState('all');
   const [openSectionMenuId, setOpenSectionMenuId] = useState(null);
   const [hoveredCommentId, setHoveredCommentId] = useState(null);
   const [reactionPickerId, setReactionPickerId] = useState(null);
@@ -1229,6 +1230,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                               let statusColor = '#6E7681'; 
                               if (firstPr.state === 'closed' && firstPr.merged) statusColor = '#8250DF'; 
                               else if (firstPr.state === 'closed') statusColor = '#CF222E'; 
+                              else if (firstPr.draft) statusColor = '#6E7681'; 
                               else if (firstPr.reviewStatus === 'Approved') statusColor = '#2DA44E'; 
                               else if (firstPr.reviewStatus === 'Changes requested') statusColor = '#CF222E'; 
                               else statusColor = '#1A7F37'; 
@@ -1236,6 +1238,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                               let label = '';
                               if (firstPr.merged) label = 'Merged';
                               else if (firstPr.state === 'closed') label = 'Closed';
+                              else if (firstPr.draft) label = 'Draft';
                               else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
                               else label = 'Open';
                   
@@ -1402,7 +1405,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                       </div>
                       <div style={styles.githubMetricCol}>
                         <div style={styles.githubMetricLabel}>PR status</div>
-                        <div style={styles.githubMetricValue}>{pr.state === 'open' ? 'Open' : (pr.merged ? 'Merged' : 'Closed')}</div>
+                        <div style={styles.githubMetricValue}>{pr.state === 'open' ? (pr.draft ? 'Draft' : 'Open') : (pr.merged ? 'Merged' : 'Closed')}</div>
                       </div>
                       <div style={styles.githubMetricCol}>
                         <div style={styles.githubMetricLabel}>Line changes</div>
@@ -1529,13 +1532,34 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
           {/* COMMENTS & ACTIVITY SECTION */}
           <div style={styles.commentsSection}>
-            <div style={styles.sectionTitle}>Comments & Activity</div>
+            <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1rem' }}>
+              <button 
+                onClick={() => setActivityTab('comments')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: activityTab === 'comments' ? '600' : '400', color: activityTab === 'comments' ? 'var(--text-primary)' : 'var(--text-secondary)', borderBottom: activityTab === 'comments' ? '2px solid var(--text-primary)' : '2px solid transparent', paddingBottom: '0.5rem' }}
+              >
+                Comments
+              </button>
+              <button 
+                onClick={() => setActivityTab('all')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: activityTab === 'all' ? '600' : '400', color: activityTab === 'all' ? 'var(--text-primary)' : 'var(--text-secondary)', borderBottom: activityTab === 'all' ? '2px solid var(--text-primary)' : '2px solid transparent', paddingBottom: '0.5rem' }}
+              >
+                All Activity
+              </button>
+            </div>
             <div style={styles.commentList}>
               {(() => {
-                const combinedFeed = [
+                let combinedFeed = [
                   ...(task.comments || []).map(c => ({ ...c, type: 'comment' })),
                   ...(task.activities || []).map(a => ({ ...a, type: 'activity' }))
                 ].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+                if (activityTab === 'comments') {
+                  combinedFeed = combinedFeed.filter(item => item.type === 'comment');
+                }
+
+                if (combinedFeed.length === 0) {
+                  return <div style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', fontStyle: 'italic' }}>No activity yet.</div>;
+                }
 
                 return combinedFeed.map(item => {
                   if (item.type === 'comment') {

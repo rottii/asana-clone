@@ -172,9 +172,6 @@ const checkConditions = async (conditions, taskId, projectId) => {
         case 'custom_field_is':
           const [fieldId, fieldValue] = condition.value.split(':');
           let cfMatched = false;
-          if (fieldId === 'Priority') {
-             cfMatched = task.priority === fieldValue;
-          } else {
              try {
                let parsed = JSON.parse(task.customFields || '{}');
                if (Array.isArray(parsed)) {
@@ -193,6 +190,7 @@ const checkConditions = async (conditions, taskId, projectId) => {
                     let label = 'Open';
                     if (firstPr.merged) label = 'Merged';
                     else if (firstPr.state === 'closed') label = 'Closed';
+                    else if (firstPr.draft) label = 'Draft';
                     else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
                     
                     if (label === fieldValue) cfMatched = true;
@@ -200,7 +198,6 @@ const checkConditions = async (conditions, taskId, projectId) => {
                     cfMatched = true;
                 }
              }
-          }
           if (!cfMatched) return false;
           break;
         case 'task_has_attachment':
@@ -373,9 +370,6 @@ const executeAction = async (actionType, actionValue, taskId, projectId) => {
     } else if (actionType === 'change_custom_field' && actionValue) {
       const [fieldId, fieldValue] = actionValue.split(':');
       if (fieldId && fieldValue) {
-        if (fieldId === 'Priority') {
-          await prisma.task.update({ where: { id: taskId }, data: { priority: fieldValue } });
-        } else {
           const task = await prisma.task.findUnique({ where: { id: taskId } });
           if (task) {
             let customFields = {};
@@ -396,7 +390,6 @@ const executeAction = async (actionType, actionValue, taskId, projectId) => {
           }
         }
       }
-    }
     console.log(`[Rule Engine] Task ${taskId} executed action ${actionType}`);
   } catch (actionErr) {
     console.error(`[Rule Engine] Failed to execute action ${actionType} for task ${taskId}:`, actionErr);

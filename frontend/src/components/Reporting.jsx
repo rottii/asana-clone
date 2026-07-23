@@ -132,30 +132,7 @@ export default function Reporting({ token }) {
             )}
           </div>
 
-          {/* Tasks by Priority */}
-          <div style={styles.chartCard}>
-            <div style={styles.chartTitle}>Tasks by Priority</div>
-            <div style={styles.barContainer}>
-              {metrics.priorityStats.map((p, idx) => {
-                const max = Math.max(...metrics.priorityStats.map(x => x.value), 1);
-                const w = (p.value / max) * 100;
-                let color = 'var(--accent-primary)';
-                if (p.name === 'HIGH') color = 'var(--accent-danger)';
-                if (p.name === 'LOW') color = 'var(--accent-success)';
-                if (p.name === 'MEDIUM') color = '#F59E0B';
-                
-                return (
-                  <div key={idx} style={styles.barRow}>
-                    <div style={styles.barLabel}>{p.name}</div>
-                    <div style={styles.barTrack}>
-                      <div style={{ ...styles.barFill, backgroundColor: color, width: `${w}%` }} />
-                    </div>
-                    <div style={styles.barValue}>{p.value}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+
         </div>
       </div>
     </div>

@@ -6,17 +6,7 @@ const router = express.Router();
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
 
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Giriş yapmanız gerekiyor.' });
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Geçersiz token.' });
-    req.user = user;
-    next();
-  });
-};
+const { authenticateToken } = require('../middleware/auth');
 
 router.get('/', authenticateToken, async (req, res) => {
   try {

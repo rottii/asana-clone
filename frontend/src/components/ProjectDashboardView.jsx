@@ -28,7 +28,6 @@ const CHART_REGISTRY = [
   { type: 'overdue-tasks', label: 'Overdue tasks', icon: '⚠️', color: '#FECACA', category: 'status', description: 'Bar chart of overdue tasks per section' },
   { type: 'completion-over-time', label: 'Completion over time', icon: '📈', color: '#CFFAFE', category: 'status', description: 'Line chart of tasks completed over last 7 days' },
   // Workload & distribution
-  { type: 'tasks-by-priority', label: 'Tasks by priority', icon: '🔺', color: '#FDE68A', category: 'workload', description: 'Donut chart of task priority distribution' },
   { type: 'upcoming-deadlines', label: 'Upcoming deadlines', icon: '📅', color: '#FED7AA', category: 'workload', description: 'Tasks due in the next 7 days per day' },
   { type: 'unassigned-tasks', label: 'Unassigned tasks', icon: '❓', color: '#E5E7EB', category: 'workload', description: 'Tasks without an assignee by section' },
 ];
@@ -78,13 +77,12 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
   const {
     totalTasks, completedTasks, incompleteTasks,
     tasksBySection, tasksByAssignee, tasksByStatus,
-    overdueTasks, completionOverTime, tasksByPriority,
+    overdueTasks, completionOverTime,
     upcomingDeadlines, unassignedBySection, allTasks
   } = useMemo(() => {
     let total = 0, completed = 0, incomplete = 0;
     const bySection = [];
     const assigneeMap = {};
-    const priorityMap = {};
     const now = new Date(); now.setHours(0, 0, 0, 0);
     const overdueBySection = [];
     const unassignedMap = [];
@@ -110,9 +108,6 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
         const name = task.assignee?.name || 'Unassigned';
         assigneeMap[name] = (assigneeMap[name] || 0) + 1;
 
-        // Priority
-        const p = task.priority || 'MEDIUM';
-        priorityMap[p] = (priorityMap[p] || 0) + 1;
       });
 
       bySection.push({ name: sec.name, Completed: secCompleted, Incomplete: secTotal - secCompleted });
@@ -121,7 +116,6 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     });
 
     const byAssignee = Object.entries(assigneeMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-    const byPriority = Object.entries(priorityMap).map(([name, value]) => ({ name: name.charAt(0) + name.slice(1).toLowerCase(), value }));
 
     // Status pie
     const byStatus = [
@@ -159,7 +153,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
       totalTasks: total, completedTasks: completed, incompleteTasks: incomplete,
       tasksBySection: bySection, tasksByAssignee: byAssignee, tasksByStatus: byStatus,
       overdueTasks: overdueBySection, completionOverTime: completionDays,
-      tasksByPriority: byPriority, upcomingDeadlines: upcoming,
+      upcomingDeadlines: upcoming,
       unassignedBySection: unassignedMap, allTasks: tasks
     };
   }, [selectedProject]);
@@ -192,7 +186,6 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     if (xAxis === 'section') { data = tasksBySection; emptyMsg = 'No sections to display'; }
     else if (xAxis === 'assignee') { data = tasksByAssignee; emptyMsg = 'No assignee data'; emptyIcon = '👥'; }
     else if (xAxis === 'status') { data = tasksByStatus; emptyMsg = 'No task data'; emptyIcon = '🔵'; }
-    else if (xAxis === 'priority') { data = tasksByPriority; emptyMsg = 'No priority data'; emptyIcon = '🔺'; }
     else if (xAxis === 'due_date') { data = upcomingDeadlines; emptyMsg = 'No deadlines'; emptyIcon = '📅'; }
     
     let normalizedData = data.map(item => {
@@ -423,21 +416,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
           </ResponsiveContainer>
         );
 
-      case 'tasks-by-priority':
-        return tasksByPriority.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={tasksByPriority} cx="50%" cy="50%" innerRadius="35%" outerRadius="60%" paddingAngle={4} dataKey="value">
-                {tasksByPriority.map((entry, i) => {
-                  const pColors = { High: '#EF4444', Medium: '#F59E0B', Low: '#10B981', None: '#9CA3AF' };
-                  return <Cell key={i} fill={pColors[entry.name] || COLORS[i % COLORS.length]} />;
-                })}
-              </Pie>
-              <RechartsTooltip contentStyle={tooltipStyle} />
-              <Legend iconType="circle" layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '0.78rem' }} />
-            </PieChart>
-          </ResponsiveContainer>
-        ) : <div className="proj-dash-empty"><span className="proj-dash-empty-icon">🔺</span>No priority data</div>;
+
 
       case 'upcoming-deadlines':
         return (
@@ -481,7 +460,6 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
       { value: 'section', label: 'Section' },
       { value: 'assignee', label: 'Assignee' },
       { value: 'status', label: 'Completion status' },
-      { value: 'priority', label: 'Priority' },
       { value: 'due_date', label: 'Due date' },
     ];
     // Add custom fields from the project

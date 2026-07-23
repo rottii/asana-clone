@@ -123,6 +123,25 @@ export default function MyTasks({ user, projects, token }) {
         case 'Likes': valA = a.likes || 0; valB = b.likes || 0; break;
         case 'Alphabetical': valA = a.title?.toLowerCase() || ''; valB = b.title?.toLowerCase() || ''; break;
         case 'Project': valA = a.projectName?.toLowerCase() || ''; valB = b.projectName?.toLowerCase() || ''; break;
+        case 'Github PR': {
+          const getPRLabel = (task) => {
+            let prs = [];
+            if (typeof task.githubPRs === 'string') { try { prs = JSON.parse(task.githubPRs); } catch (e) { } } else if (task.githubPRs) { prs = task.githubPRs; }
+            if (!prs || prs.length === 0) return 'Empty';
+            const firstPr = prs[0];
+            if (firstPr.merged) return 'Merged';
+            if (firstPr.state === 'closed') return 'Closed';
+            if (firstPr.draft) return 'Draft';
+            if (firstPr.reviewStatus) return firstPr.reviewStatus;
+            return 'Open';
+          };
+          const labelA = getPRLabel(a);
+          const labelB = getPRLabel(b);
+          const sortValueMap = { 'Merged': 1, 'Approved': 2, 'Changes requested': 3, 'In review': 4, 'No reviews': 5, 'Open': 6, 'Draft': 7, 'Closed': 8, 'Empty': 9 };
+          valA = sortValueMap[labelA] || 9;
+          valB = sortValueMap[labelB] || 9;
+          break;
+        }
         default: return 0;
       }
 
@@ -401,7 +420,8 @@ export default function MyTasks({ user, projects, token }) {
                   { icon: '🕒', label: 'Last modified on' },
                   { icon: '🕒', label: 'Completed on' },
                   { icon: 'A', label: 'Alphabetical' },
-                  { icon: '📋', label: 'Project' }
+                  { icon: '📋', label: 'Project' },
+                  { icon: '🐙', label: 'Github PR' }
                 ].map((item, idx) => {
                   const isActive = activeSort?.field === item.label;
                   return (

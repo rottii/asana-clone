@@ -84,6 +84,7 @@ router.post('/pr', async (req, res) => {
       repo,
       state: data.state, // "open" or "closed"
       merged: data.merged, // true or false
+      draft: data.draft, // true or false
       additions: data.additions,
       deletions: data.deletions,
       reviewStatus,

@@ -122,6 +122,14 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (e.target.closest('.dropdownMenu') || e.target.closest('[class*="popover"]')) return;
+      
+      // If clicked on the scrollbar of the task list container, do not close
+      if (e.target.classList && e.target.classList.contains('kanban-task-list')) {
+        if (e.offsetX > e.target.clientWidth || e.offsetY > e.target.clientHeight) {
+          return;
+        }
+      }
+
       if (cardRef.current && !cardRef.current.contains(e.target)) {
         setOpenFieldMenuId(null);
         setIsEditingMode(false);
@@ -193,14 +201,6 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
     if (!start && !end) return "📅 Tarih Yok"
     const fmt = (str) => { if (!str) return ''; const d = new Date(str); return `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })}` }
     return start && !end ? fmt(start) : `${fmt(start)} – ${fmt(end)}`
-  }
-
-  const getPriorityStyle = (level) => {
-    switch (level) {
-      case 'HIGH': return { backgroundColor: '#FEE2E2', color: '#991B1B' }
-      case 'LOW': return { backgroundColor: '#CCFBF1', color: '#115E59' }
-      default: return { backgroundColor: '#FEF3C7', color: '#92400E' }
-    }
   }
 
   const getParsedGithubPRs = (prs) => {
@@ -661,6 +661,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
             let statusColor = '#6E7681'; 
             if (firstPr.state === 'closed' && firstPr.merged) statusColor = '#8250DF'; 
             else if (firstPr.state === 'closed') statusColor = '#CF222E'; 
+            else if (firstPr.draft) statusColor = '#6E7681';
             else if (firstPr.reviewStatus === 'Approved') statusColor = '#2DA44E'; 
             else if (firstPr.reviewStatus === 'Changes requested') statusColor = '#CF222E'; 
             else statusColor = '#1A7F37'; 
@@ -668,6 +669,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
             let label = '';
             if (firstPr.merged) label = 'Merged';
             else if (firstPr.state === 'closed') label = 'Closed';
+            else if (firstPr.draft) label = 'Draft';
             else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
             else label = 'Open';
 
@@ -790,4 +792,4 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
   )
 }
 
-const styles = { taskCard: { padding: '1rem', borderRadius: '10px', border: '1px solid', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', width: '100%', position: 'relative' }, checkbox: { cursor: 'pointer', width: '16px', height: '16px', marginTop: '3px' }, pencilButton: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', opacity: 0.5 }, lightTitle: { margin: 0, color: 'var(--text-primary)', fontWeight: '500', fontSize: '0.95rem', lineHeight: '1.4', wordBreak: 'break-word' }, lightTitleInput: { width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: '500', outline: 'none', resize: 'none', padding: '0.3rem', boxSizing: 'border-box' }, lightDescriptionInput: { width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-secondary)', fontSize: '0.85rem', outline: 'none', padding: '0.3rem', boxSizing: 'border-box' }, priorityBadgeSelect: { border: 'none', borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', fontWeight: '600', outline: 'none' }, staticBadge: { borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', fontWeight: '600' }, staticCustomBadge: { backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', border: '1px solid var(--border-color)' }, interactiveCustomBadge: { backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderRadius: '6px', padding: '3px 6px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', border: '1px solid var(--border-color)' }, badgeInlineInput: { background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: '0.75rem', width: '40px', outline: 'none' }, removeBadgeCross: { cursor: 'pointer', color: 'var(--accent-danger)', fontWeight: 'bold', fontSize: '0.85rem' }, addFieldDashedBtn: { background: 'none', border: '1px dashed var(--text-tertiary)', color: 'var(--text-secondary)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer' }, bottomActionBar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '1rem', flexWrap: 'wrap', gap: '0.5rem', width: '100%' }, avatarCircleFilled: { width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#D946EF', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' }, avatarCircleEmpty: { width: '22px', height: '22px', borderRadius: '50%', border: '1px dashed var(--text-tertiary)', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }, dateBadgeTrigger: { display: 'inline-block', padding: '0.2rem 0.5rem', fontSize: '0.75rem', fontWeight: '500', borderRadius: '6px', whiteSpace: 'nowrap' }, likeIconPlaceholder: { fontSize: '0.85rem', opacity: 0.3 }, lightCancelBtn: { background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer' }, lightSaveBtn: { backgroundColor: 'var(--accent-primary)', color: '#FFF', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600', padding: '0.3rem 0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }, dropdownMenu: { position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 50, padding: '0.25rem', minWidth: '120px', marginTop: '4px' }, dropdownItem: { width: '100%', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '500', textAlign: 'left', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '0.4rem' } }
+const styles = { taskCard: { padding: '1rem', borderRadius: '10px', border: '1px solid', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', width: '100%', position: 'relative' }, checkbox: { cursor: 'pointer', width: '16px', height: '16px', marginTop: '3px' }, pencilButton: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', opacity: 0.5 }, lightTitle: { margin: 0, color: 'var(--text-primary)', fontWeight: '500', fontSize: '0.95rem', lineHeight: '1.4', wordBreak: 'break-word' }, lightTitleInput: { width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.95rem', fontWeight: '500', outline: 'none', resize: 'none', padding: '0.3rem', boxSizing: 'border-box' }, lightDescriptionInput: { width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-secondary)', fontSize: '0.85rem', outline: 'none', padding: '0.3rem', boxSizing: 'border-box' }, staticBadge: { borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', fontWeight: '600' }, staticCustomBadge: { backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', border: '1px solid var(--border-color)' }, interactiveCustomBadge: { backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderRadius: '6px', padding: '3px 6px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', border: '1px solid var(--border-color)' }, badgeInlineInput: { background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: '0.75rem', width: '40px', outline: 'none' }, removeBadgeCross: { cursor: 'pointer', color: 'var(--accent-danger)', fontWeight: 'bold', fontSize: '0.85rem' }, addFieldDashedBtn: { background: 'none', border: '1px dashed var(--text-tertiary)', color: 'var(--text-secondary)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', cursor: 'pointer' }, bottomActionBar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '1rem', flexWrap: 'wrap', gap: '0.5rem', width: '100%' }, avatarCircleFilled: { width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#D946EF', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' }, avatarCircleEmpty: { width: '22px', height: '22px', borderRadius: '50%', border: '1px dashed var(--text-tertiary)', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }, dateBadgeTrigger: { display: 'inline-block', padding: '0.2rem 0.5rem', fontSize: '0.75rem', fontWeight: '500', borderRadius: '6px', whiteSpace: 'nowrap' }, likeIconPlaceholder: { fontSize: '0.85rem', opacity: 0.3 }, lightCancelBtn: { background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer' }, lightSaveBtn: { backgroundColor: 'var(--accent-primary)', color: '#FFF', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600', padding: '0.3rem 0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }, dropdownMenu: { position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 50, padding: '0.25rem', minWidth: '120px', marginTop: '4px' }, dropdownItem: { width: '100%', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '500', textAlign: 'left', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '0.4rem' } }

@@ -125,7 +125,6 @@ model Project {
   activeViews Json?               @default("[\"Overview\", \"List\", \"Board\", \"Timeline\", \"Gantt\", \"Dashboard\", \"Calendar\", \"Workload\", \"Forms\"]")
   
   customFieldSettings Json?       @default("[]")
-  priorityFieldSettings Json?
   formSettings        Json?
   notifications Notification[]
   goals         GoalProject[]
@@ -164,7 +163,6 @@ model Task {
   description String?
   startDate   DateTime?
   dueDate     DateTime?
-  priority    String    @default("MEDIUM") 
   type        String    @default("TASK") // "TASK", "MILESTONE", "APPROVAL" vb.
   approvalStatus String? @default("PENDING") // "PENDING", "APPROVED", "CHANGES_REQUESTED", "REJECTED"
   order       Int       

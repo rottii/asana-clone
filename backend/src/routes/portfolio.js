@@ -6,17 +6,7 @@ const jwt = require('jsonwebtoken');
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
 
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Giriş yapmanız gerekiyor.' });
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Geçersiz token.' });
-    req.user = user;
-    next();
-  });
-};
+const { authenticateToken } = require('../middleware/auth');
 
 // 1. Kullanıcının tüm portföylerini getir
 router.get('/', authenticateToken, async (req, res) => {
@@ -105,6 +95,11 @@ router.post('/', authenticateToken, async (req, res) => {
     
     if (!workspaceId) {
       return res.status(400).json({ error: 'Çalışma alanı (workspaceId) gereklidir.' });
+    }
+
+    const workspaceExists = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+    if (!workspaceExists) {
+      return res.status(400).json({ error: 'Belirtilen çalışma alanı (workspace) bulunamadı. Lütfen tarayıcınızın önbelleğini temizleyin veya sayfayı yenileyin.' });
     }
 
     const newPortfolio = await prisma.portfolio.create({

@@ -187,7 +187,7 @@ const GithubPRNodeView = (props) => {
         </div>
         <div style={colStyle}>
           <div style={colHeaderStyle}>PR status</div>
-          <div style={colValueStyle}>{prData.state === 'closed' ? (prData.merged ? 'Merged' : 'Closed') : 'Open'}</div>
+          <div style={colValueStyle}>{prData.state === 'closed' ? (prData.merged ? 'Merged' : 'Closed') : (prData.draft ? 'Draft' : 'Open')}</div>
         </div>
         <div style={colStyle}>
           <div style={colHeaderStyle}>Line changes</div>

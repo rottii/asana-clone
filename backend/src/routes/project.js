@@ -28,17 +28,7 @@ const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
 
 // ─── Auth Middleware ───────────────────────────────────────────────────────────
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'Giriş yapmanız gerekiyor.' });
-
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ error: 'Geçersiz veya süresi dolmuş token.' });
-        req.user = user;
-        next();
-    });
-};
+const { authenticateToken } = require('../middleware/auth');
 
 // ─── Role Helpers ──────────────────────────────────────────────────────────────
 // Hierarchy: ADMIN > EDITOR > COMMENTER > VIEWER
@@ -201,7 +191,12 @@ const fullProjectInclude = {
             }
         }
     },
-    starredBy: true
+    starredBy: true,
+    portfolios: {
+        include: {
+            portfolio: { select: { id: true, name: true } }
+        }
+    }
 };
 
 // Shared include for returning a single task with all relations
@@ -450,7 +445,6 @@ router.post('/:id/duplicate', authenticateToken, async (req, res) => {
                 workspaceId: workspaceId || sourceProject.workspaceId,
                 teamId: teamId || sourceProject.teamId,
                 customFieldSettings: sourceProject.customFieldSettings,
-                priorityFieldSettings: sourceProject.priorityFieldSettings,
                 formSettings: sourceProject.formSettings
             }
         });
@@ -480,7 +474,6 @@ router.post('/:id/duplicate', authenticateToken, async (req, res) => {
                     data: {
                         title: task.title,
                         description: task.description,
-                        priority: task.priority,
                         type: task.type,
                         order: task.order,
                         customFields: task.customFields,
@@ -538,7 +531,6 @@ router.post('/:id/save-as-template', authenticateToken, async (req, res) => {
                 icon: sourceProject.icon,
                 isTemplate: true,
                 customFieldSettings: sourceProject.customFieldSettings,
-                priorityFieldSettings: sourceProject.priorityFieldSettings,
                 formSettings: sourceProject.formSettings
             }
         });
@@ -567,7 +559,6 @@ router.post('/:id/save-as-template', authenticateToken, async (req, res) => {
                     data: {
                         title: task.title,
                         description: task.description,
-                        priority: task.priority,
                         type: task.type,
                         order: task.order,
                         customFields: task.customFields,
@@ -601,7 +592,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
 
-        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, priorityFieldSettings, formSettings, startDate, dueDate, color, icon, workspaceId, teamId } = req.body;
+        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, formSettings, startDate, dueDate, color, icon, workspaceId, teamId } = req.body;
 
         const updateData = {};
         if (name !== undefined) updateData.name = name;
@@ -687,7 +678,6 @@ router.patch('/:id', authenticateToken, async (req, res) => {
                 }
             }
         }
-        if (priorityFieldSettings !== undefined) updateData.priorityFieldSettings = priorityFieldSettings;
         if (formSettings !== undefined) updateData.formSettings = formSettings;
         if (workspaceId !== undefined) updateData.workspaceId = workspaceId;
         if (teamId !== undefined) updateData.teamId = teamId;
@@ -1040,7 +1030,7 @@ router.delete('/sections/:sectionId', authenticateToken, async (req, res) => {
 // POST /api/projects/tasks — Create a task
 router.post('/tasks', authenticateToken, async (req, res) => {
     try {
-        const { title, sectionId, parentId, assigneeId, dueDate, startDate, description, priority, type, approvalStatus } = req.body;
+        const { title, sectionId, parentId, assigneeId, dueDate, startDate, description, type, approvalStatus } = req.body;
         if (!title || !sectionId) return res.status(400).json({ error: 'title ve sectionId zorunludur.' });
 
         const role = await getProjectRoleFromSection(req.user.userId, sectionId);
@@ -1066,7 +1056,6 @@ router.post('/tasks', authenticateToken, async (req, res) => {
                 dueDate: dueDate ? new Date(dueDate) : null,
                 startDate: startDate ? new Date(startDate) : null,
                 description: description || null,
-                priority: priority || 'MEDIUM',
                 type: taskType,
                 approvalStatus: taskType === 'APPROVAL' ? (approvalStatus || 'PENDING') : null,
                 order: nextOrder,
@@ -1237,13 +1226,15 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
 
-        const { title, description, isCompleted, assigneeId, dueDate, startDate, priority, type, customFields, githubPRs, sectionId, order, likes, isRecurring, recurrenceRule, recurrenceCustom, approvalStatus } = req.body;
+        const { title, description, isCompleted, assigneeId, dueDate, startDate, type, customFields, githubPRs, sectionId, order, likes, isRecurring, recurrenceRule, recurrenceCustom, approvalStatus } = req.body;
 
         const currentTask = await prisma.task.findUnique({
             where: { id: req.params.taskId },
             include: { section: true, assignee: true }
         });
         if (!currentTask) return res.status(404).json({ error: 'Görev bulunamadı.' });
+        
+        const projectId = currentTask.section?.projectId;
 
         const updateData = {};
         if (title !== undefined) updateData.title = title;
@@ -1251,7 +1242,6 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
         if (assigneeId !== undefined) updateData.assigneeId = assigneeId || null;
         if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
         if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
-        if (priority !== undefined) updateData.priority = priority;
         if (type !== undefined) updateData.type = type;
         if (sectionId !== undefined) updateData.sectionId = sectionId;
         if (order !== undefined) updateData.order = order;
@@ -1320,7 +1310,6 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
                 nextTaskToSpawn = {
                     title: currentTask.title,
                     description: currentTask.description,
-                    priority: currentTask.priority,
                     type: currentTask.type,
                     order: currentTask.order,
                     sectionId: currentTask.sectionId,
@@ -1423,7 +1412,6 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
             include: fullTaskInclude
         });
 
-        const projectId = currentTask.section?.projectId;
         const io = req.app.get('io');
         if (io) {
             if (projectId) io.to(projectId).emit('task_updated', updatedTask);
@@ -1506,9 +1494,6 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
                 }
                 if (startDate !== undefined) {
                     await evaluateRules(projectId, updatedTask.id, { type: 'start_date_changed' });
-                }
-                if (priority !== undefined && priority !== currentTask.priority) {
-                    await evaluateRules(projectId, updatedTask.id, { type: 'custom_field_changed', fieldName: 'Priority' });
                 }
                 if (customFields !== undefined) {
                     let oldFields = {};
@@ -2090,7 +2075,6 @@ router.post('/tasks/:taskId/duplicate', authenticateToken, async (req, res) => {
                 description: taskToDuplicate.description,
                 startDate: taskToDuplicate.startDate,
                 dueDate: taskToDuplicate.dueDate,
-                priority: taskToDuplicate.priority,
                 type: taskToDuplicate.type,
                 order: nextOrder,
                 isCompleted: false, // Don't copy completion status usually

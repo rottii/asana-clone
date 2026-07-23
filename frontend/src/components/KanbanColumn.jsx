@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import TaskCard from './TaskCard'
 
-export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, priorityFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId }) {
+export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [isEditingName, setIsEditingName] = useState(false)
@@ -85,10 +85,11 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
       </div>
 
       {/* SADECE GÖREV KARTLARININ KAYDIRILDIĞI SCROLL ALANI */}
-      <div style={styles.taskListContainer}>
+      <div className="kanban-task-list" style={styles.taskListContainer}>
         {section.tasks?.map(task => (
           <div 
             key={task.id} 
+            style={{ width: '248px', flexShrink: 0 }}
             onClickCapture={() => {
               if (setLastInteractedSectionId) setLastInteractedSectionId(section.id);
               if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
@@ -104,7 +105,6 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
               onOpenTaskPane={onOpenTaskPane}
               isVirtualGrouping={isVirtualGrouping}
               customFieldSettings={customFieldSettings}
-              priorityFieldSettings={priorityFieldSettings}
               projectMembers={projectMembers}
               projectRole={projectRole} // Karta kadar yetki delegasyonu
               handleLiveTaskSwap={handleLiveTaskSwap}
@@ -130,7 +130,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
 
 const styles = {
   kanbanColumn: { backgroundColor: 'var(--bg-tertiary)', width: '280px', minWidth: '280px', padding: '1rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', boxSizing: 'border-box' },
-  taskListContainer: { display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem', flex: 1, overflowY: 'auto', marginRight: '-0.5rem', paddingRight: '0.5rem' },
+  taskListContainer: { display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem', flex: 1, overflowY: 'auto', overflowX: 'hidden', marginRight: '-8px', paddingRight: '8px' },
   taskCountBadge: { backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '10px', fontWeight: 'bold' },
   threeDotButton: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 0.5rem' },
   dropdownMenu: { position: 'absolute', top: '100%', right: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, padding: '0.25rem', minWidth: '120px' },

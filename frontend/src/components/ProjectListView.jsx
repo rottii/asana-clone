@@ -702,6 +702,7 @@ export default function ProjectListView({
                     let statusColor = '#6E7681'; 
                     if (firstPr.state === 'closed' && firstPr.merged) statusColor = '#8250DF'; 
                     else if (firstPr.state === 'closed') statusColor = '#CF222E'; 
+                    else if (firstPr.draft) statusColor = '#6E7681';
                     else if (firstPr.reviewStatus === 'Approved') statusColor = '#2DA44E'; 
                     else if (firstPr.reviewStatus === 'Changes requested') statusColor = '#CF222E'; 
                     else statusColor = '#1A7F37'; 
@@ -709,6 +710,7 @@ export default function ProjectListView({
                     let label = '';
                     if (firstPr.merged) label = 'Merged';
                     else if (firstPr.state === 'closed') label = 'Closed';
+                    else if (firstPr.draft) label = 'Draft';
                     else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
                     else label = 'Open';
         

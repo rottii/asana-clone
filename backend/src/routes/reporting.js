@@ -7,17 +7,7 @@ const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
 
 // 1. ARA KATMAN: Giriş Kontrolü
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Giriş yapmanız gerekiyor.' });
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Geçersiz token.' });
-    req.user = user;
-    next();
-  });
-};
+const { authenticateToken } = require('../middleware/auth');
 
 // GET /api/reporting/global
 // Get high-level metrics for all tasks across user's projects
@@ -56,7 +46,6 @@ router.get('/global', authenticateToken, async (req, res) => {
       incompleteTasks: 0,
       overdueTasks: 0,
       tasksByProject: {},
-      tasksByPriority: { LOW: 0, MEDIUM: 0, HIGH: 0 },
       tasksByAssignee: {}
     };
 
@@ -83,42 +72,6 @@ router.get('/global', authenticateToken, async (req, res) => {
         metrics.tasksByProject[proj.name].total++;
         if (task.isCompleted) {
           metrics.tasksByProject[proj.name].completed++;
-        }
-      }
-
-      // Priority metrics
-      let effectivePriority = task.priority;
-      
-      if (proj && proj.customFieldSettings && task.customFields) {
-        let cfs = proj.customFieldSettings;
-        if (typeof cfs === 'string') {
-          try { cfs = JSON.parse(cfs); } catch(e) { cfs = []; }
-        }
-        let tcf = task.customFields;
-        if (typeof tcf === 'string') {
-          try { tcf = JSON.parse(tcf); } catch(e) { tcf = {}; }
-        }
-        
-        const priorityField = cfs.find(f => f.title && (f.title.toLowerCase() === 'priority' || f.title.toLowerCase() === 'öncelik'));
-        if (priorityField && tcf[priorityField.id]) {
-          let val = tcf[priorityField.id];
-          
-          // Find option to check if it has a label
-          const opt = priorityField.options?.find(o => o.value === val || o.label === val);
-          if (opt && opt.label) val = opt.label;
-          
-          val = val.toUpperCase();
-          if (val.includes('HIGH') || val.includes('YÜKSEK')) effectivePriority = 'HIGH';
-          else if (val.includes('LOW') || val.includes('DÜŞÜK')) effectivePriority = 'LOW';
-          else if (val.includes('MEDIUM') || val.includes('ORTA')) effectivePriority = 'MEDIUM';
-        }
-      }
-
-      if (effectivePriority) {
-        if (metrics.tasksByPriority[effectivePriority] !== undefined) {
-          metrics.tasksByPriority[effectivePriority]++;
-        } else {
-          metrics.tasksByPriority[effectivePriority] = 1;
         }
       }
 
@@ -153,11 +106,6 @@ router.get('/global', authenticateToken, async (req, res) => {
       incompleteTasks: metrics.incompleteTasks,
       overdueTasks: metrics.overdueTasks,
       projectStats,
-      priorityStats: [
-        { name: 'HIGH', value: metrics.tasksByPriority.HIGH },
-        { name: 'MEDIUM', value: metrics.tasksByPriority.MEDIUM },
-        { name: 'LOW', value: metrics.tasksByPriority.LOW }
-      ],
       assigneeStats
     });
   } catch (error) {

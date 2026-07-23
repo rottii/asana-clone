@@ -490,16 +490,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           valA = a.title?.toLowerCase() || '';
           valB = b.title?.toLowerCase() || '';
           break;
-        case 'Priority': {
-          const pOptions = Array.isArray(selectedProject.priorityFieldSettings)
-            ? selectedProject.priorityFieldSettings
-            : [];
-          const idxA = pOptions.findIndex(o => o.label.toLowerCase() === (a.priority || '').toLowerCase());
-          const idxB = pOptions.findIndex(o => o.label.toLowerCase() === (b.priority || '').toLowerCase());
-          valA = idxA !== -1 ? idxA : 9999;
-          valB = idxB !== -1 ? idxB : 9999;
-          break;
-        }
+
         case 'Task type':
           valA = a.type?.toLowerCase() || '';
           valB = b.type?.toLowerCase() || '';
@@ -512,22 +503,41 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           const customFieldsList = Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings : [];
           const cf = customFieldsList.find(f => f.title === field);
           if (cf) {
-            let aFields = {};
-            if (typeof a.customFields === 'string') { try { aFields = JSON.parse(a.customFields); } catch (e) { } } else if (a.customFields) aFields = a.customFields;
-            let bFields = {};
-            if (typeof b.customFields === 'string') { try { bFields = JSON.parse(b.customFields); } catch (e) { } } else if (b.customFields) bFields = b.customFields;
-
-            const aValStr = aFields[cf.id] ? String(aFields[cf.id]) : '';
-            const bValStr = bFields[cf.id] ? String(bFields[cf.id]) : '';
-
-            if (Array.isArray(cf.options) && cf.options.length > 0) {
-              const idxA = cf.options.findIndex(o => o.label === aValStr);
-              const idxB = cf.options.findIndex(o => o.label === bValStr);
-              valA = idxA !== -1 ? idxA : 9999;
-              valB = idxB !== -1 ? idxB : 9999;
+            if (cf.type === 'github_pr') {
+              const getPRLabel = (task) => {
+                let prs = [];
+                if (typeof task.githubPRs === 'string') { try { prs = JSON.parse(task.githubPRs); } catch (e) { } } else if (task.githubPRs) { prs = task.githubPRs; }
+                if (!prs || prs.length === 0) return 'Empty';
+                const firstPr = prs[0];
+                if (firstPr.merged) return 'Merged';
+                if (firstPr.state === 'closed') return 'Closed';
+                if (firstPr.draft) return 'Draft';
+                if (firstPr.reviewStatus) return firstPr.reviewStatus;
+                return 'Open';
+              };
+              const labelA = getPRLabel(a);
+              const labelB = getPRLabel(b);
+              const sortValueMap = { 'Merged': 1, 'Approved': 2, 'Changes requested': 3, 'In review': 4, 'No reviews': 5, 'Open': 6, 'Draft': 7, 'Closed': 8, 'Empty': 9 };
+              valA = sortValueMap[labelA] || 9;
+              valB = sortValueMap[labelB] || 9;
             } else {
-              valA = aValStr.toLowerCase();
-              valB = bValStr.toLowerCase();
+              let aFields = {};
+              if (typeof a.customFields === 'string') { try { aFields = JSON.parse(a.customFields); } catch (e) { } } else if (a.customFields) aFields = a.customFields;
+              let bFields = {};
+              if (typeof b.customFields === 'string') { try { bFields = JSON.parse(b.customFields); } catch (e) { } } else if (b.customFields) bFields = b.customFields;
+
+              const aValStr = aFields[cf.id] ? String(aFields[cf.id]) : '';
+              const bValStr = bFields[cf.id] ? String(bFields[cf.id]) : '';
+
+              if (Array.isArray(cf.options) && cf.options.length > 0) {
+                const idxA = cf.options.findIndex(o => o.label === aValStr);
+                const idxB = cf.options.findIndex(o => o.label === bValStr);
+                valA = idxA !== -1 ? idxA : 9999;
+                valB = idxB !== -1 ? idxB : 9999;
+              } else {
+                valA = aValStr.toLowerCase();
+                valB = bValStr.toLowerCase();
+              }
             }
           } else {
             return 0;
@@ -1178,7 +1188,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           { key: 'In review', sortValue: 4 },
           { key: 'No reviews', sortValue: 5 },
           { key: 'Open', sortValue: 6 },
-          { key: 'Closed', sortValue: 7 }
+          { key: 'Draft', sortValue: 7 },
+          { key: 'Closed', sortValue: 8 }
         ];
         statuses.forEach(s => {
           groupsMap[s.key] = { id: `group-${s.key}`, name: s.key, tasks: [], sortValue: s.sortValue };
@@ -1249,10 +1260,11 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               let label = '';
               if (firstPr.merged) label = 'Merged';
               else if (firstPr.state === 'closed') label = 'Closed';
+              else if (firstPr.draft) label = 'Draft';
               else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
               else label = 'Open';
               
-              const sortValueMap = { 'Merged': 1, 'Approved': 2, 'Changes requested': 3, 'In review': 4, 'No reviews': 5, 'Open': 6, 'Closed': 7 };
+              const sortValueMap = { 'Merged': 1, 'Approved': 2, 'Changes requested': 3, 'In review': 4, 'No reviews': 5, 'Open': 6, 'Draft': 7, 'Closed': 8 };
               const sortVal = sortValueMap[label] || 8;
               
               return { key: label, name: label, sortValue: sortVal };
@@ -1658,7 +1670,6 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                         { icon: '🕒', label: 'Completed on' },
                         { icon: '👍', label: 'Likes' },
                         { icon: 'A', label: 'Alphabetical' },
-                        { icon: '⌄', label: 'Priority' },
                         ...(Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings.map(cf => ({ icon: '⌄', label: cf.title })) : [])
                       ].map((item, idx) => {
                         const isActive = activeSort?.field === item.label;
@@ -1926,7 +1937,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
                 style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
               >
-                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} priorityFieldSettings={selectedProject?.priorityFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra={}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} />
+                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra={}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} />
               </div>
             )
           })}
