@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
 // 2. Projeye yeni kural ekle
 router.post('/', async (req, res) => {
   const { projectId } = req.params;
-  const { ruleData } = req.body;
+  const { ruleData, isActive } = req.body;
 
   if (!ruleData || !ruleData.trigger) {
     return res.status(400).json({ error: 'Geçersiz kural yapısı. (ruleData.trigger eksik)' });
@@ -33,7 +33,7 @@ router.post('/', async (req, res) => {
       data: {
         projectId,
         ruleData,
-        isActive: true
+        isActive: isActive !== undefined ? isActive : true
       }
     });
     res.status(201).json(newRule);

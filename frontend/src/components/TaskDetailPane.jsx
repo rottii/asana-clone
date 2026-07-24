@@ -32,6 +32,9 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
   const [isAddingGithubPr, setIsAddingGithubPr] = useState(false);
   const [githubPrUrlValue, setGithubPrUrlValue] = useState('');
+  const [isUpdatingPrStatus, setIsUpdatingPrStatus] = useState(false);
+  const [isAutoCoding, setIsAutoCoding] = useState(false);
+  const tagInputRef = useRef(null);
   const [isFetchingPr, setIsFetchingPr] = useState(false);
   const [openPrMenuIdx, setOpenPrMenuIdx] = useState(null);
 
@@ -122,7 +125,8 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
       
       // Ignore clicks on popovers, dropdowns, or other floating menus that belong to the pane
       // Also ignore clicks on the sidebar hamburger toggle
-      if (e.target.closest('.dropdownMenu') || e.target.closest('.popover') || e.target.closest('.more-menu-container') || e.target.closest('.flatpickr-calendar') || e.target.closest('.topnav-hamburger')) return;
+      // Ignore clicks on tasks so they can open/update the pane instead of closing it
+      if (e.target.closest('.dropdownMenu') || e.target.closest('.popover') || e.target.closest('.more-menu-container') || e.target.closest('.flatpickr-calendar') || e.target.closest('.topnav-hamburger') || e.target.closest('[data-task-id]')) return;
 
       onClose();
     };
@@ -218,6 +222,36 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
       console.error('Error removing GitHub PR:', e);
     }
     setOpenPrMenuIdx(null);
+  };
+
+  const handleAutoCode = async () => {
+    const targetRepo = selectedProject?.githubRepo || task.section?.project?.githubRepo;
+    if (!targetRepo) {
+      alert("Please connect a GitHub repository in the Project settings first.");
+      return;
+    }
+    setIsAutoCoding(true);
+    try {
+      const response = await fetch(`http://localhost:5001/api/ai/auto-code/${task.id}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to auto-code task.');
+      
+      if (data.newPrData) {
+        const currentPRs = typeof task.githubPRs === 'string' ? JSON.parse(task.githubPRs || '[]') : (task.githubPRs || []);
+        const updatedPRs = [...currentPRs, data.newPrData];
+        onTaskUpdate(task.id, { ...task, githubPRs: JSON.stringify(updatedPRs) });
+      }
+
+      alert(`Success! Auto-coded and pushed to branch:\n${data.branch}\n\nPull Request:\n${data.prUrl}`);
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
+    } finally {
+      setIsAutoCoding(false);
+    }
   };
 
   const handleSave = async (field, value) => {
@@ -680,6 +714,29 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
             )}
           </div>
           <div style={styles.headerActions}>
+            {(selectedProject?.githubRepo || task.section?.project?.githubRepo) && !isReadOnly && (
+              <button
+                style={{
+                  ...styles.iconBtn,
+                  padding: '4px 8px',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  color: isAutoCoding ? 'var(--text-secondary)' : '#FFF',
+                  backgroundColor: isAutoCoding ? 'transparent' : 'var(--accent-primary)',
+                  border: isAutoCoding ? '1px solid var(--border-color)' : '1px solid var(--accent-primary)',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  marginRight: '8px'
+                }}
+                onClick={handleAutoCode}
+                disabled={isAutoCoding}
+                title="Automatically write code for this task using Gemini AI"
+              >
+                {isAutoCoding ? '🤖 Coding...' : '🤖 Auto-Code'}
+              </button>
+            )}
             <div className="more-menu-container" style={{ position: 'relative' }}>
               <button
                 style={{ ...styles.iconBtn, fontSize: '1.2rem', paddingBottom: '0.2rem' }}

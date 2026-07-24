@@ -311,6 +311,7 @@ export default function ProjectCalendarView({ selectedProject, applyTaskFilter, 
                   return (
                     <div 
                       key={tIdx} 
+                      data-task-id={task.id}
                       draggable="true"
                       onDragStart={(e) => handleDragStart(e, task, week.days, startCol, endCol)}
                       onDragEnd={handleDragEnd}

@@ -1172,15 +1172,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     } else {
       const customFieldsList = Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings : [];
       const cf = customFieldsList.find(f => f.title === activeGroup);
-      if (cf && Array.isArray(cf.options)) {
-        cf.options.forEach(opt => {
-          const optName = opt.value || opt.label;
-          if (optName) {
-            groupsMap[optName] = { id: `group-${optName}`, name: optName, tasks: [] };
-          }
-        });
-        groupsMap['empty'] = { id: 'group-empty', name: 'Empty', tasks: [] };
-      } else if (cf && cf.type === 'github_pr') {
+      if (cf && cf.type === 'github_pr') {
         const statuses = [
           { key: 'Merged', sortValue: 1 },
           { key: 'Approved', sortValue: 2 },
@@ -1195,6 +1187,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           groupsMap[s.key] = { id: `group-${s.key}`, name: s.key, tasks: [], sortValue: s.sortValue };
         });
         groupsMap['empty'] = { id: 'group-empty', name: 'Empty', tasks: [], sortValue: 99 };
+      } else if (cf && Array.isArray(cf.options)) {
+        cf.options.forEach(opt => {
+          const optName = opt.value || opt.label;
+          if (optName) {
+            groupsMap[optName] = { id: `group-${optName}`, name: optName, tasks: [] };
+          }
+        });
+        groupsMap['empty'] = { id: 'group-empty', name: 'Empty', tasks: [] };
       }
     }
 
@@ -1253,9 +1253,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             if (cf.type === 'github_pr') {
               let prs = [];
               if (typeof task.githubPRs === 'string') { try { prs = JSON.parse(task.githubPRs); } catch (e) { } } else if (task.githubPRs) { prs = task.githubPRs; }
-              
+
               if (!prs || prs.length === 0) return { key: 'empty', name: 'Empty' };
-              
+
               const firstPr = prs[0];
               let label = '';
               if (firstPr.merged) label = 'Merged';
@@ -1263,10 +1263,10 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               else if (firstPr.draft) label = 'Draft';
               else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
               else label = 'Open';
-              
+
               const sortValueMap = { 'Merged': 1, 'Approved': 2, 'Changes requested': 3, 'In review': 4, 'No reviews': 5, 'Open': 6, 'Draft': 7, 'Closed': 8 };
               const sortVal = sortValueMap[label] || 8;
-              
+
               return { key: label, name: label, sortValue: sortVal };
             }
 
@@ -1571,7 +1571,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                       onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
                       onClick={() => { setIsAddWidgetMenuOpen(false); window.dispatchEvent(new CustomEvent('openAddChartModal')); }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="6" width="4" height="15" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="12" width="4" height="9" rx="1" /><rect x="10" y="6" width="4" height="15" rx="1" /><rect x="17" y="3" width="4" height="18" rx="1" /></svg>
                       Chart
                     </button>
                     <button
@@ -1580,7 +1580,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                       onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
                       onClick={() => { setIsAddWidgetMenuOpen(false); window.dispatchEvent(new CustomEvent('openAddTextWidget')); }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h16v3" /><path d="M9 20h6" /><path d="M12 4v16" /></svg>
                       Text
                     </button>
                   </div>
@@ -1725,7 +1725,6 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                     <div style={styles.groupDropdownPanel} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '12px 16px', borderBottom: '1px solid #E5E7EB' }}>
                         <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.9rem' }}>Groups</span>
-                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textDecoration: 'underline', cursor: 'pointer' }}>Send feedback</span>
                       </div>
 
                       <div style={{ padding: '16px' }}>
@@ -1937,15 +1936,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
                 style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
               >
-                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra={}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} />
+                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra = {}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} />
               </div>
             )
           })}
           {!isReadOnly && !isVirtualGrouping && (
             <div style={styles.addSectionColumn}>
               <form onSubmit={handleCreateSection} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                <input type="text" placeholder="+ Sütun Ekle..." value={newSectionName} onChange={e => setNewSectionName(e.target.value)} style={styles.input} required />
-                {newSectionName.trim() && <button type="submit" style={styles.button}>Bölüm Ekle</button>}
+                <input type="text" placeholder="+ Add section..." value={newSectionName} onChange={e => setNewSectionName(e.target.value)} style={styles.input} required />
+                {newSectionName.trim() && <button type="submit" style={styles.button}>Add Section</button>}
               </form>
             </div>
           )}
@@ -1987,8 +1986,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           handleTopAddTaskGlobal={handleTopAddTaskGlobal}
         />
       ) : activeViewObj.type === 'Dashboard' ? (
-        <ProjectDashboardView 
-          selectedProject={selectedProject} 
+        <ProjectDashboardView
+          selectedProject={selectedProject}
           showPicker={isAddWidgetMenuOpen}
           setShowPicker={setIsAddWidgetMenuOpen}
         />
@@ -2145,7 +2144,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               setActiveTaskPaneId(null);
             }}
             onConvertTask={handleConvertTask}
-            onOpenPopover={(type, task, coords, extra={}) => setActivePopover({ type, task, coords, ...extra })}
+            onOpenPopover={(type, task, coords, extra = {}) => setActivePopover({ type, task, coords, ...extra })}
           />
         </div>
       )}
@@ -2273,14 +2272,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                     {projectRules.map(r => {
                       let ruleName = r.name || 'Rule';
                       if (!r.name && r.ruleData?.trigger?.type) {
-                         const triggerName = r.ruleData.trigger.type.replace(/_/g, ' ');
-                         const actionName = r.ruleData.branches?.[0]?.actions?.[0]?.type?.replace(/_/g, ' ') || 'action';
-                         ruleName = triggerName + ' → ' + actionName;
-                         ruleName = ruleName.charAt(0).toUpperCase() + ruleName.slice(1);
+                        const triggerName = r.ruleData.trigger.type.replace(/_/g, ' ');
+                        const actionName = r.ruleData.branches?.[0]?.actions?.[0]?.type?.replace(/_/g, ' ') || 'action';
+                        ruleName = triggerName + ' → ' + actionName;
+                        ruleName = ruleName.charAt(0).toUpperCase() + ruleName.slice(1);
                       }
                       return (
-                        <div 
-                          key={r.id} 
+                        <div
+                          key={r.id}
                           style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '0.5rem', margin: '0 -0.5rem', borderRadius: '6px', cursor: 'pointer', transition: 'background-color 0.2s' }}
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
@@ -2290,7 +2289,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                             <span style={{ color: '#F87171', fontSize: '1.2rem', marginTop: '2px' }}>⚡</span>
                             <div>
                               <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: '500' }}>{ruleName}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Active</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                                {r.isActive === false ? 'Paused' : 'Active'}
+                              </div>
                             </div>
                           </div>
                           <div style={{ position: 'relative' }}>

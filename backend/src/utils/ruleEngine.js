@@ -15,13 +15,13 @@ const evaluateRules = async (projectId, taskId, event) => {
 
       if (triggered) {
         const branches = rule.ruleData.branches || [];
-        
+
         // If there are no branches, maybe actions are at root level (for backwards compatibility/simplicity)
         if (branches.length === 0 && rule.ruleData.actions) {
-           for (const action of rule.ruleData.actions) {
-             await executeAction(action.type, action.value, taskId, projectId);
-           }
-           continue;
+          for (const action of rule.ruleData.actions) {
+            await executeAction(action.type, action.value, taskId, projectId);
+          }
+          continue;
         }
 
         // Evaluate branches sequentially
@@ -51,25 +51,25 @@ const evaluateRules = async (projectId, taskId, event) => {
 
 const checkTrigger = (trigger, event) => {
   const exactMatchTriggers = [
-    'rule_run_manually', 'scheduled_time_occurs', 
-    'task_added_to_project', 'task_assigned', 
-    'task_type_changed', 'task_name_changed', 'task_description_changed', 
-    'due_date_changed', 'due_date_approaching', 
-    'task_overdue', 'start_date_changed', 
-    'start_date_approaching', 'start_date_passed', 'status_changed', 
-    'approval_status_changed', 'task_no_longer_blocked', 
-    'completion_status_changed', 'custom_field_changed', 
+    'rule_run_manually', 'scheduled_time_occurs',
+    'task_added_to_project', 'task_assigned',
+    'task_type_changed', 'task_name_changed', 'task_description_changed',
+    'due_date_changed', 'due_date_approaching',
+    'task_overdue', 'start_date_changed',
+    'start_date_approaching', 'start_date_passed', 'status_changed',
+    'approval_status_changed', 'task_no_longer_blocked',
+    'completion_status_changed', 'custom_field_changed',
     'attachment_added', 'comment_added', 'collaborator_added'
   ];
 
   if (exactMatchTriggers.includes(trigger.type) && event.type === trigger.type) {
     if (trigger.type === 'custom_field_changed') {
-        const triggerFieldId = trigger.value ? trigger.value.split(':')[0] : null;
-        if (!triggerFieldId || triggerFieldId === event.fieldName) {
-            return true;
-        }
-    } else {
+      const triggerFieldId = trigger.value ? trigger.value.split(':')[0] : null;
+      if (!triggerFieldId || triggerFieldId === event.fieldName) {
         return true;
+      }
+    } else {
+      return true;
     }
   } else if (trigger.type === 'task_moved' && (event.type === 'task_moved' || event.type === 'task_moved_general')) {
     if (trigger.value === event.targetSectionId) {
@@ -99,7 +99,7 @@ const checkConditions = async (conditions, taskId, projectId) => {
     if (!task) return false;
 
     for (const condition of conditions) {
-      switch(condition.type) {
+      switch (condition.type) {
         case 'task_in_section':
           if (task.sectionId !== condition.value) return false;
           break;
@@ -126,11 +126,11 @@ const checkConditions = async (conditions, taskId, projectId) => {
           const dateField = condition.type === 'due_date_is' ? task.dueDate : task.startDate;
           let dateConfig;
           try {
-             dateConfig = JSON.parse(condition.value);
+            dateConfig = JSON.parse(condition.value);
           } catch (e) {
-             // Fallback for backwards compatibility with old simple date matches
-             if (!dateField || new Date(dateField).toDateString() !== new Date(condition.value).toDateString()) return false;
-             break;
+            // Fallback for backwards compatibility with old simple date matches
+            if (!dateField || new Date(dateField).toDateString() !== new Date(condition.value).toDateString()) return false;
+            break;
           }
 
           if (dateConfig.op === 'empty') {
@@ -172,32 +172,32 @@ const checkConditions = async (conditions, taskId, projectId) => {
         case 'custom_field_is':
           const [fieldId, fieldValue] = condition.value.split(':');
           let cfMatched = false;
-             try {
-               let parsed = JSON.parse(task.customFields || '{}');
-               if (Array.isArray(parsed)) {
-                  cfMatched = parsed.some(cf => cf.id === fieldId && cf.value === fieldValue);
-               } else {
-                  cfMatched = parsed[fieldId] === fieldValue;
-               }
-             } catch(e) {}
-             
-             // Fallback for Github PR custom fields
-             if (!cfMatched && task.githubPRs) {
-                let prs = [];
-                try { prs = typeof task.githubPRs === 'string' ? JSON.parse(task.githubPRs) : task.githubPRs; } catch(e){}
-                if (prs.length > 0) {
-                    const firstPr = prs[0];
-                    let label = 'Open';
-                    if (firstPr.merged) label = 'Merged';
-                    else if (firstPr.state === 'closed') label = 'Closed';
-                    else if (firstPr.draft) label = 'Draft';
-                    else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
-                    
-                    if (label === fieldValue) cfMatched = true;
-                } else if (fieldValue === 'Empty') {
-                    cfMatched = true;
-                }
-             }
+          try {
+            let parsed = JSON.parse(task.customFields || '{}');
+            if (Array.isArray(parsed)) {
+              cfMatched = parsed.some(cf => cf.id === fieldId && cf.value === fieldValue);
+            } else {
+              cfMatched = parsed[fieldId] === fieldValue;
+            }
+          } catch (e) { }
+
+          // Fallback for Github PR custom fields
+          if (!cfMatched && task.githubPRs) {
+            let prs = [];
+            try { prs = typeof task.githubPRs === 'string' ? JSON.parse(task.githubPRs) : task.githubPRs; } catch (e) { }
+            if (prs.length > 0) {
+              const firstPr = prs[0];
+              let label = 'Open';
+              if (firstPr.merged) label = 'Merged';
+              else if (firstPr.state === 'closed') label = 'Closed';
+              else if (firstPr.draft) label = 'Draft';
+              else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
+
+              if (label === fieldValue) cfMatched = true;
+            } else if (fieldValue === 'Empty') {
+              cfMatched = true;
+            }
+          }
           if (!cfMatched) return false;
           break;
         case 'task_has_attachment':
@@ -273,7 +273,7 @@ const executeAction = async (actionType, actionValue, taskId, projectId) => {
       const task = await prisma.task.findUnique({ where: { id: taskId } });
       if (task) {
         await prisma.comment.create({
-           data: { text: actionValue, taskId: taskId, userId: task.creatorId }
+          data: { text: actionValue, taskId: taskId, userId: task.creatorId }
         });
       }
     } else if (actionType === 'add_collaborators' && actionValue) {
@@ -281,7 +281,7 @@ const executeAction = async (actionType, actionValue, taskId, projectId) => {
       for (const uid of userIds) {
         await prisma.taskCollaborator.create({
           data: { taskId: taskId, userId: uid }
-        }).catch(() => {}); // ignore unique constraint errors
+        }).catch(() => { }); // ignore unique constraint errors
       }
       await evaluateRules(projectId, taskId, { type: 'collaborator_added' });
     } else if (actionType === 'remove_collaborators' && actionValue) {
@@ -299,24 +299,24 @@ const executeAction = async (actionType, actionValue, taskId, projectId) => {
         const section = await prisma.section.findFirst({ where: { projectId: targetProjectId }, orderBy: { order: 'asc' } });
         sectionIdToUse = section?.id;
       }
-      
+
       if (sectionIdToUse) {
-         if (actionType === 'move_to_project') {
-           // Remove from current project and move to new project
-           const task = await prisma.task.findUnique({ where: { id: taskId }, select: { sectionId: true, section: { select: { projectId: true } } } });
-           if (task && task.section.projectId === projectId) {
-             await prisma.task.update({ where: { id: taskId }, data: { sectionId: sectionIdToUse } });
-           } else {
-             await prisma.taskProject.deleteMany({ where: { taskId: taskId, projectId: projectId } });
-             await prisma.taskProject.create({
-               data: { taskId: taskId, projectId: targetProjectId, sectionId: sectionIdToUse, order: 0 }
-             }).catch(() => {});
-           }
-         } else {
-           await prisma.taskProject.create({
-             data: { taskId: taskId, projectId: targetProjectId, sectionId: sectionIdToUse, order: 0 }
-           }).catch(() => {});
-         }
+        if (actionType === 'move_to_project') {
+          // Remove from current project and move to new project
+          const task = await prisma.task.findUnique({ where: { id: taskId }, select: { sectionId: true, section: { select: { projectId: true } } } });
+          if (task && task.section.projectId === projectId) {
+            await prisma.task.update({ where: { id: taskId }, data: { sectionId: sectionIdToUse } });
+          } else {
+            await prisma.taskProject.deleteMany({ where: { taskId: taskId, projectId: projectId } });
+            await prisma.taskProject.create({
+              data: { taskId: taskId, projectId: targetProjectId, sectionId: sectionIdToUse, order: 0 }
+            }).catch(() => { });
+          }
+        } else {
+          await prisma.taskProject.create({
+            data: { taskId: taskId, projectId: targetProjectId, sectionId: sectionIdToUse, order: 0 }
+          }).catch(() => { });
+        }
       }
     } else if (actionType === 'remove_from_project') {
       const task = await prisma.task.findUnique({ where: { id: taskId }, include: { section: true } });
@@ -370,26 +370,26 @@ const executeAction = async (actionType, actionValue, taskId, projectId) => {
     } else if (actionType === 'change_custom_field' && actionValue) {
       const [fieldId, fieldValue] = actionValue.split(':');
       if (fieldId && fieldValue) {
-          const task = await prisma.task.findUnique({ where: { id: taskId } });
-          if (task) {
-            let customFields = {};
-            try { 
-              if (task.customFields) {
-                const parsed = JSON.parse(task.customFields); 
-                if (Array.isArray(parsed)) {
-                  parsed.forEach(cf => { if (cf.id && cf.value) customFields[cf.id] = cf.value; });
-                } else if (typeof parsed === 'object' && parsed !== null) {
-                  customFields = parsed;
-                }
+        const task = await prisma.task.findUnique({ where: { id: taskId } });
+        if (task) {
+          let customFields = {};
+          try {
+            if (task.customFields) {
+              const parsed = JSON.parse(task.customFields);
+              if (Array.isArray(parsed)) {
+                parsed.forEach(cf => { if (cf.id && cf.value) customFields[cf.id] = cf.value; });
+              } else if (typeof parsed === 'object' && parsed !== null) {
+                customFields = parsed;
               }
-            } catch(e) {}
-            
-            customFields[fieldId] = fieldValue;
-            
-            await prisma.task.update({ where: { id: taskId }, data: { customFields: JSON.stringify(customFields) } });
-          }
+            }
+          } catch (e) { }
+
+          customFields[fieldId] = fieldValue;
+
+          await prisma.task.update({ where: { id: taskId }, data: { customFields: JSON.stringify(customFields) } });
         }
       }
+    }
     console.log(`[Rule Engine] Task ${taskId} executed action ${actionType}`);
   } catch (actionErr) {
     console.error(`[Rule Engine] Failed to execute action ${actionType} for task ${taskId}:`, actionErr);

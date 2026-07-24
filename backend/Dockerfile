@@ -1,7 +1,7 @@
 FROM node:18-alpine
 
-# Prisma'nın Alpine üzerinde çalışabilmesi için OpenSSL kütüphanesini yüklüyoruz
-RUN apk add --no-cache openssl
+# Prisma'nın Alpine üzerinde çalışabilmesi için OpenSSL kütüphanesini, Auto-Code için Git'i yüklüyoruz
+RUN apk add --no-cache openssl git
 
 WORKDIR /app
 COPY package*.json ./

@@ -16,6 +16,24 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
   const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
   const statusMenuRef = useRef(null);
 
+  const [isEditingGithub, setIsEditingGithub] = useState(false);
+  const [githubInput, setGithubInput] = useState(selectedProject.githubRepo || '');
+  const [githubDetails, setGithubDetails] = useState(null);
+
+  useEffect(() => {
+    if (selectedProject.githubRepo && !isEditingGithub) {
+      let repoPath = selectedProject.githubRepo.replace('https://github.com/', '').trim();
+      fetch(`https://api.github.com/repos/${repoPath}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && !data.message) {
+            setGithubDetails(data);
+          }
+        })
+        .catch(err => console.error(err));
+    }
+  }, [selectedProject.githubRepo, isEditingGithub]);
+
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (statusMenuRef.current && !statusMenuRef.current.contains(e.target)) {
@@ -57,6 +75,24 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
         onUpdate(data);
       }
       setIsEditingDesc(false);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveGithub = async () => {
+    if (isReadOnly) return;
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ githubRepo: githubInput.trim() })
+      });
+      const data = await response.json();
+      if (response.ok && onUpdate) {
+        onUpdate(data);
+      }
+      setIsEditingGithub(false);
     } catch (err) {
       console.error(err);
     }
@@ -131,6 +167,82 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
               <div style={{ ...styles.resourceItem, ...styles.resourceItemAdd }}>
                 <div style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>+</div>
                 <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Add resource</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* GitHub Integration Section */}
+        <div style={styles.sectionCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ ...styles.sectionTitle, marginBottom: 0 }}>GitHub Integration</h2>
+            {!isReadOnly && selectedProject.githubRepo && !isEditingGithub && (
+              <button style={styles.editBtn} onClick={() => { setGithubInput(selectedProject.githubRepo); setIsEditingGithub(true); }}>Edit</button>
+            )}
+          </div>
+          <div style={styles.descriptionBox}>
+            {isEditingGithub ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <input
+                  type="text"
+                  placeholder="e.g. koala73/worldmonitor or https://github.com/koala73/worldmonitor"
+                  value={githubInput}
+                  onChange={(e) => setGithubInput(e.target.value)}
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', outline: 'none' }}
+                />
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                  <button style={styles.cancelBtn} onClick={() => { setIsEditingGithub(false); setGithubInput(selectedProject.githubRepo || ''); }}>Cancel</button>
+                  <button style={styles.saveBtn} onClick={handleSaveGithub}>Save</button>
+                </div>
+              </div>
+            ) : selectedProject.githubRepo ? (
+              githubDetails ? (
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '16px', backgroundColor: 'var(--bg-primary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <img src={githubDetails.owner?.avatar_url} alt="Owner Avatar" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
+                    <a href={githubDetails.html_url} target="_blank" rel="noreferrer" style={{ color: '#0969da', fontWeight: '600', fontSize: '1.1rem', textDecoration: 'none' }}>
+                      {githubDetails.full_name}
+                    </a>
+                    <span style={{ padding: '2px 7px', fontSize: '0.75rem', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '2em', marginLeft: '4px' }}>
+                      {githubDetails.private ? 'Private' : 'Public'}
+                    </span>
+                  </div>
+                  {githubDetails.description && (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '16px' }}>
+                      {githubDetails.description}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {githubDetails.language && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#f1e05a' }}></span>
+                        {githubDetails.language}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"></path></svg>
+                      {githubDetails.stargazers_count}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"></path></svg>
+                      {githubDetails.forks_count}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color: 'var(--text-primary)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path fillRule="evenodd" d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.25 2.25 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 7.425A3.155 3.155 0 0012.75 12h.75a.75.75 0 01.75.75v.5a.75.75 0 01-.75.75H12a4.655 4.655 0 01-4.655-4.655V5.372a2.25 2.25 0 111.5 0v3.983c0 .713.273 1.398.75 1.916V7.425z"></path>
+                  </svg>
+                  <span>{selectedProject.githubRepo}</span>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', marginLeft: '8px' }}>(Loading GitHub data...)</span>
+                </div>
+              )
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2rem 0', color: '#9CA3AF' }}>
+                <span style={{ fontSize: '2rem', marginBottom: '1rem' }}>🐙</span>
+                <p>Connect a GitHub repository to enable Auto-Code AI features.</p>
+                {!isReadOnly && <button style={styles.addDescriptionBtn} onClick={() => { setGithubInput(''); setIsEditingGithub(true); }}>Connect Repository</button>}
               </div>
             )}
           </div>

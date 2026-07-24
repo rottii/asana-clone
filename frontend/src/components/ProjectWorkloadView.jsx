@@ -320,6 +320,7 @@ export default function ProjectWorkloadView({
                       {assignee.tasks.map((task, tIdx) => (
                         <div key={task.id} style={{ ...styles.taskBarRow, top: tIdx * 32 }}>
                           <div 
+                            data-task-id={task.id}
                             style={{ ...styles.taskBar, left: task.left, width: Math.max(task.width, 10), backgroundColor: task.isCompleted ? '#D1D5DB' : '#6366F1' }}
                             onClick={() => {
                               if (!hasDraggedRef.current && onOpenTaskPane) onOpenTaskPane(task.id);

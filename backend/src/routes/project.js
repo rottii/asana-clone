@@ -592,7 +592,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
 
-        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, formSettings, startDate, dueDate, color, icon, workspaceId, teamId } = req.body;
+        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, formSettings, startDate, dueDate, color, icon, workspaceId, teamId, githubRepo } = req.body;
 
         const updateData = {};
         if (name !== undefined) updateData.name = name;
@@ -601,6 +601,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
         if (isArchived !== undefined) updateData.isArchived = isArchived;
         if (defaultView !== undefined) updateData.defaultView = defaultView;
         if (activeViews !== undefined) updateData.activeViews = activeViews;
+        if (githubRepo !== undefined) updateData.githubRepo = githubRepo;
         if (customFieldSettings !== undefined) {
             updateData.customFieldSettings = customFieldSettings;
 
@@ -1372,17 +1373,7 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
                     }
                 }
 
-                // Check if any github_pr custom fields exist and trigger rule engine
-                if (oldPrsStr !== newPrsStr) {
-                    const proj = await prisma.project.findUnique({ where: { id: projectId } });
-                    if (proj && proj.customFieldSettings) {
-                        const cfs = typeof proj.customFieldSettings === 'string' ? JSON.parse(proj.customFieldSettings) : proj.customFieldSettings;
-                        const prFields = (Array.isArray(cfs) ? cfs : []).filter(f => f.type === 'github_pr');
-                        for (const prField of prFields) {
-                            await evaluateRules(projectId, req.params.taskId, { type: 'custom_field_changed', fieldName: prField.id });
-                        }
-                    }
-                }
+                // We will evaluate rules for github_pr custom fields AFTER saving to database
             } catch(e) { console.error('Error diffing PRs', e); }
         }
 
@@ -1505,6 +1496,20 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
                         for (const key of Object.keys(newFields)) {
                             if (newFields[key] !== oldFields[key]) {
                                 await evaluateRules(projectId, updatedTask.id, { type: 'custom_field_changed', fieldName: key });
+                            }
+                        }
+                    }
+                }
+                if (githubPRs !== undefined) {
+                    const oldPrsStr = typeof currentTask.githubPRs === 'string' ? currentTask.githubPRs : JSON.stringify(currentTask.githubPRs || []);
+                    const newPrsStr = typeof githubPRs === 'string' ? githubPRs : JSON.stringify(githubPRs);
+                    if (oldPrsStr !== newPrsStr) {
+                        const proj = await prisma.project.findUnique({ where: { id: projectId } });
+                        if (proj && proj.customFieldSettings) {
+                            const cfs = typeof proj.customFieldSettings === 'string' ? JSON.parse(proj.customFieldSettings) : proj.customFieldSettings;
+                            const prFields = (Array.isArray(cfs) ? cfs : []).filter(f => f.type === 'github_pr');
+                            for (const prField of prFields) {
+                                await evaluateRules(projectId, updatedTask.id, { type: 'custom_field_changed', fieldName: prField.id });
                             }
                         }
                     }

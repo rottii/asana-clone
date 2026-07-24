@@ -113,6 +113,8 @@ model Project {
   teamId      String?
   team        Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
+  githubRepo  String?             // e.g. "koala73/worldmonitor" or full URL
+
   sections    Section[]
   secondaryTasks TaskProject[]
   members     ProjectMembership[] // ← DEĞİŞEN SATIR: Rol içeren proje üyeleri

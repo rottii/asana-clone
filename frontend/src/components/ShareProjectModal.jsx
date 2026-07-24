@@ -26,7 +26,7 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
       if (!response.ok) throw new Error(data.error)
       onProjectUpdated(data)
       setEmailInput('')
-      setInviteMessage('Kullanıcı başarıyla eklendi!')
+      setInviteMessage('User added successfully!')
     } catch (err) { setInviteMessage(err.message) }
   }
 

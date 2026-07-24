@@ -11,7 +11,7 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
       { id: 'q-email', title: 'Email address', type: 'TEXT', customFieldId: null, required: true }
     ]
   });
-  
+
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('Questions');
 
@@ -30,7 +30,7 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
     try {
       const formsArray = Array.isArray(project.formSettings) ? project.formSettings : (project.formSettings ? [project.formSettings] : []);
       const existingIndex = formsArray.findIndex(f => f.id === formSettings.id);
-      
+
       let newFormsArray;
       if (existingIndex >= 0) {
         newFormsArray = [...formsArray];
@@ -111,17 +111,17 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
           <button style={styles.iconBtn} onClick={openPublicForm}><span>★</span> View form</button>
           <button style={styles.iconBtn}><span>⎘</span> Share form</button>
           <button style={styles.iconBtn} onClick={copyToClipboard}><span>🔗</span> Copy link</button>
-          <button style={{...styles.iconBtn, padding: '0.2rem 0.5rem'}}>•••</button>
+          <button style={{ ...styles.iconBtn, padding: '0.2rem 0.5rem' }}>•••</button>
         </div>
       </div>
 
       {/* MAIN LAYOUT */}
       <div style={styles.mainArea}>
-        
+
         {/* LEFT CANVAS */}
         <div style={styles.canvasContainer}>
           <div style={styles.canvasContent}>
-            
+
             {/* Cover Image Block */}
             <div style={styles.coverImageBlock}>
               <button style={styles.addCoverBtn}>Add cover image</button>
@@ -129,16 +129,16 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
 
             {/* Title & Description Block */}
             <div style={styles.cardBlock}>
-              <input 
-                style={styles.titleInput} 
-                value={formSettings.title} 
-                onChange={e => setFormSettings({...formSettings, title: e.target.value})}
+              <input
+                style={styles.titleInput}
+                value={formSettings.title}
+                onChange={e => setFormSettings({ ...formSettings, title: e.target.value })}
                 placeholder="Form Title"
               />
-              <textarea 
-                style={styles.descInput} 
-                value={formSettings.description} 
-                onChange={e => setFormSettings({...formSettings, description: e.target.value})}
+              <textarea
+                style={styles.descInput}
+                value={formSettings.description}
+                onChange={e => setFormSettings({ ...formSettings, description: e.target.value })}
                 placeholder="Add form description"
               />
             </div>
@@ -148,7 +148,7 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
               <div key={q.id} style={styles.questionCard}>
                 <div style={styles.questionHeader}>
                   <div style={styles.questionTitleWrapper}>
-                    <input 
+                    <input
                       style={styles.questionTitleInput}
                       value={q.title}
                       onChange={e => updateQuestion(q.id, { title: e.target.value })}
@@ -157,11 +157,11 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
                   </div>
                   <button style={styles.removeQuestionBtn} onClick={() => removeQuestion(q.id)}>✕</button>
                 </div>
-                
+
                 {q.type === 'PARAGRAPH' ? (
-                  <div style={{...styles.mockTextarea, padding: '0.5rem', color: '#9CA3AF', fontFamily: 'inherit'}}>Enter your response...</div>
+                  <div style={{ ...styles.mockTextarea, padding: '0.5rem', color: '#9CA3AF', fontFamily: 'inherit' }}>Enter your response...</div>
                 ) : (
-                  <div style={{...styles.mockInput, padding: '0 0.5rem', color: '#9CA3AF', display: 'flex', alignItems: 'center'}}>Enter your response...</div>
+                  <div style={{ ...styles.mockInput, padding: '0 0.5rem', color: '#9CA3AF', display: 'flex', alignItems: 'center' }}>Enter your response...</div>
                 )}
               </div>
             ))}
@@ -170,7 +170,7 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
             <div style={styles.dropzone}>
               Drag another question here
             </div>
-            
+
           </div>
         </div>
 
@@ -178,13 +178,13 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
         <div style={styles.toolkitContainer}>
           <div style={styles.toolkitCard}>
             <div style={styles.tabsHeader}>
-              <div 
+              <div
                 style={activeTab === 'Questions' ? styles.tabActive : styles.tabInactive}
                 onClick={() => setActiveTab('Questions')}
               >
                 Questions
               </div>
-              <div 
+              <div
                 style={activeTab === 'Settings' ? styles.tabActive : styles.tabInactive}
                 onClick={() => setActiveTab('Settings')}
               >
@@ -197,21 +197,21 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
                 {/* Custom Fields Accordion (Mocked as button) */}
                 <button style={styles.toolkitBtnItem} onClick={() => addQuestion('CUSTOM_FIELD', 'New Custom Field')}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{color: 'var(--text-secondary)'}}>◇</span> Fields
+                    <span style={{ color: 'var(--text-secondary)' }}>◇</span> Fields
                   </span>
-                  <span style={{color: 'var(--text-secondary)'}}>{project.customFieldSettings?.length || 0} ›</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{project.customFieldSettings?.length || 0} ›</span>
                 </button>
 
                 <button style={styles.toolkitBtnItem} onClick={() => addQuestion('TEXT', 'Email address')}>
-                  <span style={{color: 'var(--text-secondary)'}}>✉</span> Email address
+                  <span style={{ color: 'var(--text-secondary)' }}>✉</span> Email address
                 </button>
-                
+
                 <button style={styles.toolkitBtnItem} onClick={() => addQuestion('TEXT', 'Attachment')}>
-                  <span style={{color: 'var(--text-secondary)'}}>📎</span> Attachment
+                  <span style={{ color: 'var(--text-secondary)' }}>📎</span> Attachment
                 </button>
 
                 <button style={styles.toolkitBtnItem} onClick={() => addQuestion('TEXT', 'Heading')}>
-                  <span style={{color: 'var(--text-secondary)', fontWeight: 'bold'}}>H1</span> Heading
+                  <span style={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}>H1</span> Heading
                 </button>
 
                 <button style={styles.toolkitBtnNew} onClick={() => addQuestion('TEXT', 'New question')}>
@@ -219,10 +219,10 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
                 </button>
               </div>
             )}
-            
+
             {activeTab === 'Settings' && (
               <div style={styles.toolkitBody}>
-                <p style={{fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: 0}}>Form settings go here.</p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: 0 }}>Form settings go here.</p>
               </div>
             )}
           </div>
@@ -234,7 +234,6 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
       <div style={styles.footer}>
         <div style={styles.footerLeft}>
           <button style={styles.discardBtn} onClick={onClose}>Discard form</button>
-          <button style={styles.feedbackBtn}>Send feedback</button>
         </div>
         <div style={styles.footerRight}>
           <button style={styles.publishBtn} onClick={handlePublish} disabled={isSaving}>
@@ -242,7 +241,7 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
           </button>
         </div>
       </div>
-      
+
     </div>
   );
 }

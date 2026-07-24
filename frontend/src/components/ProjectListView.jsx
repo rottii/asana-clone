@@ -438,9 +438,9 @@ export default function ProjectListView({
           ...styles.taskDataTableRow,
           position: 'relative',
           zIndex: (openApprovalMenuTaskId === task.id || (openCellMenuId && openCellMenuId.startsWith(`${task.id}-`))) ? 9999 : 0,
-          backgroundColor: lastInteractedSectionId === sectionId ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+          backgroundColor: lastInteractedTaskId === task.id ? 'var(--bg-secondary)' : 'var(--bg-primary)',
           opacity: draggingTaskId === task.id ? 0.4 : 1,
-          borderLeft: lastInteractedSectionId === sectionId ? '3px solid #4F46E5' : '3px solid transparent'
+          borderLeft: lastInteractedTaskId === task.id ? '3px solid #4F46E5' : '3px solid transparent'
         }}
         onContextMenu={(e) => { e.preventDefault(); onTaskContextMenu(e, task.id); }}
         onDragOver={(e) => {
@@ -643,7 +643,41 @@ export default function ProjectListView({
                     return <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{val || '—'}</span>;
                   }
                   
-                  if (!val) return null;
+                  if (cf.type === 'github_pr') {
+                    const prs = typeof task.githubPRs === 'string' ? JSON.parse(task.githubPRs || '[]') : (task.githubPRs || []);
+                    if (!prs || prs.length === 0) return <span style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>—</span>;
+                    
+                    const firstPr = prs[0];
+                    let statusColor = '#6E7681'; 
+                    if (firstPr.state === 'closed' && firstPr.merged) statusColor = '#8250DF'; 
+                    else if (firstPr.state === 'closed') statusColor = '#CF222E'; 
+                    else if (firstPr.draft) statusColor = '#6E7681';
+                    else if (firstPr.reviewStatus === 'Approved') statusColor = '#2DA44E'; 
+                    else if (firstPr.reviewStatus === 'Changes requested') statusColor = '#CF222E'; 
+                    else statusColor = '#1A7F37'; 
+                    
+                    let label = '';
+                    if (firstPr.merged) label = 'Merged';
+                    else if (firstPr.state === 'closed') label = 'Closed';
+                    else if (firstPr.draft) label = 'Draft';
+                    else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
+                    else label = 'Open';
+        
+                    if (prs.length > 1) label += ` (+${prs.length - 1})`;
+
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill={statusColor} style={{ flexShrink: 0 }}>
+                          <path fillRule="evenodd" d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.25 2.25 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 7.425A3.155 3.155 0 0012.75 12h.75a.75.75 0 01.75.75v.5a.75.75 0 01-.75.75H12a4.655 4.655 0 01-4.655-4.655V5.372a2.25 2.25 0 111.5 0v3.983c0 .713.273 1.398.75 1.916V7.425z"></path>
+                        </svg>
+                        <a href={firstPr.html_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--text-primary)', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={e => e.stopPropagation()}>
+                          {label}
+                        </a>
+                      </div>
+                    );
+                  }
+
+                  if (!val && cf.type !== 'timer') return null;
 
                   if (cf.type === 'SELECT' || cf.type === 'single-select') {
                     const opt = cf.options?.find(o => (o.label || o.value) === val);
@@ -1227,7 +1261,7 @@ export default function ProjectListView({
 
 const styles = {
   listSpreadsheetWrapper: { flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
-  listTableHeaderRow: { display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', flexShrink: 0 },
+  listTableHeaderRow: { display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', flexShrink: 0, borderLeft: '3px solid transparent' },
   gridHeaderCell: { boxSizing: 'border-box', padding: '0.6rem', fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderRight: '1px solid var(--border-color)' },
   sectionAccordionRow: { display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none' },
   accordionArrowIcon: { fontSize: '0.7rem', color: 'var(--text-primary)', width: '12px' },

@@ -1,0 +1,11 @@
+# .aiignore - Specifies files to be ignored by Auto-Code AI to save tokens
+# Ignore very large core files when doing small tasks like writing stories
+frontend/src/components/KanbanBoard.jsx
+frontend/src/components/TaskDetailPane.jsx
+frontend/src/components/ProjectListView.jsx
+backend/src/routes/project.js
+frontend/src/components/RulesModal.jsx
+backend/src/utils/ruleEngine.js
+
+# Note: If you ever need the AI to modify KanbanBoard or the rule engine, 
+# you should remove them from this file temporarily!

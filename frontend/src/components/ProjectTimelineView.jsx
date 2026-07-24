@@ -486,6 +486,7 @@ export default function ProjectTimelineView({
                       return (
                         <div 
                           key={t.id} 
+                          data-task-id={t.id}
                           onMouseEnter={() => setHoveredTaskId(t.id)}
                           onMouseLeave={() => setHoveredTaskId(null)}
                           onClick={(e) => { 

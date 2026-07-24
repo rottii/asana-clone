@@ -80,6 +80,7 @@ app.use('/api/search', require('./routes/search'));
 app.use('/api/workspaces', workspacesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/github', require('./routes/github'));
+app.use('/api/ai', require('./routes/ai'));
 
 // Health Check
 app.get('/api/health', async (req, res) => {

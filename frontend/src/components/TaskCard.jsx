@@ -198,7 +198,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
   }
 
   const formatFriendlyDateRange = (start, end) => {
-    if (!start && !end) return "📅 Tarih Yok"
+    if (!start && !end) return "📅 No Date"
     const fmt = (str) => { if (!str) return ''; const d = new Date(str); return `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })}` }
     return start && !end ? fmt(start) : `${fmt(start)} – ${fmt(end)}`
   }

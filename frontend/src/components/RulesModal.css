@@ -65,6 +65,20 @@
   align-items: center;
   gap: 4px;
   margin-left: 10px;
+  cursor: pointer;
+}
+
+.paused-badge {
+  background: #F3F4F6;
+  color: #4B5563;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  cursor: pointer;
 }
 
 .active-badge::before {
@@ -74,6 +88,15 @@
   height: 6px;
   border-radius: 50%;
   background: #4CAF50;
+}
+
+.paused-badge::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9CA3AF;
 }
 
 .publish-btn {
@@ -388,6 +411,7 @@
   margin-top: 8px;
   font-size: 0.85rem;
   outline: none;
+  box-sizing: border-box;
 }
 
 .add-branch-btn {

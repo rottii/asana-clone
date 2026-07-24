@@ -417,6 +417,7 @@ export default function ProjectGanttView({
                       {task.isMilestone ? (
                         /* Milestone diamond */
                         <div 
+                          data-task-id={task.id}
                           style={{ ...styles.taskBar, left: task.left, width: DAY_WIDTH, backgroundColor: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '6px', paddingLeft: '4px' }}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -475,6 +476,7 @@ export default function ProjectGanttView({
                       ) : (
                         /* Normal task bar */
                         <div 
+                          data-task-id={task.id}
                           style={{ ...styles.taskBar, left: task.left, width: Math.max(task.width, 10), backgroundColor: task.isCompleted ? '#D1D5DB' : '#6366F1' }}
                           onClick={(e) => {
                             e.stopPropagation();

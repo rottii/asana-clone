@@ -118,8 +118,8 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
       {/* Sadece yetkili kullanıcılar hızlı görev ekleme alanını görür */}
       {!isReadOnly && !isVirtualGrouping ? (
         <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0, marginTop: 'auto' }}>
-          <input type="text" placeholder="+ Görev ekle..." value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} style={styles.miniInput} required />
-          <button type="submit" style={styles.miniButton}>Ekle</button>
+          <input type="text" placeholder="+ Add task..." value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} style={styles.miniInput} required />
+          <button type="submit" style={styles.miniButton}>Add</button>
         </form>
       ) : isReadOnly ? (
         <div style={styles.readOnlyFooter}>👁️ Read Only Mode</div>
