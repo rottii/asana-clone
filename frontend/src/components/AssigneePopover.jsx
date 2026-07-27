@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-export default function AssigneePopover({ task, token, coords, project, onAssigneeUpdated }) {
+export default function AssigneePopover({ task, token, coords, project, onAssigneeUpdated, filterMode, onFilterApply, styleOverrides }) {
   const [searchQuery, setSearchQuery] = useState('')
 
   const users = (() => {
@@ -23,6 +23,13 @@ export default function AssigneePopover({ task, token, coords, project, onAssign
   )
 
   const handleSelectUser = async (userId) => {
+    if (filterMode) {
+      if (onFilterApply) {
+        const user = users.find(u => u.id === userId);
+        onFilterApply(user ? user : null);
+      }
+      return;
+    }
     try {
       const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
@@ -45,9 +52,10 @@ export default function AssigneePopover({ task, token, coords, project, onAssign
       className="popover"
       style={{ 
         ...styles.popover, 
-        top: coords.top !== undefined ? `${coords.top}px` : 'auto', 
-        bottom: coords.bottom !== undefined ? `${coords.bottom}px` : 'auto', 
-        left: `${coords.left}px` 
+        top: coords?.top !== undefined ? `${coords.top}px` : 'auto', 
+        bottom: coords?.bottom !== undefined ? `${coords.bottom}px` : 'auto', 
+        left: coords?.left !== undefined ? `${coords.left}px` : 'auto',
+        ...styleOverrides
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -75,7 +83,7 @@ export default function AssigneePopover({ task, token, coords, project, onAssign
               onClick={() => handleSelectUser(user.id)}
               style={{
                 ...styles.userItem,
-                backgroundColor: task.assigneeId === user.id ? '#F3F4F6' : 'transparent'
+                backgroundColor: (task?.assigneeId === user.id) ? '#F3F4F6' : 'transparent'
               }}
             >
               <div style={styles.avatarCircle}>{getInitials(user.name)}</div>

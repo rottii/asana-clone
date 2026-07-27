@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function ProjectWorkloadView({ 
   selectedProject, handleTaskUpdate, onOpenTaskPane, token, isReadOnly
@@ -165,14 +166,46 @@ export default function ProjectWorkloadView({
     };
   }, [dragState, rawTasks, token, handleTaskUpdate, isReadOnly]);
 
-  const goToday = () => {
+  const goToday = (smooth = true) => {
     if (scrollContainerRef.current) {
       const todayIdx = days.findIndex(d => d.isToday);
       if (todayIdx !== -1) {
-        scrollContainerRef.current.scrollTo({ left: Math.max(0, todayIdx * DAY_WIDTH - 200), behavior: 'smooth' });
+        scrollContainerRef.current.scrollTo({ left: Math.max(0, todayIdx * DAY_WIDTH - 200), behavior: smooth ? 'smooth' : 'auto' });
       }
     }
   };
+
+  const scrollLeftBtn = () => {
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollBy({ left: -400, behavior: 'smooth' });
+  };
+
+  const scrollRightBtn = () => {
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollBy({ left: 400, behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    // Jump to today immediately on first mount
+    const timer = setTimeout(() => {
+      goToday(false);
+    }, 10);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const onGoToday = () => goToday();
+    const onScrollLeft = () => scrollLeftBtn();
+    const onScrollRight = () => scrollRightBtn();
+
+    window.addEventListener('timeline-go-today', onGoToday);
+    window.addEventListener('timeline-scroll-left', onScrollLeft);
+    window.addEventListener('timeline-scroll-right', onScrollRight);
+
+    return () => {
+      window.removeEventListener('timeline-go-today', onGoToday);
+      window.removeEventListener('timeline-scroll-left', onScrollLeft);
+      window.removeEventListener('timeline-scroll-right', onScrollRight);
+    };
+  }, [days]);
 
   const sidebarScrollRef = useRef(null);
 
@@ -188,11 +221,13 @@ export default function ProjectWorkloadView({
     }
   };
 
+  const portalTarget = document.getElementById('timeline-topbar-portal');
+
   return (
     <div style={styles.container}>
-      <div style={styles.toolbar}>
+      {portalTarget && createPortal(
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h2 style={styles.title}>Team Workload</h2>
+          <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', color: 'var(--text-primary)' }}>Team Workload</h2>
           <div style={styles.capacityControl}>
             <label style={{ fontSize: '0.85rem', color: '#6B7280' }}>Capacity limit:</label>
             <input 
@@ -204,9 +239,9 @@ export default function ProjectWorkloadView({
             />
             <span style={{ fontSize: '0.85rem', color: '#6B7280' }}>tasks/day</span>
           </div>
-        </div>
-        <button onClick={goToday} style={styles.todayBtn}>Today</button>
-      </div>
+        </div>,
+        portalTarget
+      )}
 
       <div style={styles.layoutWrapper}>
         

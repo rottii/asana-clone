@@ -79,9 +79,6 @@ export default function ProjectFilesView({ selectedProject, token, onTaskUpdate 
 
   return (
     <div style={{ flex: 1, backgroundColor: 'var(--bg-secondary)', padding: '2rem', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '1.5rem', fontWeight: '500', color: 'var(--text-primary)', margin: 0 }}>Files</h2>
-      </div>
 
       {allAttachments.length === 0 ? (
         <div style={{

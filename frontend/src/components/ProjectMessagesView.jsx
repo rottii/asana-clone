@@ -3,7 +3,9 @@ import React, { useState, useEffect } from 'react';
 const styles = {
   container: {
     padding: '24px 32px',
-    maxWidth: '800px',
+    maxWidth: '1200px',
+    width: '100%',
+    boxSizing: 'border-box',
     margin: '0 auto',
     fontFamily: 'var(--font-primary)'
   },

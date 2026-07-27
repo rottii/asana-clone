@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import RichTextEditor from './RichTextEditor';
+import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusColor, getGithubPRStatusLabel } from '../utils/customFields';
 
 export default function TaskDetailPane({ task, selectedProject, onClose, onTaskUpdate, onDeleteTask, onConvertTask, token, projectRole, customFieldSettings, onOpenPopover, currentUser }) {
   const paneRef = useRef(null);
@@ -325,18 +326,10 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     }
   };
 
-  const getParsedCustomFields = (fields) => {
-    if (!fields) return {};
-    if (typeof fields === 'string') {
-      try { return JSON.parse(fields); } catch (e) { return {}; }
-    }
-    return fields;
-  };
-
   const handleDirectFieldUpdate = async (fieldId, value, shouldCloseMenu = true) => {
     if (isReadOnly) return;
     const bodyData = {};
-    const parsedFields = getParsedCustomFields(task.customFields);
+    const parsedFields = getParsedTaskCustomFields(task.customFields);
     parsedFields[fieldId] = value;
     bodyData.customFields = JSON.stringify(parsedFields);
 
@@ -666,7 +659,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     } catch (err) { console.error(err); }
   };
 
-  const parsedFields = getParsedCustomFields(task.customFields);
+  const parsedFields = getParsedTaskCustomFields(task.customFields);
 
   const activeBlockedBy = task.blockedBy?.filter(dep => !dep.blockingTask?.isCompleted) || [];
   const activeBlocking = task.blocking?.filter(dep => !dep.blockedByTask?.isCompleted) || [];
@@ -1278,26 +1271,14 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
                             // GITHUB PR (read-only auto-filled)
                             if (cfType === 'github_pr') {
-                              const prs = typeof task.githubPRs === 'string' ? JSON.parse(task.githubPRs || '[]') : (task.githubPRs || []);
+                              const prs = getParsedGithubPRs(task.githubPRs);
                               if (prs.length === 0) {
                                 return <span style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>—</span>;
                               }
                               
                               const firstPr = prs[0];
-                              let statusColor = '#6E7681'; 
-                              if (firstPr.state === 'closed' && firstPr.merged) statusColor = '#8250DF'; 
-                              else if (firstPr.state === 'closed') statusColor = '#CF222E'; 
-                              else if (firstPr.draft) statusColor = '#6E7681'; 
-                              else if (firstPr.reviewStatus === 'Approved') statusColor = '#2DA44E'; 
-                              else if (firstPr.reviewStatus === 'Changes requested') statusColor = '#CF222E'; 
-                              else statusColor = '#1A7F37'; 
-                              
-                              let label = '';
-                              if (firstPr.merged) label = 'Merged';
-                              else if (firstPr.state === 'closed') label = 'Closed';
-                              else if (firstPr.draft) label = 'Draft';
-                              else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
-                              else label = 'Open';
+                              let statusColor = getGithubPRStatusColor(firstPr);
+                              let label = getGithubPRStatusLabel(firstPr);
                   
                               if (prs.length > 1) label += ` (+${prs.length - 1})`;
                               
@@ -1462,7 +1443,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                       </div>
                       <div style={styles.githubMetricCol}>
                         <div style={styles.githubMetricLabel}>PR status</div>
-                        <div style={styles.githubMetricValue}>{pr.state === 'open' ? (pr.draft ? 'Draft' : 'Open') : (pr.merged ? 'Merged' : 'Closed')}</div>
+                        <div style={styles.githubMetricValue}>{getGithubPRStatusLabel(pr)}</div>
                       </div>
                       <div style={styles.githubMetricCol}>
                         <div style={styles.githubMetricLabel}>Line changes</div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import AddFieldModal from './AddFieldModal'
+import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusLabel, getGithubPRStatusColor } from '../utils/customFields';
 
 let globalLastDragY = 0;
 
@@ -44,18 +45,10 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
 
   const isReadOnly = projectRole === 'VIEWER' || projectRole === 'COMMENTER';
 
-  const getParsedCustomFields = (fields) => {
-    if (!fields) return {};
-    if (typeof fields === 'string') {
-      try { return JSON.parse(fields); } catch (e) { return {}; }
-    }
-    return fields;
-  };
-
   const handleDirectFieldUpdate = async (fieldId, value) => {
     if (isReadOnly) return;
     const bodyData = {};
-    const parsedFields = getParsedCustomFields(task.customFields);
+    const parsedFields = getParsedTaskCustomFields(task.customFields);
     parsedFields[fieldId] = value;
     bodyData.customFields = JSON.stringify(parsedFields);
 
@@ -394,7 +387,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
 
 
         {customFieldSettings?.map(cf => {
-          const parsedFields = getParsedCustomFields(task.customFields);
+          const parsedFields = getParsedTaskCustomFields(task.customFields);
           const value = parsedFields[cf.id];
           const cfType = cf.type || 'single-select';
           
@@ -658,20 +651,8 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
             if (prs.length === 0 && isEditingMode) return <span key={cf.id} style={{ ...styles.staticCustomBadge, opacity: 0.7 }}>🐙 GitHub PR</span>;
 
             const firstPr = prs[0];
-            let statusColor = '#6E7681'; 
-            if (firstPr.state === 'closed' && firstPr.merged) statusColor = '#8250DF'; 
-            else if (firstPr.state === 'closed') statusColor = '#CF222E'; 
-            else if (firstPr.draft) statusColor = '#6E7681';
-            else if (firstPr.reviewStatus === 'Approved') statusColor = '#2DA44E'; 
-            else if (firstPr.reviewStatus === 'Changes requested') statusColor = '#CF222E'; 
-            else statusColor = '#1A7F37'; 
-            
-            let label = '';
-            if (firstPr.merged) label = 'Merged';
-            else if (firstPr.state === 'closed') label = 'Closed';
-            else if (firstPr.draft) label = 'Draft';
-            else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
-            else label = 'Open';
+            let statusColor = getGithubPRStatusColor(firstPr);
+            let label = getGithubPRStatusLabel(firstPr);
 
             if (prs.length > 1) label += ` (+${prs.length - 1})`;
 

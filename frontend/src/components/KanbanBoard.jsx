@@ -3,6 +3,7 @@ import { io } from 'socket.io-client'
 import KanbanColumn from './KanbanColumn'
 import DatePickerPopover from './DatePickerPopover'
 import AssigneePopover from './AssigneePopover'
+import FilterValueDropdown from './FilterValueDropdown'
 import ShareProjectModal from './ShareProjectModal'
 import ProjectListView from './ProjectListView'
 import AddFieldModal from './AddFieldModal'
@@ -20,6 +21,7 @@ import ProjectNoteView from './ProjectNoteView'
 import ProjectFilesView from './ProjectFilesView'
 import ProjectMessagesView from './ProjectMessagesView'
 import './KanbanBoard.css'
+import { getParsedCustomFields, getParsedGithubPRs, getGithubPRStatusLabel, GITHUB_PR_STATUSES, GITHUB_PR_SORT_MAP } from '../utils/customFields'
 
 export default function KanbanBoard({ selectedProject, setSelectedProject, projects, setProjects, token, user, handleLogout }) {
   const [newSectionName, setNewSectionName] = useState('')
@@ -28,6 +30,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false)
   const [isCustomizePanelOpen, setIsCustomizePanelOpen] = useState(false)
+  const [isOptionsPaneOpen, setIsOptionsPaneOpen] = useState(false)
   const [isFormsModalOpen, setIsFormsModalOpen] = useState(false)
   const [activeFormId, setActiveFormId] = useState(null)
   const [customizeView, setCustomizeView] = useState('main')
@@ -52,6 +55,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [nameInput, setNameInput] = useState(selectedProject.name)
   const [isHeaderDropdownOpen, setIsHeaderDropdownOpen] = useState(false)
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false)
+  const [isFilterInnerMenuOpen, setIsFilterInnerMenuOpen] = useState(false)
+  const [openFilterDropdown, setOpenFilterDropdown] = useState(null) // { index, type: 'operator' | 'value' | 'value_start' | 'value_end' }
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [isAddWidgetMenuOpen, setIsAddWidgetMenuOpen] = useState(false)
   const [isAddTaskMenuOpen, setIsAddTaskMenuOpen] = useState(false)
@@ -66,6 +71,12 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     return localStorage.getItem(`currentProjectTab_${selectedProject.id}`) || selectedProject.defaultView || 'List';
   })
   const [tabContextMenu, setTabContextMenu] = useState({ visible: false, x: 0, y: 0, view: null })
+
+  useEffect(() => {
+    const handleClickOutside = () => setOpenFilterDropdown(null);
+    if (openFilterDropdown) document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [openFilterDropdown]);
 
   // Parse views for backward compatibility
   const rawViews = selectedProject.activeViews || ['Overview', 'List', 'Board', 'Timeline', 'Gantt', 'Dashboard', 'Calendar', 'Workload'];
@@ -431,9 +442,138 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         const { nextMonday, nextSunday } = getNextWeekRange()
         if (due < nextMonday || due > nextSunday) return false
       }
+
+      const objFilters = activeFilters.filter(f => typeof f === 'object');
+      for (const filter of objFilters) {
+        let taskValue;
+        if (filter.field === 'Completion status') taskValue = task.isCompleted ? 'Completed' : 'Incomplete';
+        else if (filter.field === 'Assignee') taskValue = task.assignee?.name || null;
+        else if (filter.field === 'Created by') taskValue = task.creator?.name || null;
+        else if (filter.field === 'Start date') taskValue = task.startDate;
+        else if (filter.field === 'Due date') taskValue = task.dueDate;
+        else if (filter.field === 'Created on') taskValue = task.createdAt;
+        else if (filter.field === 'Last modified on') taskValue = task.updatedAt;
+        else if (filter.field === 'Completed on') taskValue = task.completedAt;
+        else if (filter.field === 'Task type') taskValue = task.type || 'Task';
+        else {
+          const customFieldsList = getParsedCustomFields(selectedProject);
+          const cf = customFieldsList.find(f => f.title === filter.field);
+          if (cf) {
+            if (cf.type === 'github_pr') {
+              const prs = getParsedGithubPRs(task.githubPRs);
+              taskValue = prs.length > 0 ? getGithubPRStatusLabel(prs[0]) : null;
+            } else {
+              let parsedFields = {};
+              if (typeof task.customFields === 'string') { try { parsedFields = JSON.parse(task.customFields); } catch(e){} } else if (task.customFields) parsedFields = task.customFields;
+              taskValue = parsedFields[cf.id];
+            }
+          } else {
+            taskValue = null;
+          }
+        }
+        
+        const op = filter.operator;
+        const val = filter.value;
+        const filterType = (filter.type || '').toLowerCase();
+        const isDate = ['Start date', 'Due date', 'Created on', 'Completed on', 'Last modified on'].includes(filter.field) || filterType === 'date';
+        const isMulti = filterType === 'multi_select' || filterType === 'multi-select';
+
+        if (isDate) {
+          const tDate = taskValue ? new Date(taskValue).setHours(0,0,0,0) : null;
+          if (op === 'is empty') { if (tDate) return false; }
+          else if (op === 'is not empty') { if (!tDate) return false; }
+          else if (op === 'is') {
+            if (!tDate || !val) return false;
+            const vDate = new Date(val).setHours(0,0,0,0);
+            if (tDate !== vDate) return false;
+          }
+          else if (op === 'is not') {
+            if (tDate && val) {
+              const vDate = new Date(val).setHours(0,0,0,0);
+              if (tDate === vDate) return false;
+            }
+          }
+          else if (op === 'is between') {
+            const start = val?.start ? new Date(val.start).setHours(0,0,0,0) : null;
+            const end = val?.end ? new Date(val.end).setHours(0,0,0,0) : null;
+            if (!tDate) return false;
+            if (start && tDate < start) return false;
+            if (end && tDate > end) return false;
+          }
+          else if (op === 'is not between') {
+            const start = val?.start ? new Date(val.start).setHours(0,0,0,0) : null;
+            const end = val?.end ? new Date(val.end).setHours(0,0,0,0) : null;
+            if (!tDate) return false;
+            const isInside = (!start || tDate >= start) && (!end || tDate <= end);
+            if (isInside) return false;
+          }
+        } else if (isMulti) {
+           let tArr = [];
+           if (Array.isArray(taskValue)) tArr = taskValue;
+           else if (typeof taskValue === 'string') { try { tArr = JSON.parse(taskValue); if(!Array.isArray(tArr)) tArr = [taskValue]; } catch(e){ tArr = [taskValue]; } }
+           else if (taskValue) tArr = [taskValue];
+           
+           const vArr = Array.isArray(val) ? val : [];
+           if (op === 'is empty') { if (tArr.length > 0) return false; }
+           else if (op === 'is not empty') { if (tArr.length === 0) return false; }
+           else if (op === 'contains all') {
+             for (const v of vArr) { if (!tArr.includes(v)) return false; }
+           }
+           else if (op === 'contains any') {
+             if (vArr.length > 0 && !vArr.some(v => tArr.includes(v))) return false;
+           }
+           else if (op === 'doesnt contain all') {
+             let hasAll = true;
+             for (const v of vArr) { if (!tArr.includes(v)) hasAll = false; }
+             if (hasAll && vArr.length > 0) return false;
+           }
+           else if (op === 'doesnt contain any') {
+             if (vArr.some(v => tArr.includes(v))) return false;
+           }
+        } else {
+           const tStr = String(taskValue || '').toLowerCase();
+           const vStr = String(val || '').toLowerCase();
+           if (op === 'is empty') { if (tStr) return false; }
+           else if (op === 'is not empty') { if (!tStr) return false; }
+           else if (op === 'is') { if (tStr !== vStr) return false; }
+           else if (op === 'is not') { if (tStr === vStr) return false; }
+        }
+      }
+
       return true
     })
   }
+
+  const getOperatorsForFilter = (filter) => {
+    const filterType = (filter.type || '').toLowerCase();
+    const isDateField = ['Start date', 'Due date', 'Created on', 'Completed on', 'Last modified on'].includes(filter.field) || filterType === 'date';
+    if (isDateField) return ['is', 'is not', 'is between', 'is not between', 'is empty', 'is not empty'];
+    if (filterType === 'multi_select' || filterType === 'multi-select') return ['contains all', 'contains any', 'doesnt contain all', 'doesnt contain any', 'is empty', 'is not empty'];
+    if (filterType === 'single_select' || filterType === 'single-select' || filterType === 'select' || filterType === 'github_pr') return ['is', 'is not', 'is empty', 'is not empty'];
+    if (filter.field === 'Created by') return ['is', 'is not'];
+    if (filter.field === 'Assignee') return ['is', 'is not', 'is empty', 'is not empty'];
+    if (filter.field === 'Completion status') return ['is'];
+    if (filter.field === 'Task type') return ['is', 'is not'];
+    return ['is'];
+  };
+
+  const updateActiveFilter = (idx, key, value) => {
+    const newFilters = [...activeFilters];
+    if (key === 'operator') {
+      const isBetween = ['is between', 'is not between'].includes(value);
+      const filterType = (newFilters[idx].type || '').toLowerCase();
+      const isMulti = filterType === 'multi_select' || filterType === 'multi-select';
+      if (isBetween) {
+        newFilters[idx].value = { start: '', end: '' };
+      } else if (isMulti) {
+        newFilters[idx].value = Array.isArray(newFilters[idx].value) ? newFilters[idx].value : [];
+      } else {
+        newFilters[idx].value = '';
+      }
+    }
+    newFilters[idx] = { ...newFilters[idx], [key]: value };
+    setActiveFilters(newFilters);
+  };
 
   const handleSortOptionClick = (field) => {
     setActiveSort(prev => {
@@ -500,26 +640,17 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           valB = selectedProject.name?.toLowerCase() || '';
           break;
         default:
-          const customFieldsList = Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings : [];
+          const customFieldsList = getParsedCustomFields(selectedProject);
           const cf = customFieldsList.find(f => f.title === field);
           if (cf) {
             if (cf.type === 'github_pr') {
-              const getPRLabel = (task) => {
-                let prs = [];
-                if (typeof task.githubPRs === 'string') { try { prs = JSON.parse(task.githubPRs); } catch (e) { } } else if (task.githubPRs) { prs = task.githubPRs; }
-                if (!prs || prs.length === 0) return 'Empty';
-                const firstPr = prs[0];
-                if (firstPr.merged) return 'Merged';
-                if (firstPr.state === 'closed') return 'Closed';
-                if (firstPr.draft) return 'Draft';
-                if (firstPr.reviewStatus) return firstPr.reviewStatus;
-                return 'Open';
-              };
-              const labelA = getPRLabel(a);
-              const labelB = getPRLabel(b);
-              const sortValueMap = { 'Merged': 1, 'Approved': 2, 'Changes requested': 3, 'In review': 4, 'No reviews': 5, 'Open': 6, 'Draft': 7, 'Closed': 8, 'Empty': 9 };
-              valA = sortValueMap[labelA] || 9;
-              valB = sortValueMap[labelB] || 9;
+              const prsA = getParsedGithubPRs(a.githubPRs);
+              const prsB = getParsedGithubPRs(b.githubPRs);
+              const labelA = prsA.length > 0 ? getGithubPRStatusLabel(prsA[0]) : 'Empty';
+              const labelB = prsB.length > 0 ? getGithubPRStatusLabel(prsB[0]) : 'Empty';
+              
+              valA = GITHUB_PR_SORT_MAP[labelA] || 9;
+              valB = GITHUB_PR_SORT_MAP[labelB] || 9;
             } else {
               let aFields = {};
               if (typeof a.customFields === 'string') { try { aFields = JSON.parse(a.customFields); } catch (e) { } } else if (a.customFields) aFields = a.customFields;
@@ -1170,19 +1301,10 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         groupsMap[b.key] = { id: `group-${b.key}`, name: b.name, tasks: [], sortValue: b.sortValue };
       });
     } else {
-      const customFieldsList = Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings : [];
+      const customFieldsList = getParsedCustomFields(selectedProject);
       const cf = customFieldsList.find(f => f.title === activeGroup);
       if (cf && cf.type === 'github_pr') {
-        const statuses = [
-          { key: 'Merged', sortValue: 1 },
-          { key: 'Approved', sortValue: 2 },
-          { key: 'Changes requested', sortValue: 3 },
-          { key: 'In review', sortValue: 4 },
-          { key: 'No reviews', sortValue: 5 },
-          { key: 'Open', sortValue: 6 },
-          { key: 'Draft', sortValue: 7 },
-          { key: 'Closed', sortValue: 8 }
-        ];
+        const statuses = GITHUB_PR_STATUSES.map(s => ({ key: s, sortValue: GITHUB_PR_SORT_MAP[s] || 8 }));
         statuses.forEach(s => {
           groupsMap[s.key] = { id: `group-${s.key}`, name: s.key, tasks: [], sortValue: s.sortValue };
         });
@@ -1247,25 +1369,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         case 'Project':
           return { key: selectedProject.id, name: selectedProject.name };
         default:
-          const customFieldsList = Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings : [];
+          const customFieldsList = getParsedCustomFields(selectedProject);
           const cf = customFieldsList.find(f => f.title === activeGroup);
           if (cf) {
             if (cf.type === 'github_pr') {
-              let prs = [];
-              if (typeof task.githubPRs === 'string') { try { prs = JSON.parse(task.githubPRs); } catch (e) { } } else if (task.githubPRs) { prs = task.githubPRs; }
-
+              let prs = getParsedGithubPRs(task.githubPRs);
               if (!prs || prs.length === 0) return { key: 'empty', name: 'Empty' };
 
-              const firstPr = prs[0];
-              let label = '';
-              if (firstPr.merged) label = 'Merged';
-              else if (firstPr.state === 'closed') label = 'Closed';
-              else if (firstPr.draft) label = 'Draft';
-              else if (firstPr.reviewStatus) label = firstPr.reviewStatus;
-              else label = 'Open';
-
-              const sortValueMap = { 'Merged': 1, 'Approved': 2, 'Changes requested': 3, 'In review': 4, 'No reviews': 5, 'Open': 6, 'Draft': 7, 'Closed': 8 };
-              const sortVal = sortValueMap[label] || 8;
+              const label = getGithubPRStatusLabel(prs[0]);
+              const sortVal = GITHUB_PR_SORT_MAP[label] || 8;
 
               return { key: label, name: label, sortValue: sortVal };
             }
@@ -1456,10 +1568,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
         <div style={styles.headerRightBlock}>
           <div style={styles.avatarListWrapper}>
-            <div style={styles.avatarCircleOwner}>{selectedProject.owner?.name?.[0].toUpperCase()}</div>
+            <div 
+              style={styles.avatarCircleOwner} 
+              onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }}
+            >
+              {selectedProject.owner?.name?.[0].toUpperCase()}
+            </div>
           </div>
           <button onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }} style={{ ...styles.asanaShareButtonLight, fontWeight: 'normal' }}>👥 Share</button>
-          <button onClick={(e) => { e.stopPropagation(); setIsCustomizePanelOpen(prev => !prev); }} style={styles.asanaCustomizeBtn}>🎛️ Customize</button>
+          <button onClick={(e) => { e.stopPropagation(); setIsCustomizePanelOpen(prev => !prev); setIsOptionsPaneOpen(false); }} style={styles.asanaCustomizeBtn}>🎛️ Customize</button>
         </div>
       </div>
 
@@ -1628,31 +1745,298 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             </div>
           )}
 
+          {['Gantt', 'Timeline', 'Workload', 'Calendar'].includes(activeViewObj.type) && (
+            <div style={{ display: 'flex', alignItems: 'center', marginLeft: '1rem', gap: '0.5rem' }}>
+              <button 
+                style={{ padding: '0.4rem 0.6rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                onClick={() => window.dispatchEvent(new CustomEvent('timeline-scroll-left'))}
+              >
+                &lt;
+              </button>
+              <button 
+                style={{ padding: '0.4rem 1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontWeight: '500', color: 'var(--text-primary)' }}
+                onClick={() => window.dispatchEvent(new CustomEvent('timeline-go-today'))}
+              >
+                Today
+              </button>
+              <button 
+                style={{ padding: '0.4rem 0.6rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                onClick={() => window.dispatchEvent(new CustomEvent('timeline-scroll-right'))}
+              >
+                &gt;
+              </button>
+            </div>
+          )}
+          <div id="timeline-topbar-portal" style={{ display: 'flex', alignItems: 'center', marginLeft: '1rem', gap: '1rem', flexShrink: 0 }}></div>
+
           {activeViewObj.type !== 'Dashboard' && (
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', marginLeft: 'auto' }}>
               <div style={styles.optionsRightGroup}>
-                <div className="option-sub-item" style={{ ...styles.optionSubItem, backgroundColor: activeFilters.length > 0 ? '#EEF2F6' : 'transparent', fontWeight: activeFilters.length > 0 ? '700' : '500' }} onClick={(e) => { document.body.click(); e.stopPropagation(); setIsFilterDropdownOpen(!isFilterDropdownOpen); }}>
-                  <span style={styles.optionIcon}>📊</span> Filter {activeFilters.length > 0 && `(${activeFilters.length})`}
-                  {activeFilters.length > 0 && (
-                    <span
-                      onClick={(e) => { e.stopPropagation(); setActiveFilters([]); }}
-                      style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-                    >×</span>
+                <div style={{ position: 'relative' }}>
+                  <div className="option-sub-item" style={{ ...styles.optionSubItem, backgroundColor: isFilterDropdownOpen || activeFilters.length > 0 ? '#EEF2F6' : 'transparent', fontWeight: '500' }} onClick={(e) => { document.body.click(); e.stopPropagation(); setIsFilterDropdownOpen(!isFilterDropdownOpen); }}>
+                    <span style={styles.optionIcon}>📊</span> Filter {activeFilters.length > 0 && `(${activeFilters.length})`}
+                    {activeFilters.length > 0 && (
+                      <span
+                        onClick={(e) => { e.stopPropagation(); setActiveFilters([]); }}
+                        style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                      >×</span>
+                    )}
+                  </div>
+                  {isFilterDropdownOpen && (
+                    <div style={{...styles.groupDropdownPanel, right: '-150px', minWidth: '600px', padding: '16px'}} onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(null); }}>
+                      {/* Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <span style={{ fontWeight: '500', fontSize: '1rem', color: 'var(--text-primary)' }}>Filters</span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={() => setActiveFilters([])}>Clear</span>
+                      </div>
+
+                      {/* Quick filters */}
+                      <div style={{ marginBottom: '24px' }}>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>Quick filters</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          <div onClick={() => handleToggleFilter('incomplete')} style={{ display: 'flex', alignItems: 'center', gap: '6px', border: activeFilters.includes('incomplete') ? '1px solid #4F46E5' : '1px solid #D1D5DB', borderRadius: '16px', padding: '4px 12px', fontSize: '0.85rem', color: activeFilters.includes('incomplete') ? '#4F46E5' : 'var(--text-primary)', backgroundColor: activeFilters.includes('incomplete') ? '#EEF2F6' : 'transparent', cursor: 'pointer' }}>
+                            <span style={{ color: activeFilters.includes('incomplete') ? '#4F46E5' : 'var(--text-secondary)' }}>✓</span> Incomplete tasks
+                          </div>
+                          <div onClick={() => handleToggleFilter('completed')} style={{ display: 'flex', alignItems: 'center', gap: '6px', border: activeFilters.includes('completed') ? '1px solid #4F46E5' : '1px solid #D1D5DB', borderRadius: '16px', padding: '4px 12px', fontSize: '0.85rem', color: activeFilters.includes('completed') ? '#4F46E5' : 'var(--text-primary)', backgroundColor: activeFilters.includes('completed') ? '#EEF2F6' : 'transparent', cursor: 'pointer' }}>
+                            <span style={{ color: activeFilters.includes('completed') ? '#4F46E5' : 'var(--text-secondary)' }}>✓</span> Completed tasks
+                          </div>
+                          <div onClick={() => handleToggleFilter('my-tasks')} style={{ display: 'flex', alignItems: 'center', gap: '6px', border: activeFilters.includes('my-tasks') ? '1px solid #4F46E5' : '1px solid #D1D5DB', borderRadius: '16px', padding: '4px 12px', fontSize: '0.85rem', color: activeFilters.includes('my-tasks') ? '#4F46E5' : 'var(--text-primary)', backgroundColor: activeFilters.includes('my-tasks') ? '#EEF2F6' : 'transparent', cursor: 'pointer' }}>
+                            <span style={{ color: activeFilters.includes('my-tasks') ? '#4F46E5' : 'var(--text-secondary)' }}>👤</span> Just my tasks
+                          </div>
+                          <div onClick={() => handleToggleFilter('this-week')} style={{ display: 'flex', alignItems: 'center', gap: '6px', border: activeFilters.includes('this-week') ? '1px solid #4F46E5' : '1px solid #D1D5DB', borderRadius: '16px', padding: '4px 12px', fontSize: '0.85rem', color: activeFilters.includes('this-week') ? '#4F46E5' : 'var(--text-primary)', backgroundColor: activeFilters.includes('this-week') ? '#EEF2F6' : 'transparent', cursor: 'pointer' }}>
+                            <span style={{ color: activeFilters.includes('this-week') ? '#4F46E5' : 'var(--text-secondary)' }}>📅</span> Due this week
+                          </div>
+                          <div onClick={() => handleToggleFilter('next-week')} style={{ display: 'flex', alignItems: 'center', gap: '6px', border: activeFilters.includes('next-week') ? '1px solid #4F46E5' : '1px solid #D1D5DB', borderRadius: '16px', padding: '4px 12px', fontSize: '0.85rem', color: activeFilters.includes('next-week') ? '#4F46E5' : 'var(--text-primary)', backgroundColor: activeFilters.includes('next-week') ? '#EEF2F6' : 'transparent', cursor: 'pointer' }}>
+                            <span style={{ color: activeFilters.includes('next-week') ? '#4F46E5' : 'var(--text-secondary)' }}>📅</span> Due next week
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* All filters */}
+                      <div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>All filters</div>
+                        
+                        {activeFilters.filter(f => typeof f === 'object').length > 0 && activeFilters.map((filter, idx) => {
+                          if (typeof filter !== 'object') return null;
+                          const operators = getOperatorsForFilter(filter);
+                          const hasNoValue = ['is empty', 'is not empty'].includes(filter.operator);
+                          const hasTwoValues = ['is between', 'is not between'].includes(filter.operator);
+                          
+                          const formatVal = (val) => {
+                            if (Array.isArray(val)) return val.length > 0 ? val.join(', ') : '';
+                            if (typeof val === 'object' && val !== null) return '';
+                            return val || '';
+                          };
+                          
+                          return (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                              
+                              {/* Field Box */}
+                              <div style={{ position: 'relative', flex: 1 }}>
+                                <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'field' ? null : { index: idx, type: 'field' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                                  <span style={{ color: 'var(--text-secondary)' }}>{filter.icon}</span> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.field}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                                </div>
+                                {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'field' && (
+                                  <div style={{ position: 'absolute', top: '100%', left: 0, width: '220px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 102, marginTop: '4px', maxHeight: '300px', overflowY: 'auto' }}>
+                                    {[
+                                      { icon: '✓', label: 'Completion status' },
+                                      { icon: '👤', label: 'Assignee' },
+                                      { icon: '📅', label: 'Start date', type: 'date' },
+                                      { icon: '📅', label: 'Due date', type: 'date' },
+                                      { icon: '👤', label: 'Created by' },
+                                      { icon: '🕒', label: 'Created on', type: 'date' },
+                                      { icon: '✏️', label: 'Last modified on', type: 'date' },
+                                      { icon: '✓', label: 'Completed on', type: 'date' },
+                                      { icon: '✓', label: 'Task type' },
+                                      ...getParsedCustomFields(selectedProject).map(cf => ({ icon: 'A', label: cf.title, type: cf.type || cf.fieldType, options: cf.options }))
+                                    ].map((item, itemIdx) => (
+                                      <div
+                                        key={itemIdx}
+                                        style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          let defOperator = 'is';
+                                          let defValue = '';
+                                          const isDateField = ['Start date', 'Due date', 'Created on', 'Completed on', 'Last modified on'].includes(item.label) || item.type === 'date';
+                                          const isAssigneeField = ['Assignee', 'Created by'].includes(item.label);
+                                          const isMulti = item.type === 'multi_select';
+
+                                          if (isDateField) {
+                                            defOperator = 'is between';
+                                            defValue = { start: '', end: '' };
+                                          } else if (isAssigneeField) {
+                                            defOperator = 'is';
+                                            defValue = null;
+                                          } else if (item.label === 'Completion status') {
+                                            defOperator = 'is';
+                                            defValue = 'Incomplete';
+                                          } else if (item.label === 'Task type') {
+                                            defOperator = 'is';
+                                            defValue = 'Task';
+                                          } else if (isMulti) {
+                                            defOperator = 'contains any';
+                                            defValue = [];
+                                          } else {
+                                            defOperator = 'is';
+                                            defValue = null;
+                                          }
+                                          
+                                          const newFilters = [...activeFilters];
+                                          newFilters[idx] = { field: item.label, icon: item.icon, operator: defOperator, value: defValue, type: item.type, options: item.options };
+                                          setActiveFilters(newFilters);
+                                          setOpenFilterDropdown(null);
+                                        }}
+                                      >
+                                        <span style={{ color: 'var(--text-secondary)' }}>{item.icon}</span> {item.label}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <div style={{ position: 'relative', flex: 1 }}>
+                                <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'operator' ? null : { index: idx, type: 'operator' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.operator}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                                </div>
+                                {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'operator' && (
+                                  <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 101, marginTop: '4px', padding: '4px 0' }}>
+                                    {operators.map(op => (
+                                      <div key={op} onClick={(e) => { e.stopPropagation(); updateActiveFilter(idx, 'operator', op); setOpenFilterDropdown(null); }} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', backgroundColor: filter.operator === op ? '#EEF2F6' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = filter.operator === op ? '#EEF2F6' : 'transparent'}>
+                                        {op}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {!hasNoValue && (
+                                <>
+                                  {hasTwoValues ? (
+                                    <>
+                                      <div style={{ position: 'relative', flex: 1 }}>
+                                        <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'value_start' ? null : { index: idx, type: 'value_start' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.value?.start ? new Date(filter.value.start).toLocaleDateString() : '\u00A0'}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                                        </div>
+                                        {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'value_start' && (
+                                          <FilterValueDropdown filter={filter} type="value_start" onSelect={(v) => { updateActiveFilter(idx, 'value', v); setOpenFilterDropdown(null); }} project={selectedProject} />
+                                        )}
+                                      </div>
+                                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>and</span>
+                                      <div style={{ position: 'relative', flex: 1 }}>
+                                        <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'value_end' ? null : { index: idx, type: 'value_end' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.value?.end ? new Date(filter.value.end).toLocaleDateString() : '\u00A0'}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                                        </div>
+                                        {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'value_end' && (
+                                          <FilterValueDropdown filter={filter} type="value_end" onSelect={(v) => { updateActiveFilter(idx, 'value', v); setOpenFilterDropdown(null); }} project={selectedProject} />
+                                        )}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div style={{ position: 'relative', flex: 1 }}>
+                                      <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'value' ? null : { index: idx, type: 'value' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatVal(filter.value) || '\u00A0'}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                                      </div>
+                                      {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'value' && (
+                                        <FilterValueDropdown filter={filter} type="value" onSelect={(v) => { updateActiveFilter(idx, 'value', v); setOpenFilterDropdown(null); }} project={selectedProject} />
+                                      )}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                              
+                              <span 
+                                style={{ cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 4px', fontSize: '1.2rem' }}
+                                onClick={(e) => { e.stopPropagation(); setActiveFilters(activeFilters.filter((_, i) => i !== idx)) }}
+                              >×</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ position: 'relative' }}>
+                        <div 
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem' }}
+                          onClick={() => setIsFilterInnerMenuOpen(!isFilterInnerMenuOpen)}
+                        >
+                          <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>+</span> Add filter ⌄
+                        </div>
+
+                        {isFilterInnerMenuOpen && (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, width: '220px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+                            {[
+                              { icon: '✓', label: 'Completion status' },
+                              { icon: '👤', label: 'Assignee' },
+                              { icon: '📅', label: 'Start date', type: 'date' },
+                              { icon: '📅', label: 'Due date', type: 'date' },
+                              { icon: '👤', label: 'Created by' },
+                              { icon: '🕒', label: 'Created on', type: 'date' },
+                              { icon: '✏️', label: 'Last modified on', type: 'date' },
+                              { icon: '✓', label: 'Completed on', type: 'date' },
+                              { icon: '✓', label: 'Task type' },
+                              ...getParsedCustomFields(selectedProject).map(cf => ({ icon: 'A', label: cf.title, type: cf.type || cf.fieldType, options: cf.options }))
+                            ].map((item, idx) => (
+                              <div
+                                key={idx}
+                                style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                onClick={() => {
+                                  let defOperator = 'is';
+                                  let defValue = 'Today';
+                                  const filterType = (item.type || '').toLowerCase();
+                                  const isDateField = ['Start date', 'Due date', 'Created on', 'Completed on', 'Last modified on'].includes(item.label) || filterType === 'date';
+                                  const isAssigneeField = ['Assignee', 'Created by'].includes(item.label);
+                                  const isMulti = filterType === 'multi_select' || filterType === 'multi-select';
+
+                                  if (isDateField) {
+                                    defOperator = 'is between';
+                                    defValue = { start: '', end: '' };
+                                  } else if (isAssigneeField) {
+                                    defOperator = 'is';
+                                    defValue = null;
+                                  } else if (item.label === 'Completion status') {
+                                    defOperator = 'is';
+                                    defValue = 'Incomplete';
+                                  } else if (item.label === 'Task type') {
+                                    defOperator = 'is';
+                                    defValue = 'Task';
+                                  } else if (isMulti) {
+                                    defOperator = 'contains any';
+                                    defValue = [];
+                                  } else {
+                                    defOperator = 'is';
+                                    defValue = null;
+                                  }
+                                  
+                                  setActiveFilters([...activeFilters, { field: item.label, icon: item.icon, operator: defOperator, value: defValue, type: item.type, options: item.options }]);
+                                  setIsFilterInnerMenuOpen(false);
+                                }}
+                              >
+                                <span style={{ color: 'var(--text-secondary)', width: '16px', textAlign: 'center' }}>{item.icon}</span>
+                                <span>{item.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
                 <div style={{ position: 'relative' }}>
                   <div
                     className="option-sub-item"
-                    style={{ ...styles.optionSubItem, backgroundColor: isSortDropdownOpen ? '#EEF2F6' : 'transparent', fontWeight: isSortDropdownOpen ? '700' : '500' }}
+                    style={{ ...styles.optionSubItem, backgroundColor: isSortDropdownOpen || activeSort ? '#EEF2F6' : 'transparent', fontWeight: '500' }}
                     onClick={(e) => { document.body.click(); e.stopPropagation(); setIsSortDropdownOpen(!isSortDropdownOpen); }}
                   >
                     <span style={styles.optionIcon}>⇅</span> Sort
                     {activeSort && (
                       <span
                         onClick={(e) => { e.stopPropagation(); setActiveSort(null); }}
-                        style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                        style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                         onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
                         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
                       >×</span>
@@ -1670,7 +2054,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                         { icon: '🕒', label: 'Completed on' },
                         { icon: '👍', label: 'Likes' },
                         { icon: 'A', label: 'Alphabetical' },
-                        ...(Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings.map(cf => ({ icon: '⌄', label: cf.title })) : [])
+                        ...getParsedCustomFields(selectedProject).map(cf => ({ icon: '⌄', label: cf.title }))
                       ].map((item, idx) => {
                         const isActive = activeSort?.field === item.label;
                         return (
@@ -1707,14 +2091,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 <div style={{ position: 'relative' }}>
                   <div
                     className="option-sub-item"
-                    style={{ ...styles.optionSubItem, backgroundColor: isGroupDropdownOpen ? '#EEF2F6' : 'transparent', fontWeight: isGroupDropdownOpen ? '700' : '500' }}
+                    style={{ ...styles.optionSubItem, backgroundColor: isGroupDropdownOpen || (activeGroup && activeGroup !== 'Sections') ? '#EEF2F6' : 'transparent', fontWeight: '500' }}
                     onClick={(e) => { document.body.click(); e.stopPropagation(); setIsGroupDropdownOpen(!isGroupDropdownOpen); }}
                   >
                     <span style={styles.optionIcon}>⊞</span> Group
                     {activeGroup && activeGroup !== 'Sections' && (
                       <span
                         onClick={(e) => { e.stopPropagation(); setActiveGroup('Sections'); }}
-                        style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                        style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                         onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
                         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
                       >×</span>
@@ -1753,7 +2137,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                                   { icon: '🕒', label: 'Last modified on' },
                                   { icon: '🕒', label: 'Completed on' },
                                   { icon: '📋', label: 'Project' },
-                                  ...(Array.isArray(selectedProject?.customFieldSettings) ? selectedProject.customFieldSettings.map(cf => ({ icon: 'A', label: cf.title })) : [])
+                                  ...getParsedCustomFields(selectedProject).map(cf => ({ icon: 'A', label: cf.title }))
                                 ].map((item, idx) => (
                                   <div
                                     key={idx}
@@ -1864,7 +2248,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 </div>
 
                 <div style={styles.dividerVertical}></div>
-                <div className="option-sub-item" style={styles.optionSubItem}><span style={styles.optionIcon}>⚙️</span> Options</div>
+                <div className="option-sub-item" style={styles.optionSubItem} onClick={() => { setIsOptionsPaneOpen(true); setIsCustomizePanelOpen(false); }}><span style={styles.optionIcon}>⚙️</span> Options</div>
                 {isSearchOpen ? (
                   <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '2px 8px', backgroundColor: 'var(--bg-primary)', marginLeft: '8px' }}>
                     <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginRight: '6px' }}>🔍</span>
@@ -1888,26 +2272,6 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 )}
               </div>
 
-              {/* Filtre Panel Kutusu */}
-              {isFilterDropdownOpen && (
-                <div style={styles.filterPanelBox} onClick={(e) => e.stopPropagation()}>
-                  <div style={styles.filterPanelHeader}>
-                    <span style={styles.filterPanelTitle}>Filters</span>
-                    <span style={styles.filterClearLink} onClick={() => setActiveFilters([])}>Clear</span>
-                  </div>
-                  <div style={styles.quickFiltersSection}>
-                    <div style={styles.quickFiltersLabel}>Quick filters</div>
-                    <div style={styles.filterPillsContainer}>
-                      <div onClick={() => handleToggleFilter('incomplete')} style={{ ...styles.filterPill, ...(activeFilters.includes('incomplete') ? styles.activeFilterPill : {}) }}>⭕ Incomplete tasks</div>
-                      <div onClick={() => handleToggleFilter('completed')} style={{ ...styles.filterPill, ...(activeFilters.includes('completed') ? styles.activeFilterPill : {}) }}>✅ Completed tasks</div>
-                      <div onClick={() => handleToggleFilter('my-tasks')} style={{ ...styles.filterPill, ...(activeFilters.includes('my-tasks') ? styles.activeFilterPill : {}) }}>👤 Just my tasks</div>
-                      <div onClick={() => handleToggleFilter('this-week')} style={{ ...styles.filterPill, ...(activeFilters.includes('this-week') ? styles.activeFilterPill : {}) }}>📅 Due this week</div>
-                      <div onClick={() => handleToggleFilter('next-week')} style={{ ...styles.filterPill, ...(activeFilters.includes('next-week') ? styles.activeFilterPill : {}) }}>📅 Due next week</div>
-                    </div>
-                  </div>
-                  <div style={styles.addFilterFooterRow}><span style={styles.addFilterBtnLink}>+ Add filter</span></div>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -2026,6 +2390,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           isReadOnly={isReadOnly}
           applyTaskFilter={applyTaskFilter}
           applyTaskSort={applyTaskSort}
+          draggingTaskId={draggingTaskId}
+          setDraggingTaskId={setDraggingTaskId}
+          handleLiveTaskSwap={handleLiveTaskSwap}
+          handleGeneralDrop={handleGeneralDrop}
+          draggingSectionId={draggingSectionId}
+          setDraggingSectionId={setDraggingSectionId}
+          handleLiveSectionSwap={handleLiveSectionSwap}
+          handleFinalSectionMove={handleFinalSectionMove}
         />
       ) : activeViewObj.type === 'Note' ? (
         <ProjectNoteView
@@ -2172,7 +2544,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
                   <div style={styles.customizeGroupTitle}>AI Studio</div>
                   <div style={styles.customizeList}>
-                    <div style={styles.customizeListItem} onClick={openRulesView}>
+                    <div className="customize-list-card" style={styles.customizeListItem} onClick={openRulesView}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <span style={{ color: 'var(--text-secondary)' }}>⚡</span>
                         <span style={styles.customizeItemLabel}>Rules</span>
@@ -2195,7 +2567,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                       { icon: '📦', label: 'Bundles', badge: '1' },
                       { icon: '💬', label: 'Status templates' }
                     ].map((item, i) => (
-                      <div key={i} style={styles.customizeListItem} onClick={item.action}>
+                      <div key={i} className="customize-list-card" style={styles.customizeListItem} onClick={item.action}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                           <span style={{ color: 'var(--text-secondary)' }}>{item.icon}</span>
                           <span style={styles.customizeItemLabel}>{item.label}</span>
@@ -2398,6 +2770,100 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         </>
       )}
 
+      {/* Options Pane */}
+      {isOptionsPaneOpen && (
+        <>
+          <div style={styles.customizePanelOverlay} onClick={() => setIsOptionsPaneOpen(false)}></div>
+          <div style={styles.customizePanel}>
+            <div style={styles.customizeHeader}>
+              <h2 style={styles.customizeTitle}>{activeViewObj?.name || activeViewObj?.type || 'Board'}</h2>
+              <button style={styles.customizeCloseBtn} onClick={() => setIsOptionsPaneOpen(false)}>→</button>
+            </div>
+            <div style={styles.customizeBody}>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+                 <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>
+                   🗂️
+                 </div>
+                 <div style={{ flex: 1 }}>
+                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>View name</div>
+                   <input 
+                     type="text" 
+                     key={activeViewObj?.id || 'board'}
+                     defaultValue={activeViewObj?.name || activeViewObj?.type || 'Board'} 
+                     onBlur={(e) => {
+                       const newName = e.target.value;
+                       if (newName && newName.trim() !== '' && newName !== (activeViewObj?.name || activeViewObj?.type)) {
+                         const newViews = parsedViews.map(v => v.id === activeViewObj?.id ? { ...v, name: newName.trim() } : v);
+                         handleUpdateViews(newViews);
+                       }
+                     }}
+                     onKeyDown={(e) => {
+                       if (e.key === 'Enter') {
+                         e.target.blur();
+                       }
+                     }}
+                     style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '0.9rem', color: 'var(--text-primary)', outline: 'none' }} 
+                   />
+                 </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>◫</span>
+                    <span style={styles.customizeItemLabel}>Layout options</span>
+                  </div>
+                  <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                </div>
+                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>👁️</span>
+                    <span style={styles.customizeItemLabel}>Show/hide fields</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>1 hidden</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                  </div>
+                </div>
+                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>≡</span>
+                    <span style={styles.customizeItemLabel}>Filters</span>
+                  </div>
+                  <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                </div>
+                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>⇅</span>
+                    <span style={styles.customizeItemLabel}>Sorts</span>
+                  </div>
+                  <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                </div>
+                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>⊞</span>
+                    <span style={styles.customizeItemLabel}>Groups</span>
+                  </div>
+                  <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                </div>
+                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>⮑</span>
+                    <span style={styles.customizeItemLabel}>Subtasks</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Collapsed</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </>
+      )}
+
       {tabContextMenu.visible && (
         <div className="view-context-menu" style={{ ...styles.contextMenu, left: tabContextMenu.x, top: tabContextMenu.y }}>
           <div className="view-context-menu-item" onMouseDown={(e) => { e.stopPropagation(); handleRenameView(); }}>✏️ Rename</div>
@@ -2438,7 +2904,7 @@ const styles = {
   addWidgetDropdownItem: { padding: '8px 16px', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'background-color 0.1s' },
   headerRightBlock: { display: 'flex', alignItems: 'center', gap: '0.75rem' },
   avatarListWrapper: { display: 'flex', alignItems: 'center' },
-  avatarCircleOwner: { width: '26px', height: '26px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' },
+  avatarCircleOwner: { width: '26px', height: '26px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold', cursor: 'pointer' },
   asanaShareButtonLight: { backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-primary)', border: 'none', borderRadius: '6px', padding: '0.45rem 0.9rem', fontSize: '0.8rem', fontWeight: 'normal', cursor: 'pointer' },
   asanaCustomizeBtn: { backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', padding: '0.45rem 0.9rem', fontSize: '0.8rem', fontWeight: '500', cursor: 'pointer' },
   logoutTopBtn: { backgroundColor: '#FEE2E2', color: 'var(--accent-danger)', border: 'none', borderRadius: '6px', padding: '0.45rem 0.75rem', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer' },

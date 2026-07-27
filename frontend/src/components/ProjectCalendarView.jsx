@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function ProjectCalendarView({ selectedProject, applyTaskFilter, applyTaskSort, onOpenTaskPane, handleTaskUpdate, token }) {
   const containerRef = useRef(null);
@@ -156,6 +157,22 @@ export default function ProjectCalendarView({ selectedProject, applyTaskFilter, 
   };
 
   useEffect(() => {
+    const onGoToday = () => goToday();
+    const onScrollLeft = () => scrollUp(); // Map Left to Up for vertical calendar
+    const onScrollRight = () => scrollDown(); // Map Right to Down for vertical calendar
+
+    window.addEventListener('timeline-go-today', onGoToday);
+    window.addEventListener('timeline-scroll-left', onScrollLeft);
+    window.addEventListener('timeline-scroll-right', onScrollRight);
+
+    return () => {
+      window.removeEventListener('timeline-go-today', onGoToday);
+      window.removeEventListener('timeline-scroll-left', onScrollLeft);
+      window.removeEventListener('timeline-scroll-right', onScrollRight);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!visibleMonth && weeks[todayWeekIndex]) {
       setVisibleMonth(`${weeks[todayWeekIndex].majorMonth} ${weeks[todayWeekIndex].majorYear}`);
     }
@@ -255,19 +272,19 @@ export default function ProjectCalendarView({ selectedProject, applyTaskFilter, 
     e.currentTarget.style.backgroundColor = e.currentTarget.dataset.originalBg || 'var(--bg-primary)';
   };
 
+  const portalTarget = document.getElementById('timeline-topbar-portal');
+
   return (
     <div style={styles.calendarContainer}>
-      <div style={styles.headerControls}>
-        <button style={styles.todayBtn} onClick={goToday}>Today</button>
-        <div style={styles.navGroup}>
-          <button style={styles.iconBtn} onClick={scrollUp}>&lt;</button>
-          <button style={styles.iconBtn} onClick={scrollDown}>&gt;</button>
-          <h2 style={styles.monthTitle}>{visibleMonth}</h2>
-        </div>
-        <div>
+      {portalTarget && createPortal(
+        <>
+          <div style={styles.navGroup}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600', color: 'var(--text-primary)' }}>{visibleMonth}</h2>
+          </div>
           <button style={styles.filterBtn}>Weekend</button>
-        </div>
-      </div>
+        </>,
+        portalTarget
+      )}
 
       <div style={styles.calendarGridContainer}>
         {/* Weekday headers */}

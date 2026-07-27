@@ -210,7 +210,7 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
 }
 
 const styles = {
-  backdrop: { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0, 0, 0, 0.3)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 },
+  backdrop: { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0, 0, 0, 0.3)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100005 },
   modalBox: { backgroundColor: 'var(--bg-primary)', width: '460px', maxWidth: '95%', borderRadius: '12px', boxShadow: '0 20px 25px rgba(0,0,0,0.1)', padding: '1.25rem', boxSizing: 'border-box', fontFamily: 'system-ui', position: 'relative' },
   modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' },
   modalTitle: { margin: 0, fontSize: '1.2rem', fontWeight: '600', color: 'var(--text-primary)' },

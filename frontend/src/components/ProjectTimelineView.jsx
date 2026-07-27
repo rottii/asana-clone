@@ -167,6 +167,22 @@ export default function ProjectTimelineView({
   };
 
   useEffect(() => {
+    const onGoToday = () => goToday();
+    const onScrollLeft = () => scrollLeftBtn();
+    const onScrollRight = () => scrollRightBtn();
+
+    window.addEventListener('timeline-go-today', onGoToday);
+    window.addEventListener('timeline-scroll-left', onScrollLeft);
+    window.addEventListener('timeline-scroll-right', onScrollRight);
+
+    return () => {
+      window.removeEventListener('timeline-go-today', onGoToday);
+      window.removeEventListener('timeline-scroll-left', onScrollLeft);
+      window.removeEventListener('timeline-scroll-right', onScrollRight);
+    };
+  }, [days]);
+
+  useEffect(() => {
     const handleMouseMove = (e) => {
       if (dragState) {
         const deltaX = e.clientX - dragState.startX;
@@ -277,15 +293,6 @@ export default function ProjectTimelineView({
 
   return (
     <div style={styles.container}>
-      <div style={styles.toolbar}>
-        <div style={styles.navGroup}>
-          <button style={styles.iconBtn} onClick={scrollLeftBtn}>&lt;</button>
-          <button style={styles.todayBtn} onClick={goToday}>Today</button>
-          <button style={styles.iconBtn} onClick={scrollRightBtn}>&gt;</button>
-        </div>
-        <div style={styles.viewSelector}>{visibleMonth || 'Timeline'}</div>
-      </div>
-
       <div style={{ ...styles.timelineWrapper, overflowX: draggingSectionId ? 'hidden' : 'auto' }} ref={scrollContainerRef} onScroll={handleScroll}>
         <div style={styles.gridContainer}>
           <div style={{ ...styles.headerRow, height: HEADER_HEIGHT }}>
@@ -627,11 +634,6 @@ function getSectionColor(str) {
 
 const styles = {
   container: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, backgroundColor: 'var(--bg-primary)', overflow: 'hidden', userSelect: 'none' },
-  toolbar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)' },
-  navGroup: { display: 'flex', alignItems: 'center', gap: '0.5rem' },
-  todayBtn: { padding: '0.4rem 1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontWeight: '500', color: 'var(--text-primary)' },
-  iconBtn: { padding: '0.4rem 0.6rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-secondary)' },
-  viewSelector: { padding: '0.4rem 1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontWeight: '500', cursor: 'pointer', color: 'var(--text-primary)' },
   timelineWrapper: { flex: 1, overflow: 'auto', minHeight: 0 },
   gridContainer: { display: 'flex', flexDirection: 'column', minWidth: 'min-content', position: 'relative' },
   headerRow: { display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', position: 'sticky', top: 0, zIndex: 10, boxSizing: 'border-box' },

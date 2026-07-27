@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 
 export default function ProjectGanttView({ 
-  selectedProject, handleTaskUpdate, onOpenTaskPane, token, isReadOnly, applyTaskFilter, applyTaskSort
+  selectedProject, handleTaskUpdate, onOpenTaskPane, token, isReadOnly, applyTaskFilter, applyTaskSort,
+  draggingTaskId, setDraggingTaskId, handleLiveTaskSwap, handleGeneralDrop,
+  draggingSectionId, setDraggingSectionId, handleLiveSectionSwap, handleFinalSectionMove
 }) {
   const [dragState, setDragState] = useState(null); 
   const [connectingTask, setConnectingTask] = useState(null);
@@ -10,8 +12,50 @@ export default function ProjectGanttView({
   const scrollContainerRef = useRef(null);
   const sidebarScrollRef = useRef(null);
   const svgRef = useRef(null);
+  const sidebarRef = useRef(null);
   const hasDraggedRef = useRef(false);
   const DAY_WIDTH = 40;
+
+  const [collapsedSections, setCollapsedSections] = useState({});
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editTaskTitleValue, setEditTaskTitleValue] = useState('');
+  const [editCursorPos, setEditCursorPos] = useState(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (editingTaskId && inputRef.current && editCursorPos !== null) {
+      inputRef.current.focus();
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.setSelectionRange(editCursorPos, editCursorPos);
+        }
+      }, 0);
+    }
+  }, [editingTaskId, editCursorPos]);
+
+  const submitTaskRename = async (task, sectionId) => {
+    if (isReadOnly || !editTaskTitleValue.trim() || editTaskTitleValue.trim() === task.title) {
+      setEditingTaskId(null);
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ title: editTaskTitleValue.trim() })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        handleTaskUpdate(task.id, data, 'edit', sectionId);
+      }
+    } catch (err) { console.error(err); }
+    setEditingTaskId(null);
+  };
+
+  const toggleSection = (sectionId) => {
+    setCollapsedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
+  };
+
 
   const { start, days, sectionData, rawTasks, dependencyLines, totalHeight } = useMemo(() => {
     const today = new Date();
@@ -100,11 +144,13 @@ export default function ProjectGanttView({
     let currentY = 0;
     sections.forEach(group => {
       currentY += 36; // section header row
-      group.tasks.forEach(t => {
-        t.yCenter = currentY + 18; // center of task row
-        rawMap[t.id].yCenter = t.yCenter;
-        currentY += 36;
-      });
+      if (!collapsedSections[group.id]) {
+        group.tasks.forEach(t => {
+          t.yCenter = currentY + 18; // center of task row
+          rawMap[t.id].yCenter = t.yCenter;
+          currentY += 36;
+        });
+      }
     });
 
     const lines = [];
@@ -125,7 +171,7 @@ export default function ProjectGanttView({
     });
 
     return { start: startDate, days: daysArr, sectionData: sections, rawTasks: rawMap, dependencyLines: lines, totalHeight: currentY };
-  }, [selectedProject, applyTaskFilter, applyTaskSort, dragState]);
+  }, [selectedProject, applyTaskFilter, applyTaskSort, dragState, collapsedSections]);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -237,14 +283,59 @@ export default function ProjectGanttView({
     } catch (err) { console.error(err); }
   };
 
-  const goToday = () => {
+  const goToday = (smooth = true) => {
     if (scrollContainerRef.current) {
       const todayIdx = days.findIndex(d => d.isToday);
       if (todayIdx !== -1) {
-        scrollContainerRef.current.scrollTo({ left: Math.max(0, todayIdx * DAY_WIDTH - 200), behavior: 'smooth' });
+        scrollContainerRef.current.scrollTo({ left: Math.max(0, todayIdx * DAY_WIDTH - 200), behavior: smooth ? 'smooth' : 'auto' });
       }
     }
   };
+
+  const scrollLeftBtn = () => {
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollBy({ left: -400, behavior: 'smooth' });
+  };
+
+  const scrollRightBtn = () => {
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollBy({ left: 400, behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    // Jump to today immediately on first mount
+    const timer = setTimeout(() => {
+      goToday(false);
+    }, 10);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const onGoToday = () => goToday();
+    const onScrollLeft = () => scrollLeftBtn();
+    const onScrollRight = () => scrollRightBtn();
+
+    window.addEventListener('timeline-go-today', onGoToday);
+    window.addEventListener('timeline-scroll-left', onScrollLeft);
+    window.addEventListener('timeline-scroll-right', onScrollRight);
+
+    return () => {
+      window.removeEventListener('timeline-go-today', onGoToday);
+      window.removeEventListener('timeline-scroll-left', onScrollLeft);
+      window.removeEventListener('timeline-scroll-right', onScrollRight);
+    };
+  }, [days]);
+
+  useEffect(() => {
+    const adjustSidebarPadding = () => {
+      if (scrollContainerRef.current && sidebarScrollRef.current) {
+        const hScrollbarHeight = scrollContainerRef.current.offsetHeight - scrollContainerRef.current.clientHeight;
+        sidebarScrollRef.current.style.paddingBottom = `${100 + hScrollbarHeight}px`;
+      }
+    };
+    
+    adjustSidebarPadding();
+    window.addEventListener('resize', adjustSidebarPadding);
+    return () => window.removeEventListener('resize', adjustSidebarPadding);
+  }, []);
 
   const handleTimelineScroll = (e) => {
     if (sidebarScrollRef.current) {
@@ -252,25 +343,30 @@ export default function ProjectGanttView({
     }
   };
 
-  const handleSidebarWheel = (e) => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop += e.deltaY;
-    }
-  };
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return;
+    
+    const handleWheel = (e) => {
+      e.preventDefault(); // Prevent native scroll conflict
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop += e.deltaY;
+      }
+    };
+    
+    sidebar.addEventListener('wheel', handleWheel, { passive: false });
+    
+    return () => {
+      sidebar.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   return (
     <div style={styles.container}>
-      <div style={styles.toolbar}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h2 style={styles.title}>Gantt</h2>
-        </div>
-        <button onClick={goToday} style={styles.todayBtn}>Today</button>
-      </div>
-
       <div style={styles.layoutWrapper}>
         
         {/* Left Sidebar (Table) */}
-        <div style={styles.sidebar} onWheel={handleSidebarWheel}>
+        <div style={styles.sidebar} ref={sidebarRef}>
           <div style={styles.sidebarHeader}>
             <div style={{ ...styles.tableCol, flex: 2 }}>Name</div>
             <div style={{ ...styles.tableCol, flex: 1 }}>Due Date</div>
@@ -278,19 +374,83 @@ export default function ProjectGanttView({
           </div>
           <div style={styles.sidebarContent} ref={sidebarScrollRef}>
             {sectionData.map((section, sIdx) => (
-              <React.Fragment key={section.id}>
-                <div style={styles.sectionHeaderRow}>
-                  <div style={styles.sectionTitle}>▼ {section.name}</div>
+              <div 
+                key={section.id}
+                style={{ display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
+              >
+                <div 
+                  style={styles.sectionHeaderRow}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggingSectionId && draggingSectionId !== section.id) {
+                      if (handleLiveSectionSwap) handleLiveSectionSwap(draggingSectionId, section.id);
+                    }
+                  }}
+                  onDrop={(e) => { if (handleGeneralDrop) handleGeneralDrop(e, section.id); }}
+                >
+                  <div
+                    draggable={!isReadOnly}
+                    onDragStart={(e) => {
+                      e.stopPropagation();
+                      if (setDraggingSectionId) setDraggingSectionId(section.id);
+                      e.dataTransfer.setData('drag-type', 'section');
+                      e.dataTransfer.setData('section-id', section.id);
+                    }}
+                    onDragEnd={() => {
+                      if (setDraggingSectionId) setDraggingSectionId(null);
+                      if (handleFinalSectionMove) handleFinalSectionMove();
+                    }}
+                    style={styles.drag6DotHandleCellSection}
+                  >
+                    ⋮⋮
+                  </div>
+                  <div style={{ ...styles.sectionTitle, cursor: 'pointer' }} onClick={() => toggleSection(section.id)}>
+                    {collapsedSections[section.id] ? '▶' : '▼'} {section.name}
+                  </div>
                 </div>
-                {section.tasks.map(task => (
-                  <div key={task.id} style={styles.taskTableRow}>
-                    <div style={{ ...styles.tableCol, flex: 2, paddingLeft: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {!collapsedSections[section.id] && section.tasks.map(task => (
+                  <div 
+                    key={task.id} 
+                    style={{
+                      ...styles.taskTableRow,
+                      opacity: draggingTaskId === task.id ? 0.4 : 1,
+                    }}
+                    onClick={() => {
+                      if (onOpenTaskPane) onOpenTaskPane(task.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggingTaskId && draggingTaskId !== task.id) {
+                        if (handleLiveTaskSwap) handleLiveTaskSwap(draggingTaskId, task.id);
+                      }
+                    }}
+                    onDrop={(e) => { if (handleGeneralDrop) handleGeneralDrop(e, section.id, task.id); }}
+                  >
+                    <div
+                      draggable={!isReadOnly}
+                      onDragStart={(e) => {
+                        e.stopPropagation();
+                        if (setDraggingTaskId) setDraggingTaskId(task.id);
+                        e.dataTransfer.setData('drag-type', 'task');
+                        e.dataTransfer.setData('task-id', task.id);
+                        const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
+                        if (ghostEl) {
+                          ghostEl.textContent = task.title;
+                          e.dataTransfer.setDragImage(ghostEl, 20, 15);
+                        }
+                      }}
+                      onDragEnd={() => { if (setDraggingTaskId) setDraggingTaskId(null); }}
+                      style={styles.drag6DotHandleCellTask}
+                    >
+                      ⋮⋮
+                    </div>
+                    <div style={{ ...styles.tableCol, flex: 2, paddingLeft: '0.5rem', display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                       <span 
-                        onClick={(e) => handleToggleComplete(e, task)}
+                        onClick={(e) => { e.stopPropagation(); handleToggleComplete(e, task); }}
                         style={{ 
                           color: task.isCompleted ? '#10B981' : task.isMilestone ? '#6366F1' : '#D1D5DB',
                           cursor: isReadOnly ? 'default' : 'pointer',
-                          display: 'inline-flex', alignItems: 'center'
+                          display: 'inline-flex', alignItems: 'center', flexShrink: 0
                         }}
                       >
                         {task.isMilestone ? (
@@ -299,21 +459,63 @@ export default function ProjectGanttView({
                           '✓'
                         )}
                       </span>
-                      <span style={{ 
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        textDecoration: task.isCompleted ? 'line-through' : 'none',
-                        color: task.isCompleted ? '#9CA3AF' : '#111827'
-                      }}>
-                        {task.title}
-                      </span>
+                      {editingTaskId === task.id ? (
+                        <input
+                          ref={editingTaskId === task.id ? inputRef : null}
+                          type="text"
+                          value={editTaskTitleValue}
+                          autoFocus
+                          onChange={(e) => setEditTaskTitleValue(e.target.value)}
+                          onBlur={() => submitTaskRename(task, section.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') submitTaskRename(task, section.id);
+                            if (e.key === 'Escape') setEditingTaskId(null);
+                          }}
+                          style={{
+                            flex: 1, minWidth: 0,
+                            fontSize: '0.85rem', fontFamily: 'inherit',
+                            padding: '0', backgroundColor: 'transparent',
+                            color: 'var(--text-primary)', border: 'none', outline: 'none'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isReadOnly) {
+                              let offset = null;
+                              if (document.caretRangeFromPoint) {
+                                const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                                if (range && range.startContainer.nodeType === Node.TEXT_NODE) offset = range.startOffset;
+                              } else if (document.caretPositionFromPoint) {
+                                const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+                                if (pos && pos.offsetNode.nodeType === Node.TEXT_NODE) offset = pos.offset;
+                              }
+                              setEditCursorPos(offset !== null ? offset : task.title.length);
+                              setEditingTaskId(task.id);
+                              setEditTaskTitleValue(task.title);
+                            }
+                            if (onOpenTaskPane) onOpenTaskPane(task.id);
+                          }}
+                          style={{ 
+                            flex: 1, minWidth: 0, cursor: isReadOnly ? 'default' : 'text',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            textDecoration: task.isCompleted ? 'line-through' : 'none',
+                            color: task.isCompleted ? '#9CA3AF' : '#111827'
+                          }}
+                        >
+                          {task.title}
+                        </span>
+                      )}
                     </div>
-                    <div style={{ ...styles.tableCol, flex: 1, color: '#6B7280' }}>{task.formattedDueDate}</div>
-                    <div style={{ ...styles.tableCol, flex: 1, color: '#6B7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ ...styles.tableCol, flex: 1, color: '#6B7280', minWidth: 0 }}>{task.formattedDueDate}</div>
+                    <div style={{ ...styles.tableCol, flex: 1, color: '#6B7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                       {task.blockersStr || '-'}
                     </div>
                   </div>
                 ))}
-              </React.Fragment>
+              </div>
             ))}
           </div>
         </div>
@@ -409,7 +611,7 @@ export default function ProjectGanttView({
               {sectionData.map((section, sIdx) => (
                 <React.Fragment key={section.id}>
                   {/* Section Spacer in Grid */}
-                  <div style={{ height: '36px', borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB', boxSizing: 'border-box' }}></div>
+                  <div style={{ height: '36px', minHeight: '36px', maxHeight: '36px', display: 'flex', borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB', boxSizing: 'border-box' }}></div>
                   
                   {/* Task Bars */}
                   {section.tasks.map(task => (
@@ -557,30 +759,6 @@ const styles = {
     backgroundColor: '#FFF',
     overflow: 'hidden'
   },
-  toolbar: {
-    padding: '1rem 1.5rem',
-    borderBottom: '1px solid var(--border-color)',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'var(--bg-secondary)'
-  },
-  title: {
-    fontSize: '1.2rem',
-    fontWeight: '600',
-    color: 'var(--text-primary)',
-    margin: 0
-  },
-  todayBtn: {
-    backgroundColor: 'var(--bg-primary)',
-    border: '1px solid var(--border-color)',
-    borderRadius: '4px',
-    padding: '0.25rem 0.75rem',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-    color: 'var(--text-primary)',
-    fontWeight: '500'
-  },
   layoutWrapper: {
     display: 'flex',
     flex: 1,
@@ -596,13 +774,16 @@ const styles = {
   },
   sidebarHeader: {
     height: '60px',
+    minHeight: '60px',
+    maxHeight: '60px',
     borderBottom: '1px solid var(--border-color)',
     display: 'flex',
     alignItems: 'center',
     padding: '0',
     fontSize: '0.85rem',
     fontWeight: '600',
-    color: 'var(--text-secondary)'
+    color: 'var(--text-secondary)',
+    boxSizing: 'border-box'
   },
   tableCol: {
     padding: '0 0.75rem',
@@ -616,6 +797,8 @@ const styles = {
   },
   sectionHeaderRow: {
     height: '36px',
+    minHeight: '36px',
+    maxHeight: '36px',
     display: 'flex',
     alignItems: 'center',
     backgroundColor: 'var(--bg-secondary)',
@@ -630,6 +813,8 @@ const styles = {
   },
   taskTableRow: {
     height: '36px',
+    minHeight: '36px',
+    maxHeight: '36px',
     display: 'flex',
     alignItems: 'center',
     borderBottom: '1px solid var(--border-color)',
@@ -637,6 +822,26 @@ const styles = {
     cursor: 'pointer',
     backgroundColor: 'var(--bg-primary)',
     boxSizing: 'border-box'
+  },
+  drag6DotHandleCellTask: {
+    width: '24px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#9CA3AF',
+    cursor: 'grab',
+    fontSize: '0.9rem',
+    flexShrink: 0
+  },
+  drag6DotHandleCellSection: {
+    width: '24px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#9CA3AF',
+    cursor: 'grab',
+    fontSize: '0.9rem',
+    flexShrink: 0
   },
   timelineScrollArea: {
     flex: 1,
@@ -646,12 +851,15 @@ const styles = {
   },
   timelineHeader: {
     height: '60px',
+    minHeight: '60px',
+    maxHeight: '60px',
     display: 'flex',
     backgroundColor: 'var(--bg-primary)',
     borderBottom: '1px solid var(--border-color)',
     position: 'sticky',
     top: 0,
-    zIndex: 20
+    zIndex: 20,
+    boxSizing: 'border-box'
   },
   dayHeaderCell: {
     display: 'flex',
@@ -682,6 +890,9 @@ const styles = {
   taskBarRow: {
     position: 'relative',
     height: '36px',
+    minHeight: '36px',
+    maxHeight: '36px',
+    display: 'flex',
     borderBottom: '1px solid var(--border-color)',
     boxSizing: 'border-box'
   },

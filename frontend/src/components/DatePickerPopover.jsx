@@ -1,51 +1,44 @@
 import { useState } from 'react'
-
+import { getParsedTaskCustomFields } from '../utils/customFields';
 const monthsList = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-export default function DatePickerPopover({ task, token, coords, onDatesUpdated, customFieldId }) {
+export default function DatePickerPopover({ task, token, coords, onDatesUpdated, customFieldId, filterMode, initialStart, initialEnd, onFilterApply, styleOverrides }) {
   const [calendarView, setCalendarView] = useState({ year: 2026, month: 6 }) // July 2026
 
-  const getParsedCustomFields = (cf) => {
-    if (!cf) return {};
-    if (typeof cf === 'string') {
-      try { return JSON.parse(cf); } catch(e) { return {}; }
-    }
-    return cf;
-  };
-  const parsedFields = customFieldId ? getParsedCustomFields(task.customFields) : {};
-  const customFieldValue = customFieldId ? parsedFields[customFieldId] : null;
+  const parsedFields = customFieldId && task ? getParsedTaskCustomFields(task.customFields) : {};
+  const customFieldValue = customFieldId && task ? parsedFields[customFieldId] : null;
   
-  const [isRangeMode, setIsRangeMode] = useState(customFieldId ? false : !!task.startDate);
-  const [activeInput, setActiveInput] = useState(customFieldId ? 'end' : (!!task.startDate ? 'start' : 'end'));
+  const [isRangeMode, setIsRangeMode] = useState(filterMode ? false : (customFieldId ? false : !!task?.startDate));
+  const [activeInput, setActiveInput] = useState(filterMode ? 'start' : (customFieldId ? 'end' : (!!task?.startDate ? 'start' : 'end')));
   
   const [rangeSelect, setRangeSelect] = useState({
-    start: customFieldId ? null : (task.startDate ? task.startDate.substring(0, 10) : null),
-    end: customFieldId ? customFieldValue : (task.dueDate ? task.dueDate.substring(0, 10) : null)
+    start: filterMode ? initialStart : (customFieldId ? null : (task?.startDate ? task.startDate.substring(0, 10) : null)),
+    end: filterMode ? initialEnd : (customFieldId ? customFieldValue : (task?.dueDate ? task.dueDate.substring(0, 10) : null))
   })
 
   const [recurrence, setRecurrence] = useState({
-    isRecurring: task.isRecurring || false,
-    rule: task.recurrenceRule || 'WEEKLY',
+    isRecurring: task?.isRecurring || false,
+    rule: task?.recurrenceRule || 'WEEKLY',
     customInterval: (() => {
-        try { return JSON.parse(task.recurrenceCustom || '{}').interval || 1; } catch(e) { return 1; }
+        try { return JSON.parse(task?.recurrenceCustom || '{}').interval || 1; } catch(e) { return 1; }
     })(),
     customFrequency: (() => {
-        try { return JSON.parse(task.recurrenceCustom || '{}').frequency || 'week'; } catch(e) { return 'week'; }
+        try { return JSON.parse(task?.recurrenceCustom || '{}').frequency || 'week'; } catch(e) { return 'week'; }
     })(),
     customDays: (() => {
-        try { return JSON.parse(task.recurrenceCustom || '{}').days || []; } catch(e) { return []; }
+        try { return JSON.parse(task?.recurrenceCustom || '{}').days || []; } catch(e) { return []; }
     })(),
     monthlyType: (() => {
-        try { return JSON.parse(task.recurrenceCustom || '{}').monthlyType || 'day'; } catch(e) { return 'day'; }
+        try { return JSON.parse(task?.recurrenceCustom || '{}').monthlyType || 'day'; } catch(e) { return 'day'; }
     })(),
     monthlyDay: (() => {
-        try { return JSON.parse(task.recurrenceCustom || '{}').monthlyDay || (task.dueDate ? parseInt(task.dueDate.substring(8, 10)) : 14); } catch(e) { return 14; }
+        try { return JSON.parse(task?.recurrenceCustom || '{}').monthlyDay || (task?.dueDate ? parseInt(task.dueDate.substring(8, 10)) : 14); } catch(e) { return 14; }
     })(),
     monthlyWeekNum: (() => {
-        try { return JSON.parse(task.recurrenceCustom || '{}').monthlyWeekNum || '1st'; } catch(e) { return '1st'; }
+        try { return JSON.parse(task?.recurrenceCustom || '{}').monthlyWeekNum || '1st'; } catch(e) { return '1st'; }
     })(),
     monthlyWeekday: (() => {
-        try { return JSON.parse(task.recurrenceCustom || '{}').monthlyWeekday || 1; } catch(e) { return 1; }
+        try { return JSON.parse(task?.recurrenceCustom || '{}').monthlyWeekday || 1; } catch(e) { return 1; }
     })()
   });
   const [showRecurrenceOptions, setShowRecurrenceOptions] = useState(false);
@@ -96,10 +89,14 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated,
   }
 
   const handleSave = async () => {
+    if (filterMode) {
+      if (onFilterApply) onFilterApply(rangeSelect);
+      return;
+    }
     try {
       let bodyData = {};
       if (customFieldId) {
-        const parsedFields = getParsedCustomFields(task.customFields);
+        const parsedFields = getParsedTaskCustomFields(task.customFields);
         parsedFields[customFieldId] = rangeSelect.end;
         bodyData = { customFields: JSON.stringify(parsedFields) };
       } else {
@@ -137,10 +134,15 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated,
   }
 
   const handleClear = async () => {
+    if (filterMode) {
+      setRangeSelect({ start: null, end: null });
+      if (onFilterApply) onFilterApply({ start: null, end: null });
+      return;
+    }
     try {
       let bodyData = {};
       if (customFieldId) {
-        const parsedFields = getParsedCustomFields(task.customFields);
+        const parsedFields = getParsedTaskCustomFields(task.customFields);
         parsedFields[customFieldId] = null;
         bodyData = { customFields: JSON.stringify(parsedFields) };
       } else {
@@ -234,11 +236,12 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated,
       className="popover"
       style={{
         ...styles.calendarPopover,
-        top: coords.top !== undefined ? `${coords.top}px` : 'auto',   
-        bottom: coords.bottom !== undefined ? `${coords.bottom}px` : 'auto',
-        left: `${coords.left}px`,
-        maxHeight: coords.top !== undefined ? `calc(100vh - ${coords.top + 10}px)` : (coords.bottom !== undefined ? `calc(100vh - ${coords.bottom + 10}px)` : '90vh'),
-        overflowY: 'auto'
+        top: coords?.top !== undefined ? `${coords.top}px` : 'auto',   
+        bottom: coords?.bottom !== undefined ? `${coords.bottom}px` : 'auto',
+        left: coords?.left !== undefined ? `${coords.left}px` : 'auto',
+        maxHeight: coords?.top !== undefined ? `calc(100vh - ${coords.top + 10}px)` : (coords?.bottom !== undefined ? `calc(100vh - ${coords.bottom + 10}px)` : '90vh'),
+        overflowY: 'auto',
+        ...styleOverrides
       }} 
       onClick={(e) => e.stopPropagation()}
     >
@@ -250,26 +253,28 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated,
       )}
 
       {/* Date Inputs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', padding: '0 0.5rem', alignItems: 'center' }}>
-        {!customFieldId && !isRangeMode && (
-          <div 
-            style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-            onClick={() => { setIsRangeMode(true); setActiveInput('start'); }}
-          >
-            <span style={{ fontSize: '1.2rem', fontWeight: '300' }}>+</span> Start date
+      {!filterMode && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', padding: '0 0.5rem', alignItems: 'center' }}>
+          {(!customFieldId && !isRangeMode) && (
+            <div 
+              style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem', flex: 1, display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+              onClick={() => { setIsRangeMode(true); setActiveInput('start'); }}
+            >
+              <span style={{ fontSize: '1.2rem', fontWeight: '300' }}>+</span> Start date
+            </div>
+          )}
+          {(!customFieldId && isRangeMode) && (
+            <div style={{ ...styles.popoverInputBox, border: `1px solid ${activeInput === 'start' ? '#4F46E5' : '#D1D5DB'}` }} onClick={() => setActiveInput('start')}>
+              <input type="text" readOnly value={rangeSelect.start ? formatDateStr(rangeSelect.start) : 'Start date'} style={styles.hiddenTextInp}/>
+              {rangeSelect.start && <span onClick={(e) => { e.stopPropagation(); setRangeSelect({ ...rangeSelect, start: null }); if (!rangeSelect.end) setIsRangeMode(false); }} style={styles.clearInpCross}>×</span>}
+            </div>
+          )}
+          <div style={{ ...styles.popoverInputBox, border: `1px solid ${(!isRangeMode || activeInput === 'end') ? '#4F46E5' : '#D1D5DB'}` }} onClick={() => { setActiveInput('end'); }}>
+            <input type="text" readOnly value={rangeSelect.end ? formatDateStr(rangeSelect.end) : 'Due date'} style={styles.hiddenTextInp}/>
+            {rangeSelect.end && <span onClick={(e) => { e.stopPropagation(); setRangeSelect({ ...rangeSelect, end: null }) }} style={styles.clearInpCross}>×</span>}
           </div>
-        )}
-        {(!customFieldId && isRangeMode) && (
-          <div style={{ ...styles.popoverInputBox, border: `1px solid ${activeInput === 'start' ? '#4F46E5' : '#D1D5DB'}` }} onClick={() => setActiveInput('start')}>
-            <input type="text" readOnly value={rangeSelect.start ? formatDateStr(rangeSelect.start) : 'Start date'} style={styles.hiddenTextInp}/>
-            {rangeSelect.start && <span onClick={(e) => { e.stopPropagation(); setRangeSelect({ ...rangeSelect, start: null }); if (!rangeSelect.end) setIsRangeMode(false); }} style={styles.clearInpCross}>×</span>}
-          </div>
-        )}
-        <div style={{ ...styles.popoverInputBox, border: `1px solid ${(!isRangeMode || activeInput === 'end') ? '#4F46E5' : '#D1D5DB'}` }} onClick={() => { setActiveInput('end'); }}>
-          <input type="text" readOnly value={rangeSelect.end ? formatDateStr(rangeSelect.end) : 'Due date'} style={styles.hiddenTextInp}/>
-          {rangeSelect.end && <span onClick={(e) => { e.stopPropagation(); setRangeSelect({ ...rangeSelect, end: null }) }} style={styles.clearInpCross}>×</span>}
         </div>
-      </div>
+      )}
 
       <div style={styles.calendarMonthHeader}>
         <span style={{ cursor: 'pointer' }} onClick={() => setCalendarView({ ...calendarView, month: calendarView.month === 0 ? 11 : calendarView.month - 1 })}>‹</span>
@@ -417,30 +422,32 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated,
       )}
 
       <div style={styles.popoverFooterBar}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-          </span>
-          <div 
-            onClick={() => {
-              setRecurrence({...recurrence, isRecurring: !recurrence.isRecurring});
-              setShowRecurrenceOptions(!recurrence.isRecurring);
-            }}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: '32px', height: '32px', borderRadius: '6px', cursor: 'pointer',
-              backgroundColor: recurrence.isRecurring ? '#E0E7FF' : 'transparent',
-              color: recurrence.isRecurring ? '#4F46E5' : 'var(--text-secondary)',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={e => { if (!recurrence.isRecurring) e.currentTarget.style.backgroundColor = '#F3F4F6' }}
-            onMouseLeave={e => { if (!recurrence.isRecurring) e.currentTarget.style.backgroundColor = 'transparent' }}
-            title="Toggle Recurrence"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 1l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 23l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+        {!filterMode && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </span>
+            <div 
+              onClick={() => {
+                setRecurrence({...recurrence, isRecurring: !recurrence.isRecurring});
+                setShowRecurrenceOptions(!recurrence.isRecurring);
+              }}
+              style={{ 
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '32px', height: '32px', borderRadius: '6px', cursor: 'pointer',
+                backgroundColor: recurrence.isRecurring ? '#E0E7FF' : 'transparent',
+                color: recurrence.isRecurring ? '#4F46E5' : 'var(--text-secondary)',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => { if (!recurrence.isRecurring) e.currentTarget.style.backgroundColor = '#F3F4F6' }}
+              onMouseLeave={e => { if (!recurrence.isRecurring) e.currentTarget.style.backgroundColor = 'transparent' }}
+              title="Toggle Recurrence"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 1l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 23l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+            </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        )}
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginLeft: filterMode ? 'auto' : '0' }}>
           <button style={styles.clearDatesBtn} onClick={handleClear}>Clear</button>
           <button style={styles.saveDatesBtn} onClick={handleSave}>Done</button>
         </div>
