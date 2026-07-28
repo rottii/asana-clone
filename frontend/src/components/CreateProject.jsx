@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import IconColorPicker from './IconColorPicker';
 
-export default function CreateProject({ token, setProjects, setPortfolios, setActiveView, setSelectedProject, portfolioCreationParent, setPortfolioCreationParent, activeWorkspace }) {
+export default function CreateProject({ token, setProjects, setPortfolios, setActiveView, previousView = 'home', setSelectedProject, portfolioCreationParent, setPortfolioCreationParent, activeWorkspace }) {
   const [step, setStep] = useState(1);
   const [projectName, setProjectName] = useState('new project');
   const [privacy, setPrivacy] = useState('My workspace');
@@ -146,7 +146,7 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
       <div style={styles.creationHeader}>
         <button style={styles.backBtn} onClick={() => {
           if (step === 2) setStep(1);
-          else setActiveView('home');
+          else setActiveView(previousView);
         }}>←</button>
       </div>
       

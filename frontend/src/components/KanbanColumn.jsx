@@ -1,11 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import TaskCard from './TaskCard'
 
-export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId }) {
+export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId, fieldConfig }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [isEditingName, setIsEditingName] = useState(false)
   const [editNameValue, setEditNameValue] = useState(section.name)
+
+  useEffect(() => {
+    const handleGlobalClick = () => setIsMenuOpen(false);
+    if (isMenuOpen) {
+      window.addEventListener('click', handleGlobalClick);
+    }
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, [isMenuOpen]);
 
   const isReadOnly = projectRole === 'VIEWER' || projectRole === 'COMMENTER';
 
@@ -34,16 +42,16 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
   };
 
   return (
-    <div 
+    <div
       onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => { 
+      onDrop={(e) => {
         e.stopPropagation();
-        if (!isVirtualGrouping) onGeneralDrop(e, section.id); 
+        if (!isVirtualGrouping) onGeneralDrop(e, section.id);
       }}
       style={styles.kanbanColumn}
     >
       {/* Sütun Başlığı */}
-      <div 
+      <div
         className="section-header"
         draggable={draggableSection}
         onDragStart={onDragStartSection}
@@ -52,16 +60,16 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
           {isEditingName ? (
-            <input 
-              autoFocus 
-              value={editNameValue} 
-              onChange={e => setEditNameValue(e.target.value)} 
+            <input
+              autoFocus
+              value={editNameValue}
+              onChange={e => setEditNameValue(e.target.value)}
               onBlur={submitRename}
               onKeyDown={e => e.key === 'Enter' && submitRename()}
               style={{ ...styles.miniInput, flex: 1 }}
             />
           ) : (
-            <h3 
+            <h3
               onClick={() => { if (!isReadOnly && !isVirtualGrouping) setIsEditingName(true); }}
               style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 'bold', cursor: (!isReadOnly && !isVirtualGrouping) ? 'text' : 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
             >
@@ -70,16 +78,17 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
           )}
           {!isEditingName && <span style={styles.taskCountBadge}>{section.tasks?.length || 0}</span>}
         </div>
-        
+
         {/* Sadece yetkili kullanıcılar sütun yönetim menüsünü görebilir */}
         {!isReadOnly && !isEditingName && !isVirtualGrouping && (
-          <button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen) }} style={styles.threeDotButton}>⋮</button>
-        )}
-        
-        {isMenuOpen && (
-          <div style={styles.dropdownMenu} onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => { setIsEditingName(true); setIsMenuOpen(false) }} style={styles.dropdownItem}>Yeniden Adlandır</button>
-            <button onClick={() => { onDeleteSection(section.id); setIsMenuOpen(false) }} style={styles.dropdownItemDelete}>Bölümü Sil</button>
+          <div style={{ position: 'relative' }}>
+            <button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen) }} style={styles.threeDotButton}>⋮</button>
+            {isMenuOpen && (
+              <div style={{ ...styles.dropdownMenu, top: '100%', left: '0', right: 'auto', marginTop: '4px' }}>
+                <button onClick={() => { setIsEditingName(true); setIsMenuOpen(false) }} style={styles.dropdownItem}>Rename Section</button>
+                <button onClick={() => { onDeleteSection(section.id); setIsMenuOpen(false) }} style={styles.dropdownItemDelete}>Delete Section</button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -87,19 +96,19 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
       {/* SADECE GÖREV KARTLARININ KAYDIRILDIĞI SCROLL ALANI */}
       <div className="kanban-task-list" style={styles.taskListContainer}>
         {section.tasks?.map(task => (
-          <div 
-            key={task.id} 
+          <div
+            key={task.id}
             style={{ width: '248px', flexShrink: 0 }}
             onClickCapture={() => {
               if (setLastInteractedSectionId) setLastInteractedSectionId(section.id);
               if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
             }}
           >
-            <TaskCard 
-              task={task} 
-              token={token} 
-              onTaskUpdate={onTaskUpdate} 
-              onTaskContextMenu={onTaskContextMenu} 
+            <TaskCard
+              task={task}
+              token={token}
+              onTaskUpdate={onTaskUpdate}
+              onTaskContextMenu={onTaskContextMenu}
               onOpenApprovalMenu={onOpenApprovalMenu}
               onOpenPopover={onOpenPopover}
               onOpenTaskPane={onOpenTaskPane}
@@ -110,6 +119,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
               handleLiveTaskSwap={handleLiveTaskSwap}
               draggingTaskId={draggingTaskId}
               setDraggingTaskId={setDraggingTaskId}
+              fieldConfig={fieldConfig}
             />
           </div>
         ))}
@@ -133,7 +143,7 @@ const styles = {
   taskListContainer: { display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem', flex: 1, overflowY: 'auto', overflowX: 'hidden', marginRight: '-8px', paddingRight: '8px' },
   taskCountBadge: { backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '10px', fontWeight: 'bold' },
   threeDotButton: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 0.5rem' },
-  dropdownMenu: { position: 'absolute', top: '100%', right: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, padding: '0.25rem', minWidth: '120px' },
+  dropdownMenu: { position: 'absolute', top: '100%', right: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, padding: '0.25rem', minWidth: '150px' },
   dropdownItem: { width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left', marginBottom: '2px' },
   dropdownItemDelete: { width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left' },
   miniInput: { padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none' },

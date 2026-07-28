@@ -38,6 +38,16 @@
   background-color: #F3F4F6;
 }
 
+.view-tab-text::after {
+  content: attr(data-text);
+  font-weight: 700;
+  height: 0;
+  visibility: hidden;
+  overflow: hidden;
+  user-select: none;
+  pointer-events: none;
+}
+
 /* Custom scrollbar for Kanban column */
 .kanban-task-list {
   scrollbar-width: thin !important;

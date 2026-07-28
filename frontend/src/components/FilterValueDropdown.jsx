@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import DatePickerPopover from './DatePickerPopover';
 import AssigneePopover from './AssigneePopover';
 
-export default function FilterValueDropdown({ filter, type, onSelect, project }) {
+export default function FilterValueDropdown({ filter, type, onSelect, project, alignRight = false }) {
   // Common Dropdown Styling
-  const popoverStyle = { position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 101, marginTop: '4px', padding: '4px 0', minWidth: '150px' };
+  const popoverStyle = { position: 'absolute', top: '100%', left: alignRight ? 'auto' : 0, right: alignRight ? 0 : 'auto', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 101, marginTop: '4px', padding: '4px 0', minWidth: '150px' };
   const itemStyle = { padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', transition: 'background-color 0.1s' };
 
   const filterType = (filter.type || '').toLowerCase();
@@ -40,7 +40,7 @@ export default function FilterValueDropdown({ filter, type, onSelect, project })
                 onSelect({ ...(filter.value || {}), end: selectedDate });
             }
         }}
-        styleOverrides={{ position: 'absolute', top: '100%', left: 0, minWidth: '320px', marginTop: '4px' }}
+        styleOverrides={{ position: 'absolute', top: '100%', left: alignRight ? 'auto' : 0, right: alignRight ? 0 : 'auto', minWidth: '320px', marginTop: '4px' }}
       />
     );
   }
@@ -53,7 +53,7 @@ export default function FilterValueDropdown({ filter, type, onSelect, project })
         onFilterApply={(user) => {
             onSelect(user ? user.name : null);
         }}
-        styleOverrides={{ position: 'absolute', top: '100%', left: 0, minWidth: '220px', marginTop: '4px' }}
+        styleOverrides={{ position: 'absolute', top: '100%', left: alignRight ? 'auto' : 0, right: alignRight ? 0 : 'auto', minWidth: '220px', marginTop: '4px' }}
       />
     );
   }

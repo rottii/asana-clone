@@ -22,7 +22,7 @@ export default function ProjectListView({
   applyTaskFilter,
   applyTaskSort,
   handleSortOptionClick,
-  activeSort,
+  activeSorts,
   handleTaskUpdate,
   handleGeneralDrop,
   handleToggleTaskCompleteInline,
@@ -635,7 +635,7 @@ export default function ProjectListView({
               }}>
                 {(() => {
                   const val = parsedFields[cf.id];
-                  
+
                   if (cf.type === 'id') {
                     const idValue = val || task.id?.slice(-6).toUpperCase();
                     return <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: '0.05em' }}>{idValue}</span>;
@@ -643,15 +643,15 @@ export default function ProjectListView({
                   if (cf.type === 'formula') {
                     return <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{val || '—'}</span>;
                   }
-                  
+
                   if (cf.type === 'github_pr') {
                     const prs = getParsedGithubPRs(task.githubPRs);
                     if (prs.length === 0) return <span style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>—</span>;
-                    
+
                     const firstPr = prs[0];
                     let statusColor = getGithubPRStatusColor(firstPr);
                     let label = getGithubPRStatusLabel(firstPr);
-        
+
                     if (prs.length > 1) label += ` (+${prs.length - 1})`;
 
                     return (
@@ -729,10 +729,10 @@ export default function ProjectListView({
                       const isMulti = cf.type === 'MULTI_SELECT' || cf.type === 'multi-select';
                       const val = parsedFields[cf.id];
                       const selectedValues = Array.isArray(val) ? val : (val ? [val] : []);
-                      
+
                       const validOptionValues = (cf.options || []).map(o => o.label || o.value);
                       const orphanedValues = selectedValues.filter(v => !validOptionValues.includes(v));
-                      
+
                       const allOptionsToRender = [
                         ...(cf.options || []),
                         ...orphanedValues.map(v => ({ id: `orphan-${v}`, label: v, color: '#F3F4F6' }))
@@ -740,35 +740,35 @@ export default function ProjectListView({
 
                       return allOptionsToRender.map(o => {
                         const isSelected = selectedValues.includes(o.label || o.value);
-                        
+
                         return (
                           <button
-                          key={o.id}
-                          onClick={() => { 
-                            if (isMulti) {
-                              let newArr = [...selectedValues];
-                              if (isSelected) newArr = newArr.filter(v => v !== (o.label || o.value));
-                              else newArr.push(o.label || o.value);
-                              handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, newArr);
-                            } else {
-                              handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, o.label); 
-                              setOpenCellMenuId(null); 
-                            }
-                          }}
-                          style={{ ...styles.dropdownItem, color: 'var(--text-primary)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: isSelected ? 'var(--bg-secondary)' : 'transparent' }}
-                        >
-                          {isMulti && (
-                            <div style={{ width: '14px', height: '14px', border: '1px solid var(--border-color)', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? 'var(--accent-primary)' : 'transparent' }}>
-                              {isSelected && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
-                            </div>
-                          )}
-                          <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', flexShrink: 0 }}></div>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
-                        </button>
-                      );
-                    });
-                  })()}
-                  {cf.type === 'people' && (
+                            key={o.id}
+                            onClick={() => {
+                              if (isMulti) {
+                                let newArr = [...selectedValues];
+                                if (isSelected) newArr = newArr.filter(v => v !== (o.label || o.value));
+                                else newArr.push(o.label || o.value);
+                                handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, newArr);
+                              } else {
+                                handleTaskCustomFieldUpdate(task.id, sectionId, cf.id, o.label);
+                                setOpenCellMenuId(null);
+                              }
+                            }}
+                            style={{ ...styles.dropdownItem, color: 'var(--text-primary)', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: isSelected ? 'var(--bg-secondary)' : 'transparent' }}
+                          >
+                            {isMulti && (
+                              <div style={{ width: '14px', height: '14px', border: '1px solid var(--border-color)', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? 'var(--accent-primary)' : 'transparent' }}>
+                                {isSelected && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                              </div>
+                            )}
+                            <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: o.color || '#E0E7FF', flexShrink: 0 }}></div>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label || o.value}</span>
+                          </button>
+                        );
+                      });
+                    })()}
+                    {cf.type === 'people' && (
                       <div style={{ display: 'flex', flexDirection: 'column', padding: '4px 0' }}>
                         <div style={{ padding: '0 8px 4px', fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '600' }}>SELECT PEOPLE</div>
                         {(selectedProject?.members?.map(m => m.user) || []).map(m => {
@@ -991,8 +991,8 @@ export default function ProjectListView({
             onMouseLeave={() => setHoveredColumnName(null)}
             onClick={() => handleSortOptionClick && handleSortOptionClick('Alphabetical')}
           >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, fontWeight: activeSort?.field === 'Alphabetical' ? '700' : '500' }}>
-              Name {activeSort?.field === 'Alphabetical' && (activeSort.direction === 'asc' ? '↑' : '↓')}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, fontWeight: activeSorts?.find(s => s.field === 'Alphabetical') ? '700' : '500' }}>
+              Name {activeSorts?.find(s => s.field === 'Alphabetical') && (activeSorts.find(s => s.field === 'Alphabetical').direction === 'asc' ? '↑' : '↓')}
             </span>
             {(hoveredColumnName === 'name' || openColumnMenuName === 'name') && (
               <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>▼</button>
@@ -1029,8 +1029,8 @@ export default function ProjectListView({
                 onMouseEnter={() => setHoveredColumnName(menuName)}
                 onMouseLeave={() => setHoveredColumnName(null)}
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, pointerEvents: 'none', fontWeight: activeSort?.field === title ? '700' : '500' }}>
-                  {title} {activeSort?.field === title && (activeSort.direction === 'asc' ? '↑' : '↓')}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, pointerEvents: 'none', fontWeight: activeSorts?.find(s => s.field === title) ? '700' : '500' }}>
+                  {title} {activeSorts?.find(s => s.field === title) && (activeSorts.find(s => s.field === title).direction === 'asc' ? '↑' : '↓')}
                 </span>
                 {(hoveredColumnName === menuName || openColumnMenuName === menuName) && (
                   <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === menuName; closeAllMenus(); if (!isOpen) setOpenColumnMenuName(menuName); }} style={styles.columnHeaderMenuBtn}>▼</button>
@@ -1133,124 +1133,125 @@ export default function ProjectListView({
 
                     {/* THREE DOTS MENU */}
                     {!isReadOnly && !isEditing && !isVirtualGrouping && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); const isOpen = openSectionMenuId === section.id; closeAllMenus(); if (!isOpen) setOpenSectionMenuId(section.id); }}
-                        style={styles.threeDotButton}
-                      >
-                        ⋮
-                      </button>
-                    )}
-                  </div>
-
-                  {openSectionMenuId === section.id && (
-                    <div style={{ ...styles.dropdownMenu, left: '250px', right: 'auto', top: '2rem' }} onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => { setEditingSectionId(section.id); setEditSectionNameValue(section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Yeniden Adlandır</button>
-                      <button onClick={() => { if (onDeleteSection) onDeleteSection(section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>Bölümü Sil</button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Görev Satırları Gövdesi */}
-                {!isCollapsed && (
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {section.subgroups ? (
-                      section.subgroups.map(subgroup => (
-                        <div key={subgroup.id}>
-                          <div style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                            <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>↳</span>
-                            <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>{subgroup.name}</span>
-                            <span style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' }}>{subgroup.tasks.length}</span>
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); const isOpen = openSectionMenuId === section.id; closeAllMenus(); if (!isOpen) setOpenSectionMenuId(section.id); }}
+                          style={styles.threeDotButton}
+                        >
+                          ⋮
+                        </button>
+                        {openSectionMenuId === section.id && (
+                          <div style={{ ...styles.dropdownMenu, top: '100%', left: '0', right: 'auto', marginTop: '4px' }}>
+                            <button onClick={() => { setEditingSectionId(section.id); setEditSectionNameValue(section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Rename Section</button>
+                            <button onClick={() => { if (onDeleteSection) onDeleteSection(section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>Delete Section</button>
                           </div>
-                          {subgroup.tasks.map(t => renderTaskRow(t, section.id))}
-                        </div>
-                      ))
-                    ) : (
-                      filteredTasks.map(t => renderTaskRow(t, section.id))
-                    )}
-                    {/* Satır İçi Hızlı Görev Ekleme */}
-                    {!isReadOnly && !isVirtualGrouping && (
-                      <div
-                        style={{ ...styles.quickAddTaskRowList, cursor: 'text' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setLastInteractedSectionId(section.id);
-                          const inp = document.getElementById(`quick-add-${section.id}`);
-                          if (inp) inp.focus();
-                        }}
-                      >
-                        <span style={{ paddingLeft: '3.5rem', color: '#9CA3AF', fontSize: '0.85rem' }}>+</span>
-                        <input
-                          id={`quick-add-${section.id}`}
-                          type="text"
-                          placeholder="Add task..."
-                          value={quickTaskInputs[section.id] || ''}
-                          onChange={(e) => setQuickTaskInputs({ ...quickTaskInputs, [section.id]: e.target.value })}
-                          onKeyDown={(e) => e.key === 'Enter' && handleCreateQuickTask(section.id)}
-                          onFocus={() => setLastInteractedSectionId(section.id)}
-                          style={styles.quickAddTaskInpCell}
-                        />
+                        )}
                       </div>
                     )}
                   </div>
+                </div>
+
+                  {/* Görev Satırları Gövdesi */}
+                  {!isCollapsed && (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {section.subgroups ? (
+                        section.subgroups.map(subgroup => (
+                          <div key={subgroup.id}>
+                            <div style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                              <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>↳</span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>{subgroup.name}</span>
+                              <span style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' }}>{subgroup.tasks.length}</span>
+                            </div>
+                            {subgroup.tasks.map(t => renderTaskRow(t, section.id))}
+                          </div>
+                        ))
+                      ) : (
+                        filteredTasks.map(t => renderTaskRow(t, section.id))
+                      )}
+                      {/* Satır İçi Hızlı Görev Ekleme */}
+                      {!isReadOnly && !isVirtualGrouping && (
+                        <div
+                          style={{ ...styles.quickAddTaskRowList, cursor: 'text' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLastInteractedSectionId(section.id);
+                            const inp = document.getElementById(`quick-add-${section.id}`);
+                            if (inp) inp.focus();
+                          }}
+                        >
+                          <span style={{ paddingLeft: '3.5rem', color: '#9CA3AF', fontSize: '0.85rem' }}>+</span>
+                          <input
+                            id={`quick-add-${section.id}`}
+                            type="text"
+                            placeholder="Add task..."
+                            value={quickTaskInputs[section.id] || ''}
+                            onChange={(e) => setQuickTaskInputs({ ...quickTaskInputs, [section.id]: e.target.value })}
+                            onKeyDown={(e) => e.key === 'Enter' && handleCreateQuickTask(section.id)}
+                            onFocus={() => setLastInteractedSectionId(section.id)}
+                            style={styles.quickAddTaskInpCell}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                )
+          })}
+                {isAddFieldModalOpen && (
+                  <AddFieldModal
+                    onClose={() => setIsAddFieldModalOpen(false)}
+                    onCreateField={(fieldData) => {
+                      const newField = {
+                        id: Date.now().toString(),
+                        ...fieldData,
+                        title: fieldData.title || 'Unnamed Field',
+                      };
+                      const newCustomFields = [...customFields, newField];
+                      setCustomFields(newCustomFields);
+                      handleSaveProjectSettings({ customFieldSettings: newCustomFields });
+                      setIsAddFieldModalOpen(false);
+                    }}
+                  />
                 )}
               </div>
-            )
-          })}
-          {isAddFieldModalOpen && (
-            <AddFieldModal
-              onClose={() => setIsAddFieldModalOpen(false)}
-              onCreateField={(fieldData) => {
-                const newField = {
-                  id: Date.now().toString(),
-                  ...fieldData,
-                  title: fieldData.title || 'Unnamed Field',
-                };
-                const newCustomFields = [...customFields, newField];
-                setCustomFields(newCustomFields);
-                handleSaveProjectSettings({ customFieldSettings: newCustomFields });
-                setIsAddFieldModalOpen(false);
-              }}
-            />
-          )}
-        </div>
       </div>
-    </div>
-  )
+      </div>
+      )
 }
 
-const styles = {
-  listSpreadsheetWrapper: { flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
-  listTableHeaderRow: { display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', flexShrink: 0, borderLeft: '3px solid transparent' },
-  gridHeaderCell: { boxSizing: 'border-box', padding: '0.6rem', fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderRight: '1px solid var(--border-color)' },
-  sectionAccordionRow: { display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none' },
-  accordionArrowIcon: { fontSize: '0.7rem', color: 'var(--text-primary)', width: '12px' },
-  sectionTitleText: { fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' },
-  sectionTaskCountBadge: { backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' },
-  taskDataTableRow: { display: 'flex', borderBottom: '1px solid var(--bg-tertiary)', transition: 'background-color 0.1s, opacity 0.15s ease' },
-  gridBodyCell: { boxSizing: 'border-box', padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center', borderRight: '1px solid var(--bg-tertiary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  listAvatarIcon: { width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' },
-  quickAddTaskRowList: { display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--bg-tertiary)', padding: '0.35rem 0' },
-  quickAddTaskInpCell: { flex: 1, border: 'none', outline: 'none', fontSize: '0.85rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' },
-  drag6DotHandleCell: { boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', color: 'var(--text-tertiary)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none', marginRight: '0.4rem' },
-  drag6DotHandleCellTask: { boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', color: 'var(--border-color)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none' },
-  sectionRenameInput: { flex: 1, border: '1px solid var(--accent-primary)', borderRadius: '4px', outline: 'none', padding: '2px 6px', fontSize: '0.9rem', fontWeight: '600', backgroundColor: 'transparent', color: 'var(--text-primary)' },
-  threeDotButton: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 0.5rem' },
-  dropdownMenu: { position: 'absolute', top: '100%', right: '1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, padding: '0.25rem', minWidth: '150px' },
-  dropdownItem: { width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left', marginBottom: '2px' },
-  dropdownItemDelete: { width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left' },
-  resizeHandle: { position: 'absolute', right: -2, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10 },
-  addFieldButton: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' },
-  addFieldMenu: { position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '200px', padding: '0.5rem 0', maxHeight: '350px', overflowY: 'auto' },
-  addFieldMenuHeader: { padding: '0.5rem 1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' },
-  addFieldMenuItem: { display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.5rem 1rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', textAlign: 'left' },
-  fieldMenuIcon: { fontSize: '1rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' },
-  addFieldMenuShowMore: { padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--accent-primary)', cursor: 'pointer', marginTop: '0.5rem' },
-  cellDropdownMenu: { position: 'absolute', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem', minWidth: '150px', display: 'flex', flexDirection: 'column', maxHeight: '250px', overflowY: 'auto' },
-  columnDropdownMenu: { position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem 0', minWidth: '240px', display: 'flex', flexDirection: 'column', fontWeight: 'normal', textTransform: 'none' },
-  columnHeaderMenuBtn: { background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '1rem', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: '0.5rem', lineHeight: 1 },
-  menuDivider: { borderTop: '1px solid var(--border-color)', margin: '4px 0' },
-  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-  modalContent: { backgroundColor: 'var(--bg-primary)', borderRadius: '8px', padding: '1.5rem', width: '550px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)' }
+      const styles = {
+        listSpreadsheetWrapper: {flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
+      listTableHeaderRow: {display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', flexShrink: 0, borderLeft: '3px solid transparent' },
+      gridHeaderCell: {boxSizing: 'border-box', padding: '0.6rem', fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderRight: '1px solid var(--border-color)' },
+      sectionAccordionRow: {display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none' },
+      accordionArrowIcon: {fontSize: '0.7rem', color: 'var(--text-primary)', width: '12px' },
+      sectionTitleText: {fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' },
+      sectionTaskCountBadge: {backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' },
+      taskDataTableRow: {display: 'flex', borderBottom: '1px solid var(--bg-tertiary)', transition: 'background-color 0.1s, opacity 0.15s ease' },
+      gridBodyCell: {boxSizing: 'border-box', padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center', borderRight: '1px solid var(--bg-tertiary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      listAvatarIcon: {width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' },
+      quickAddTaskRowList: {display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--bg-tertiary)', padding: '0.35rem 0' },
+      quickAddTaskInpCell: {flex: 1, border: 'none', outline: 'none', fontSize: '0.85rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' },
+      drag6DotHandleCell: {boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', color: 'var(--text-tertiary)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none', marginRight: '0.4rem' },
+      drag6DotHandleCellTask: {boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', color: 'var(--border-color)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none' },
+      sectionRenameInput: {flex: 1, border: '1px solid var(--accent-primary)', borderRadius: '4px', outline: 'none', padding: '2px 6px', fontSize: '0.9rem', fontWeight: '600', backgroundColor: 'transparent', color: 'var(--text-primary)' },
+      threeDotButton: {background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 0.5rem' },
+      dropdownMenu: {position: 'absolute', top: '100%', right: '1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, padding: '0.25rem', minWidth: '150px' },
+      dropdownItem: {width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left', marginBottom: '2px' },
+      dropdownItemDelete: {width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left' },
+      resizeHandle: {position: 'absolute', right: -2, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10 },
+      addFieldButton: {background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' },
+      addFieldMenu: {position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '200px', padding: '0.5rem 0', maxHeight: '350px', overflowY: 'auto' },
+      addFieldMenuHeader: {padding: '0.5rem 1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' },
+      addFieldMenuItem: {display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.5rem 1rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', textAlign: 'left' },
+      fieldMenuIcon: {fontSize: '1rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' },
+      addFieldMenuShowMore: {padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--accent-primary)', cursor: 'pointer', marginTop: '0.5rem' },
+      cellDropdownMenu: {position: 'absolute', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem', minWidth: '150px', display: 'flex', flexDirection: 'column', maxHeight: '250px', overflowY: 'auto' },
+      columnDropdownMenu: {position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem 0', minWidth: '240px', display: 'flex', flexDirection: 'column', fontWeight: 'normal', textTransform: 'none' },
+      columnHeaderMenuBtn: {background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '1rem', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: '0.5rem', lineHeight: 1 },
+      menuDivider: {borderTop: '1px solid var(--border-color)', margin: '4px 0' },
+      modalOverlay: {position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+      modalContent: {backgroundColor: 'var(--bg-primary)', borderRadius: '8px', padding: '1.5rem', width: '550px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)' }
 }
 
 

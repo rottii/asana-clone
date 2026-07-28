@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
 import Auth from './components/Auth'
 import Dashboard from './components/Dashboard'
@@ -30,8 +30,15 @@ export default function App() {
 
   const [activeView, setActiveView] = useState(() => localStorage.getItem('activeView') || 'home') // 'home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'project', 'projects'
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const previousViewRef = useRef((() => {
+    const stored = localStorage.getItem('activeView') || 'home'
+    return stored === 'create_project' ? 'home' : stored
+  })())
 
   useEffect(() => {
+    if (activeView !== 'create_project') {
+      previousViewRef.current = activeView
+    }
     localStorage.setItem('activeView', activeView)
   }, [activeView])
 
@@ -287,6 +294,7 @@ export default function App() {
               setProjects={setProjects}
               setPortfolios={setPortfolios}
               setActiveView={setActiveView}
+              previousView={previousViewRef.current}
               setSelectedProject={setSelectedProject}
               portfolioCreationParent={portfolioCreationParent}
               setPortfolioCreationParent={setPortfolioCreationParent}

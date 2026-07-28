@@ -474,9 +474,9 @@ export default function ProjectTimelineView({
                           •••
                         </button>
                         {openSectionMenuId === group.section.id && (
-                          <div style={{ ...styles.dropdownMenu, top: '100%', right: 0, left: 'auto' }} onClick={(e) => e.stopPropagation()}>
-                            <button onClick={() => { setEditingSectionId(group.section.id); setEditSectionNameValue(group.section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Yeniden Adlandır</button>
-                            <button onClick={() => { if(onDeleteSection) onDeleteSection(group.section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>Bölümü Sil</button>
+                          <div style={{ ...styles.dropdownMenu, top: '100%', left: '0', right: 'auto' }}>
+                            <button onClick={() => { setEditingSectionId(group.section.id); setEditSectionNameValue(group.section.name); setOpenSectionMenuId(null); }} style={styles.dropdownItem}>Rename Section</button>
+                            <button onClick={() => { if(onDeleteSection) onDeleteSection(group.section.id); setOpenSectionMenuId(null); }} style={styles.dropdownItemDelete}>Delete Section</button>
                           </div>
                         )}
                       </div>
@@ -650,7 +650,7 @@ const styles = {
   tasksTrack: { position: 'relative', display: 'flex', flexShrink: 0, boxSizing: 'border-box' },
   gridLineVertical: { position: 'absolute', top: 0, bottom: 0, width: '1px', backgroundColor: 'var(--bg-tertiary)', zIndex: 0 },
   tasksArea: { position: 'relative', width: '100%', height: '100%', zIndex: 3, pointerEvents: 'none' },
-  taskBarWrapper: { position: 'absolute', height: '28px', display: 'flex', alignItems: 'stretch', cursor: 'pointer', '&:hover .dependency-node': { opacity: 1 }, '&:hover .drag-handle': { opacity: 1 }, zIndex: 5, pointerEvents: 'auto' },
+  taskBarWrapper: { position: 'absolute', height: '28px', display: 'flex', alignItems: 'stretch', cursor: 'pointer', zIndex: 5, pointerEvents: 'auto' },
   taskBar: { flex: 1, borderRadius: '4px', padding: '0 20px', fontSize: '0.75rem', fontWeight: '500', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', border: '1px solid rgba(0,0,0,0.05)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', userSelect: 'none', position: 'relative' },
   dragHandleLeft: { width: '12px', cursor: 'ew-resize', position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 2, backgroundColor: 'rgba(79, 70, 229, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', fontSize: '8px', opacity: 0, transition: 'opacity 0.2s', borderTopLeftRadius: '4px', borderBottomLeftRadius: '4px' },
   dragHandleRight: { width: '12px', cursor: 'ew-resize', position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 2, backgroundColor: 'rgba(79, 70, 229, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', fontSize: '8px', opacity: 0, transition: 'opacity 0.2s', borderTopRightRadius: '4px', borderBottomRightRadius: '4px' },

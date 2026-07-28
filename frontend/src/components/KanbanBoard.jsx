@@ -34,6 +34,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [isFormsModalOpen, setIsFormsModalOpen] = useState(false)
   const [activeFormId, setActiveFormId] = useState(null)
   const [customizeView, setCustomizeView] = useState('main')
+  const [optionsView, setOptionsView] = useState('main')
   const [projectRules, setProjectRules] = useState([])
   const [activeRuleMenuId, setActiveRuleMenuId] = useState(null)
   const [ruleToEdit, setRuleToEdit] = useState(null)
@@ -57,13 +58,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false)
   const [isFilterInnerMenuOpen, setIsFilterInnerMenuOpen] = useState(false)
   const [openFilterDropdown, setOpenFilterDropdown] = useState(null) // { index, type: 'operator' | 'value' | 'value_start' | 'value_end' }
+  const [sortDropdownView, setSortDropdownView] = useState('main')
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [isAddWidgetMenuOpen, setIsAddWidgetMenuOpen] = useState(false)
   const [isAddTaskMenuOpen, setIsAddTaskMenuOpen] = useState(false)
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false)
   const [isAddViewMenuOpen, setIsAddViewMenuOpen] = useState(false)
   const [activeFilters, setActiveFilters] = useState([])
-  const [activeSort, setActiveSort] = useState(null)
+  const [activeSorts, setActiveSorts] = useState([])
+  const [draggingSortIdx, setDraggingSortIdx] = useState(null)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
@@ -77,6 +80,23 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     if (openFilterDropdown) document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [openFilterDropdown]);
+
+  useEffect(() => {
+    const handleClickOutsidePanes = (e) => {
+      if (e.target.closest('#customize-pane-container') || e.target.closest('#options-pane-container')) return;
+      if (e.target.closest('#customize-pane-toggle-btn') || e.target.closest('#options-pane-toggle-btn')) return;
+
+      setIsOptionsPaneOpen(false);
+      setIsCustomizePanelOpen(false);
+    };
+
+    if (isOptionsPaneOpen || isCustomizePanelOpen) {
+      document.addEventListener('mousedown', handleClickOutsidePanes);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsidePanes);
+    };
+  }, [isOptionsPaneOpen, isCustomizePanelOpen]);
 
   // Parse views for backward compatibility
   const rawViews = selectedProject.activeViews || ['Overview', 'List', 'Board', 'Timeline', 'Gantt', 'Dashboard', 'Calendar', 'Workload'];
@@ -464,14 +484,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               taskValue = prs.length > 0 ? getGithubPRStatusLabel(prs[0]) : null;
             } else {
               let parsedFields = {};
-              if (typeof task.customFields === 'string') { try { parsedFields = JSON.parse(task.customFields); } catch(e){} } else if (task.customFields) parsedFields = task.customFields;
+              if (typeof task.customFields === 'string') { try { parsedFields = JSON.parse(task.customFields); } catch (e) { } } else if (task.customFields) parsedFields = task.customFields;
               taskValue = parsedFields[cf.id];
             }
           } else {
             taskValue = null;
           }
         }
-        
+
         const op = filter.operator;
         const val = filter.value;
         const filterType = (filter.type || '').toLowerCase();
@@ -479,64 +499,64 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         const isMulti = filterType === 'multi_select' || filterType === 'multi-select';
 
         if (isDate) {
-          const tDate = taskValue ? new Date(taskValue).setHours(0,0,0,0) : null;
+          const tDate = taskValue ? new Date(taskValue).setHours(0, 0, 0, 0) : null;
           if (op === 'is empty') { if (tDate) return false; }
           else if (op === 'is not empty') { if (!tDate) return false; }
           else if (op === 'is') {
             if (!tDate || !val) return false;
-            const vDate = new Date(val).setHours(0,0,0,0);
+            const vDate = new Date(val).setHours(0, 0, 0, 0);
             if (tDate !== vDate) return false;
           }
           else if (op === 'is not') {
             if (tDate && val) {
-              const vDate = new Date(val).setHours(0,0,0,0);
+              const vDate = new Date(val).setHours(0, 0, 0, 0);
               if (tDate === vDate) return false;
             }
           }
           else if (op === 'is between') {
-            const start = val?.start ? new Date(val.start).setHours(0,0,0,0) : null;
-            const end = val?.end ? new Date(val.end).setHours(0,0,0,0) : null;
+            const start = val?.start ? new Date(val.start).setHours(0, 0, 0, 0) : null;
+            const end = val?.end ? new Date(val.end).setHours(0, 0, 0, 0) : null;
             if (!tDate) return false;
             if (start && tDate < start) return false;
             if (end && tDate > end) return false;
           }
           else if (op === 'is not between') {
-            const start = val?.start ? new Date(val.start).setHours(0,0,0,0) : null;
-            const end = val?.end ? new Date(val.end).setHours(0,0,0,0) : null;
+            const start = val?.start ? new Date(val.start).setHours(0, 0, 0, 0) : null;
+            const end = val?.end ? new Date(val.end).setHours(0, 0, 0, 0) : null;
             if (!tDate) return false;
             const isInside = (!start || tDate >= start) && (!end || tDate <= end);
             if (isInside) return false;
           }
         } else if (isMulti) {
-           let tArr = [];
-           if (Array.isArray(taskValue)) tArr = taskValue;
-           else if (typeof taskValue === 'string') { try { tArr = JSON.parse(taskValue); if(!Array.isArray(tArr)) tArr = [taskValue]; } catch(e){ tArr = [taskValue]; } }
-           else if (taskValue) tArr = [taskValue];
-           
-           const vArr = Array.isArray(val) ? val : [];
-           if (op === 'is empty') { if (tArr.length > 0) return false; }
-           else if (op === 'is not empty') { if (tArr.length === 0) return false; }
-           else if (op === 'contains all') {
-             for (const v of vArr) { if (!tArr.includes(v)) return false; }
-           }
-           else if (op === 'contains any') {
-             if (vArr.length > 0 && !vArr.some(v => tArr.includes(v))) return false;
-           }
-           else if (op === 'doesnt contain all') {
-             let hasAll = true;
-             for (const v of vArr) { if (!tArr.includes(v)) hasAll = false; }
-             if (hasAll && vArr.length > 0) return false;
-           }
-           else if (op === 'doesnt contain any') {
-             if (vArr.some(v => tArr.includes(v))) return false;
-           }
+          let tArr = [];
+          if (Array.isArray(taskValue)) tArr = taskValue;
+          else if (typeof taskValue === 'string') { try { tArr = JSON.parse(taskValue); if (!Array.isArray(tArr)) tArr = [taskValue]; } catch (e) { tArr = [taskValue]; } }
+          else if (taskValue) tArr = [taskValue];
+
+          const vArr = Array.isArray(val) ? val : [];
+          if (op === 'is empty') { if (tArr.length > 0) return false; }
+          else if (op === 'is not empty') { if (tArr.length === 0) return false; }
+          else if (op === 'contains all') {
+            for (const v of vArr) { if (!tArr.includes(v)) return false; }
+          }
+          else if (op === 'contains any') {
+            if (vArr.length > 0 && !vArr.some(v => tArr.includes(v))) return false;
+          }
+          else if (op === 'doesnt contain all') {
+            let hasAll = true;
+            for (const v of vArr) { if (!tArr.includes(v)) hasAll = false; }
+            if (hasAll && vArr.length > 0) return false;
+          }
+          else if (op === 'doesnt contain any') {
+            if (vArr.some(v => tArr.includes(v))) return false;
+          }
         } else {
-           const tStr = String(taskValue || '').toLowerCase();
-           const vStr = String(val || '').toLowerCase();
-           if (op === 'is empty') { if (tStr) return false; }
-           else if (op === 'is not empty') { if (!tStr) return false; }
-           else if (op === 'is') { if (tStr !== vStr) return false; }
-           else if (op === 'is not') { if (tStr === vStr) return false; }
+          const tStr = String(taskValue || '').toLowerCase();
+          const vStr = String(val || '').toLowerCase();
+          if (op === 'is empty') { if (tStr) return false; }
+          else if (op === 'is not empty') { if (!tStr) return false; }
+          else if (op === 'is') { if (tStr !== vStr) return false; }
+          else if (op === 'is not') { if (tStr === vStr) return false; }
         }
       }
 
@@ -576,108 +596,113 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   };
 
   const handleSortOptionClick = (field) => {
-    setActiveSort(prev => {
-      if (prev?.field === field) {
-        return { field, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+    setActiveSorts(prev => {
+      const existingIdx = prev.findIndex(s => s.field === field);
+      if (existingIdx !== -1) {
+        const newSorts = [...prev];
+        newSorts[existingIdx] = { field, direction: prev[existingIdx].direction === 'asc' ? 'desc' : 'asc' };
+        return newSorts;
       }
-      return { field, direction: 'asc' };
+      return [...prev, { field, direction: 'asc' }];
     });
     setIsSortDropdownOpen(false);
   };
 
   const applyTaskSort = (tasks) => {
-    if (!tasks || !activeSort) return tasks;
+    if (!tasks || activeSorts.length === 0) return tasks;
 
     return [...tasks].sort((a, b) => {
-      let valA, valB;
-      const { field, direction } = activeSort;
-      const orderMultiplier = direction === 'asc' ? 1 : -1;
+      for (const sortObj of activeSorts) {
+        const { field, direction } = sortObj;
+        const orderMultiplier = direction === 'asc' ? 1 : -1;
+        let valA, valB;
 
-      switch (field) {
-        case 'Start date':
-          valA = a.startDate ? new Date(a.startDate).getTime() : 0;
-          valB = b.startDate ? new Date(b.startDate).getTime() : 0;
-          break;
-        case 'Due date':
-          valA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-          valB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-          break;
-        case 'Assignee':
-          valA = a.assignee?.name?.toLowerCase() || '';
-          valB = b.assignee?.name?.toLowerCase() || '';
-          break;
-        case 'Created by':
-          valA = a.creator?.name?.toLowerCase() || '';
-          valB = b.creator?.name?.toLowerCase() || '';
-          break;
-        case 'Created on':
-          valA = new Date(a.createdAt).getTime();
-          valB = new Date(b.createdAt).getTime();
-          break;
-        case 'Last modified on':
-          valA = new Date(a.updatedAt).getTime();
-          valB = new Date(b.updatedAt).getTime();
-          break;
-        case 'Completed on':
-          valA = a.completedAt ? new Date(a.completedAt).getTime() : (a.isCompleted ? 1 : 0);
-          valB = b.completedAt ? new Date(b.completedAt).getTime() : (b.isCompleted ? 1 : 0);
-          break;
-        case 'Likes':
-          valA = a.likes || 0;
-          valB = b.likes || 0;
-          break;
-        case 'Alphabetical':
-          valA = a.title?.toLowerCase() || '';
-          valB = b.title?.toLowerCase() || '';
-          break;
+        switch (field) {
+          case 'Start date':
+            valA = a.startDate ? new Date(a.startDate).getTime() : 0;
+            valB = b.startDate ? new Date(b.startDate).getTime() : 0;
+            break;
+          case 'Due date':
+            valA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+            valB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+            break;
+          case 'Assignee':
+            valA = a.assignee?.name?.toLowerCase() || '';
+            valB = b.assignee?.name?.toLowerCase() || '';
+            break;
+          case 'Created by':
+            valA = a.creator?.name?.toLowerCase() || '';
+            valB = b.creator?.name?.toLowerCase() || '';
+            break;
+          case 'Created on':
+            valA = new Date(a.createdAt).getTime();
+            valB = new Date(b.createdAt).getTime();
+            break;
+          case 'Last modified on':
+            valA = new Date(a.updatedAt).getTime();
+            valB = new Date(b.updatedAt).getTime();
+            break;
+          case 'Completed on':
+            valA = a.completedAt ? new Date(a.completedAt).getTime() : (a.isCompleted ? 1 : 0);
+            valB = b.completedAt ? new Date(b.completedAt).getTime() : (b.isCompleted ? 1 : 0);
+            break;
+          case 'Likes':
+            valA = a.likes || 0;
+            valB = b.likes || 0;
+            break;
+          case 'Alphabetical':
+            valA = a.title?.toLowerCase() || '';
+            valB = b.title?.toLowerCase() || '';
+            break;
 
-        case 'Task type':
-          valA = a.type?.toLowerCase() || '';
-          valB = b.type?.toLowerCase() || '';
-          break;
-        case 'Project':
-          valA = selectedProject.name?.toLowerCase() || '';
-          valB = selectedProject.name?.toLowerCase() || '';
-          break;
-        default:
-          const customFieldsList = getParsedCustomFields(selectedProject);
-          const cf = customFieldsList.find(f => f.title === field);
-          if (cf) {
-            if (cf.type === 'github_pr') {
-              const prsA = getParsedGithubPRs(a.githubPRs);
-              const prsB = getParsedGithubPRs(b.githubPRs);
-              const labelA = prsA.length > 0 ? getGithubPRStatusLabel(prsA[0]) : 'Empty';
-              const labelB = prsB.length > 0 ? getGithubPRStatusLabel(prsB[0]) : 'Empty';
-              
-              valA = GITHUB_PR_SORT_MAP[labelA] || 9;
-              valB = GITHUB_PR_SORT_MAP[labelB] || 9;
-            } else {
-              let aFields = {};
-              if (typeof a.customFields === 'string') { try { aFields = JSON.parse(a.customFields); } catch (e) { } } else if (a.customFields) aFields = a.customFields;
-              let bFields = {};
-              if (typeof b.customFields === 'string') { try { bFields = JSON.parse(b.customFields); } catch (e) { } } else if (b.customFields) bFields = b.customFields;
+          case 'Task type':
+            valA = a.type?.toLowerCase() || '';
+            valB = b.type?.toLowerCase() || '';
+            break;
+          case 'Project':
+            valA = selectedProject.name?.toLowerCase() || '';
+            valB = selectedProject.name?.toLowerCase() || '';
+            break;
+          default:
+            const customFieldsList = getParsedCustomFields(selectedProject);
+            const cf = customFieldsList.find(f => f.title === field);
+            if (cf) {
+              if (cf.type === 'github_pr') {
+                const prsA = getParsedGithubPRs(a.githubPRs);
+                const prsB = getParsedGithubPRs(b.githubPRs);
+                const labelA = prsA.length > 0 ? getGithubPRStatusLabel(prsA[0]) : 'Empty';
+                const labelB = prsB.length > 0 ? getGithubPRStatusLabel(prsB[0]) : 'Empty';
 
-              const aValStr = aFields[cf.id] ? String(aFields[cf.id]) : '';
-              const bValStr = bFields[cf.id] ? String(bFields[cf.id]) : '';
-
-              if (Array.isArray(cf.options) && cf.options.length > 0) {
-                const idxA = cf.options.findIndex(o => o.label === aValStr);
-                const idxB = cf.options.findIndex(o => o.label === bValStr);
-                valA = idxA !== -1 ? idxA : 9999;
-                valB = idxB !== -1 ? idxB : 9999;
+                valA = GITHUB_PR_SORT_MAP[labelA] || 9;
+                valB = GITHUB_PR_SORT_MAP[labelB] || 9;
               } else {
-                valA = aValStr.toLowerCase();
-                valB = bValStr.toLowerCase();
-              }
-            }
-          } else {
-            return 0;
-          }
-          break;
-      }
+                let aFields = {};
+                if (typeof a.customFields === 'string') { try { aFields = JSON.parse(a.customFields); } catch (e) { } } else if (a.customFields) aFields = a.customFields;
+                let bFields = {};
+                if (typeof b.customFields === 'string') { try { bFields = JSON.parse(b.customFields); } catch (e) { } } else if (b.customFields) bFields = b.customFields;
 
-      if (valA < valB) return -1 * orderMultiplier;
-      if (valA > valB) return 1 * orderMultiplier;
+                const aValStr = aFields[cf.id] ? String(aFields[cf.id]) : '';
+                const bValStr = bFields[cf.id] ? String(bFields[cf.id]) : '';
+
+                if (Array.isArray(cf.options) && cf.options.length > 0) {
+                  const idxA = cf.options.findIndex(o => o.label === aValStr);
+                  const idxB = cf.options.findIndex(o => o.label === bValStr);
+                  valA = idxA !== -1 ? idxA : 9999;
+                  valB = idxB !== -1 ? idxB : 9999;
+                } else {
+                  valA = aValStr.toLowerCase();
+                  valB = bValStr.toLowerCase();
+                }
+              }
+            } else {
+              return 0;
+            }
+            break;
+        }
+
+        if (valA < valB) return -1 * orderMultiplier;
+        if (valA > valB) return 1 * orderMultiplier;
+      }
       return 0;
     });
   };
@@ -1437,6 +1462,150 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const virtualGroupedSections = getGroupedSections();
   const isVirtualGrouping = activeGroup && activeGroup !== 'Sections';
 
+  const renderActiveFiltersList = (isOptionsPane = false) => {
+    return (
+      <>
+        {activeFilters.filter(f => typeof f === 'object').length > 0 && activeFilters.map((filter, idx) => {
+          if (typeof filter !== 'object') return null;
+          const operators = getOperatorsForFilter(filter);
+          const hasNoValue = ['is empty', 'is not empty'].includes(filter.operator);
+          const hasTwoValues = ['is between', 'is not between'].includes(filter.operator);
+
+          const formatVal = (val) => {
+            if (Array.isArray(val)) return val.length > 0 ? val.join(', ') : '';
+            if (typeof val === 'object' && val !== null) return '';
+            return val || '';
+          };
+
+          return (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+
+              {/* Field Box */}
+              <div style={{ position: 'relative', flex: 1, minWidth: '120px' }}>
+                <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'field' ? null : { index: idx, type: 'field' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{filter.icon}</span> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.field}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                </div>
+                {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'field' && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, width: '220px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 102, marginTop: '4px', maxHeight: '300px', overflowY: 'auto' }}>
+                    {[
+                      { icon: '✓', label: 'Completion status' },
+                      { icon: '👤', label: 'Assignee' },
+                      { icon: '📅', label: 'Start date', type: 'date' },
+                      { icon: '📅', label: 'Due date', type: 'date' },
+                      { icon: '👤', label: 'Created by' },
+                      { icon: '🕒', label: 'Created on', type: 'date' },
+                      { icon: '✏️', label: 'Last modified on', type: 'date' },
+                      { icon: '✓', label: 'Completed on', type: 'date' },
+                      { icon: '✓', label: 'Task type' },
+                      ...getParsedCustomFields(selectedProject).map(cf => ({ icon: 'A', label: cf.title, type: cf.type || cf.fieldType, options: cf.options }))
+                    ].map((item, itemIdx) => (
+                      <div
+                        key={itemIdx}
+                        style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          let defOperator = 'is';
+                          let defValue = '';
+                          const isDateField = ['Start date', 'Due date', 'Created on', 'Completed on', 'Last modified on'].includes(item.label) || item.type === 'date';
+                          const isAssigneeField = ['Assignee', 'Created by'].includes(item.label);
+                          const isMulti = item.type === 'multi_select';
+
+                          if (isDateField) {
+                            defOperator = 'is between';
+                            defValue = { start: '', end: '' };
+                          } else if (isAssigneeField) {
+                            defOperator = 'is';
+                            defValue = null;
+                          } else if (item.label === 'Completion status') {
+                            defOperator = 'is';
+                            defValue = 'Incomplete';
+                          } else if (item.label === 'Task type') {
+                            defOperator = 'is';
+                            defValue = 'Task';
+                          } else if (isMulti) {
+                            defOperator = 'contains any';
+                            defValue = [];
+                          } else {
+                            defOperator = 'is';
+                            defValue = null;
+                          }
+
+                          const newFilters = [...activeFilters];
+                          newFilters[idx] = { field: item.label, icon: item.icon, operator: defOperator, value: defValue, type: item.type, options: item.options };
+                          setActiveFilters(newFilters);
+                          setOpenFilterDropdown(null);
+                        }}
+                      >
+                        <span style={{ color: 'var(--text-secondary)' }}>{item.icon}</span> {item.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ position: 'relative', flex: 1, minWidth: '120px' }}>
+                <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'operator' ? null : { index: idx, type: 'operator' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.operator}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                </div>
+                {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'operator' && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 101, marginTop: '4px', padding: '4px 0', minWidth: '120px' }}>
+                    {operators.map(op => (
+                      <div key={op} onClick={(e) => { e.stopPropagation(); updateActiveFilter(idx, 'operator', op); setOpenFilterDropdown(null); }} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', backgroundColor: filter.operator === op ? '#EEF2F6' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = filter.operator === op ? '#EEF2F6' : 'transparent'}>
+                        {op}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {!hasNoValue && (
+                <>
+                  {hasTwoValues ? (
+                    <>
+                      <div style={{ position: 'relative', flex: 1, minWidth: '120px' }}>
+                        <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'value_start' ? null : { index: idx, type: 'value_start' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.value?.start ? new Date(filter.value.start).toLocaleDateString() : '\u00A0'}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                        </div>
+                        {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'value_start' && (
+                          <FilterValueDropdown filter={filter} type="value_start" onSelect={(v) => { updateActiveFilter(idx, 'value', v); setOpenFilterDropdown(null); }} project={selectedProject} alignRight={false} />
+                        )}
+                      </div>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>and</span>
+                      <div style={{ position: 'relative', flex: 1, minWidth: '120px' }}>
+                        <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'value_end' ? null : { index: idx, type: 'value_end' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.value?.end ? new Date(filter.value.end).toLocaleDateString() : '\u00A0'}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                        </div>
+                        {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'value_end' && (
+                          <FilterValueDropdown filter={filter} type="value_end" onSelect={(v) => { updateActiveFilter(idx, 'value', v); setOpenFilterDropdown(null); }} project={selectedProject} alignRight={isOptionsPane} />
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ position: 'relative', flex: 1, minWidth: '120px' }}>
+                      <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'value' ? null : { index: idx, type: 'value' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatVal(filter.value) || '\u00A0'}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                      </div>
+                      {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'value' && (
+                        <FilterValueDropdown filter={filter} type="value" onSelect={(v) => { updateActiveFilter(idx, 'value', v); setOpenFilterDropdown(null); }} project={selectedProject} alignRight={false} />
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <span
+                style={{ cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 4px', fontSize: '1.2rem' }}
+                onClick={(e) => { e.stopPropagation(); setActiveFilters(activeFilters.filter((_, i) => i !== idx)) }}
+              >×</span>
+            </div>
+          );
+        })}
+      </>
+    );
+  };
+
   return (
     <div style={styles.boardContainer}>
       {/* 1. SATIR: ASANA MAIN HEADER */}
@@ -1568,15 +1737,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
         <div style={styles.headerRightBlock}>
           <div style={styles.avatarListWrapper}>
-            <div 
-              style={styles.avatarCircleOwner} 
+            <div
+              style={styles.avatarCircleOwner}
               onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }}
             >
               {selectedProject.owner?.name?.[0].toUpperCase()}
             </div>
           </div>
           <button onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }} style={{ ...styles.asanaShareButtonLight, fontWeight: 'normal' }}>👥 Share</button>
-          <button onClick={(e) => { e.stopPropagation(); setIsCustomizePanelOpen(prev => !prev); setIsOptionsPaneOpen(false); }} style={styles.asanaCustomizeBtn}>🎛️ Customize</button>
+          <button id="customize-pane-toggle-btn" onClick={(e) => { e.stopPropagation(); setIsCustomizePanelOpen(prev => !prev); setIsOptionsPaneOpen(false); }} style={styles.asanaCustomizeBtn}>🎛️ Customize</button>
         </div>
       </div>
 
@@ -1626,10 +1795,16 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             style={{
               ...(activeViewObj.id === view.id ? styles.tabItemActive : styles.tabItemPassive),
               opacity: draggingTabId === view.id ? 0.5 : 1,
-              cursor: draggingTabId === view.id ? 'grabbing' : 'pointer'
+              cursor: draggingTabId === view.id ? 'grabbing' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
             }}
           >
-            {view.name} {selectedProject.defaultView === view.id && <span style={{ fontSize: '10px', marginLeft: 4 }}>⭐</span>}
+            <span className="view-tab-text" data-text={view.name} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+              {view.name}
+            </span>
+            {selectedProject.defaultView === view.id && <span style={{ fontSize: '10px' }}>⭐</span>}
           </span>
         ))}
         <div style={{ position: 'relative' }}>
@@ -1747,19 +1922,19 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
           {['Gantt', 'Timeline', 'Workload', 'Calendar'].includes(activeViewObj.type) && (
             <div style={{ display: 'flex', alignItems: 'center', marginLeft: '1rem', gap: '0.5rem' }}>
-              <button 
+              <button
                 style={{ padding: '0.4rem 0.6rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}
                 onClick={() => window.dispatchEvent(new CustomEvent('timeline-scroll-left'))}
               >
                 &lt;
               </button>
-              <button 
+              <button
                 style={{ padding: '0.4rem 1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontWeight: '500', color: 'var(--text-primary)' }}
                 onClick={() => window.dispatchEvent(new CustomEvent('timeline-go-today'))}
               >
                 Today
               </button>
-              <button 
+              <button
                 style={{ padding: '0.4rem 0.6rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}
                 onClick={() => window.dispatchEvent(new CustomEvent('timeline-scroll-right'))}
               >
@@ -1785,7 +1960,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                     )}
                   </div>
                   {isFilterDropdownOpen && (
-                    <div style={{...styles.groupDropdownPanel, right: '-150px', minWidth: '600px', padding: '16px'}} onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(null); }}>
+                    <div style={{ ...styles.groupDropdownPanel, right: '-150px', minWidth: '600px', padding: '16px' }} onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(null); }}>
                       {/* Header */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <span style={{ fontWeight: '500', fontSize: '1rem', color: 'var(--text-primary)' }}>Filters</span>
@@ -1817,148 +1992,12 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                       {/* All filters */}
                       <div>
                         <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>All filters</div>
-                        
-                        {activeFilters.filter(f => typeof f === 'object').length > 0 && activeFilters.map((filter, idx) => {
-                          if (typeof filter !== 'object') return null;
-                          const operators = getOperatorsForFilter(filter);
-                          const hasNoValue = ['is empty', 'is not empty'].includes(filter.operator);
-                          const hasTwoValues = ['is between', 'is not between'].includes(filter.operator);
-                          
-                          const formatVal = (val) => {
-                            if (Array.isArray(val)) return val.length > 0 ? val.join(', ') : '';
-                            if (typeof val === 'object' && val !== null) return '';
-                            return val || '';
-                          };
-                          
-                          return (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                              
-                              {/* Field Box */}
-                              <div style={{ position: 'relative', flex: 1 }}>
-                                <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'field' ? null : { index: idx, type: 'field' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                                  <span style={{ color: 'var(--text-secondary)' }}>{filter.icon}</span> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.field}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
-                                </div>
-                                {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'field' && (
-                                  <div style={{ position: 'absolute', top: '100%', left: 0, width: '220px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 102, marginTop: '4px', maxHeight: '300px', overflowY: 'auto' }}>
-                                    {[
-                                      { icon: '✓', label: 'Completion status' },
-                                      { icon: '👤', label: 'Assignee' },
-                                      { icon: '📅', label: 'Start date', type: 'date' },
-                                      { icon: '📅', label: 'Due date', type: 'date' },
-                                      { icon: '👤', label: 'Created by' },
-                                      { icon: '🕒', label: 'Created on', type: 'date' },
-                                      { icon: '✏️', label: 'Last modified on', type: 'date' },
-                                      { icon: '✓', label: 'Completed on', type: 'date' },
-                                      { icon: '✓', label: 'Task type' },
-                                      ...getParsedCustomFields(selectedProject).map(cf => ({ icon: 'A', label: cf.title, type: cf.type || cf.fieldType, options: cf.options }))
-                                    ].map((item, itemIdx) => (
-                                      <div
-                                        key={itemIdx}
-                                        style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          let defOperator = 'is';
-                                          let defValue = '';
-                                          const isDateField = ['Start date', 'Due date', 'Created on', 'Completed on', 'Last modified on'].includes(item.label) || item.type === 'date';
-                                          const isAssigneeField = ['Assignee', 'Created by'].includes(item.label);
-                                          const isMulti = item.type === 'multi_select';
 
-                                          if (isDateField) {
-                                            defOperator = 'is between';
-                                            defValue = { start: '', end: '' };
-                                          } else if (isAssigneeField) {
-                                            defOperator = 'is';
-                                            defValue = null;
-                                          } else if (item.label === 'Completion status') {
-                                            defOperator = 'is';
-                                            defValue = 'Incomplete';
-                                          } else if (item.label === 'Task type') {
-                                            defOperator = 'is';
-                                            defValue = 'Task';
-                                          } else if (isMulti) {
-                                            defOperator = 'contains any';
-                                            defValue = [];
-                                          } else {
-                                            defOperator = 'is';
-                                            defValue = null;
-                                          }
-                                          
-                                          const newFilters = [...activeFilters];
-                                          newFilters[idx] = { field: item.label, icon: item.icon, operator: defOperator, value: defValue, type: item.type, options: item.options };
-                                          setActiveFilters(newFilters);
-                                          setOpenFilterDropdown(null);
-                                        }}
-                                      >
-                                        <span style={{ color: 'var(--text-secondary)' }}>{item.icon}</span> {item.label}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                              
-                              <div style={{ position: 'relative', flex: 1 }}>
-                                <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'operator' ? null : { index: idx, type: 'operator' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.operator}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
-                                </div>
-                                {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'operator' && (
-                                  <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 101, marginTop: '4px', padding: '4px 0' }}>
-                                    {operators.map(op => (
-                                      <div key={op} onClick={(e) => { e.stopPropagation(); updateActiveFilter(idx, 'operator', op); setOpenFilterDropdown(null); }} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', backgroundColor: filter.operator === op ? '#EEF2F6' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = filter.operator === op ? '#EEF2F6' : 'transparent'}>
-                                        {op}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {!hasNoValue && (
-                                <>
-                                  {hasTwoValues ? (
-                                    <>
-                                      <div style={{ position: 'relative', flex: 1 }}>
-                                        <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'value_start' ? null : { index: idx, type: 'value_start' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.value?.start ? new Date(filter.value.start).toLocaleDateString() : '\u00A0'}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
-                                        </div>
-                                        {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'value_start' && (
-                                          <FilterValueDropdown filter={filter} type="value_start" onSelect={(v) => { updateActiveFilter(idx, 'value', v); setOpenFilterDropdown(null); }} project={selectedProject} />
-                                        )}
-                                      </div>
-                                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>and</span>
-                                      <div style={{ position: 'relative', flex: 1 }}>
-                                        <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'value_end' ? null : { index: idx, type: 'value_end' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{filter.value?.end ? new Date(filter.value.end).toLocaleDateString() : '\u00A0'}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
-                                        </div>
-                                        {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'value_end' && (
-                                          <FilterValueDropdown filter={filter} type="value_end" onSelect={(v) => { updateActiveFilter(idx, 'value', v); setOpenFilterDropdown(null); }} project={selectedProject} />
-                                        )}
-                                      </div>
-                                    </>
-                                  ) : (
-                                    <div style={{ position: 'relative', flex: 1 }}>
-                                      <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === idx && prev?.type === 'value' ? null : { index: idx, type: 'value' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatVal(filter.value) || '\u00A0'}</span> <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
-                                      </div>
-                                      {openFilterDropdown?.index === idx && openFilterDropdown?.type === 'value' && (
-                                        <FilterValueDropdown filter={filter} type="value" onSelect={(v) => { updateActiveFilter(idx, 'value', v); setOpenFilterDropdown(null); }} project={selectedProject} />
-                                      )}
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                              
-                              <span 
-                                style={{ cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 4px', fontSize: '1.2rem' }}
-                                onClick={(e) => { e.stopPropagation(); setActiveFilters(activeFilters.filter((_, i) => i !== idx)) }}
-                              >×</span>
-                            </div>
-                          );
-                        })}
+                        {renderActiveFiltersList()}
                       </div>
 
                       <div style={{ position: 'relative' }}>
-                        <div 
+                        <div
                           style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem' }}
                           onClick={() => setIsFilterInnerMenuOpen(!isFilterInnerMenuOpen)}
                         >
@@ -2011,7 +2050,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                                     defOperator = 'is';
                                     defValue = null;
                                   }
-                                  
+
                                   setActiveFilters([...activeFilters, { field: item.label, icon: item.icon, operator: defOperator, value: defValue, type: item.type, options: item.options }]);
                                   setIsFilterInnerMenuOpen(false);
                                 }}
@@ -2029,13 +2068,13 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 <div style={{ position: 'relative' }}>
                   <div
                     className="option-sub-item"
-                    style={{ ...styles.optionSubItem, backgroundColor: isSortDropdownOpen || activeSort ? '#EEF2F6' : 'transparent', fontWeight: '500' }}
-                    onClick={(e) => { document.body.click(); e.stopPropagation(); setIsSortDropdownOpen(!isSortDropdownOpen); }}
+                    style={{ ...styles.optionSubItem, backgroundColor: isSortDropdownOpen || activeSorts.length > 0 ? '#EEF2F6' : 'transparent', fontWeight: '500' }}
+                    onClick={(e) => { document.body.click(); e.stopPropagation(); setIsSortDropdownOpen(!isSortDropdownOpen); setSortDropdownView('main'); }}
                   >
-                    <span style={styles.optionIcon}>⇅</span> Sort
-                    {activeSort && (
+                    <span style={styles.optionIcon}>⇅</span> Sort {activeSorts.length > 0 && `(${activeSorts.length})`}
+                    {activeSorts.length > 0 && (
                       <span
-                        onClick={(e) => { e.stopPropagation(); setActiveSort(null); }}
+                        onClick={(e) => { e.stopPropagation(); setActiveSorts([]); }}
                         style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                         onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
                         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
@@ -2043,45 +2082,145 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                     )}
                   </div>
                   {isSortDropdownOpen && (
-                    <div style={styles.sortDropdownMenu} onClick={(e) => e.stopPropagation()}>
-                      {[
-                        { icon: '📅', label: 'Start date' },
-                        { icon: '📅', label: 'Due date' },
-                        { icon: '👤', label: 'Assignee' },
-                        { icon: '👤', label: 'Created by' },
-                        { icon: '🕒', label: 'Created on' },
-                        { icon: '🕒', label: 'Last modified on' },
-                        { icon: '🕒', label: 'Completed on' },
-                        { icon: '👍', label: 'Likes' },
-                        { icon: 'A', label: 'Alphabetical' },
-                        ...getParsedCustomFields(selectedProject).map(cf => ({ icon: '⌄', label: cf.title }))
-                      ].map((item, idx) => {
-                        const isActive = activeSort?.field === item.label;
-                        return (
-                          <div
-                            key={idx}
-                            style={{ ...styles.sortDropdownItem, backgroundColor: isActive ? '#EEF2F6' : 'transparent', fontWeight: isActive ? '600' : '400' }}
-                            onMouseEnter={(e) => !isActive && (e.currentTarget.style.backgroundColor = '#F3F4F6')}
-                            onMouseLeave={(e) => !isActive && (e.currentTarget.style.backgroundColor = 'transparent')}
-                            onClick={() => handleSortOptionClick(item.label)}
-                          >
-                            <span style={styles.sortDropdownIcon}>{item.icon}</span>
-                            <span style={{ flex: 1 }}>{item.label}</span>
-                            {isActive && <span style={{ fontSize: '0.8rem', color: '#4F46E5' }}>{activeSort.direction === 'asc' ? '↑' : '↓'}</span>}
+                    <div style={{ ...styles.sortDropdownMenu, width: activeSorts.length > 0 ? '400px' : styles.sortDropdownMenu.width, padding: activeSorts.length > 0 ? '16px' : styles.sortDropdownMenu.padding }} onClick={(e) => e.stopPropagation()}>
+                      {activeSorts.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>Sorts</span>
+                            <button onClick={() => { setActiveSorts([]); setIsSortDropdownOpen(false); }} style={{ background: 'none', border: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}>Clear</button>
                           </div>
-                        )
-                      })}
-                      {activeSort && (
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {activeSorts.map((sortObj, sIdx) => (
+                              <div 
+                                key={sIdx} 
+                                draggable
+                                onDragStart={(e) => {
+                                  setDraggingSortIdx(sIdx);
+                                  e.dataTransfer.effectAllowed = 'move';
+                                }}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  if (draggingSortIdx === null || draggingSortIdx === sIdx) return;
+                                  
+                                  const newSorts = [...activeSorts];
+                                  const [removed] = newSorts.splice(draggingSortIdx, 1);
+                                  newSorts.splice(sIdx, 0, removed);
+                                  setActiveSorts(newSorts);
+                                  setDraggingSortIdx(sIdx);
+                                }}
+                                onDragEnd={() => setDraggingSortIdx(null)}
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', opacity: draggingSortIdx === sIdx ? 0.5 : 1, cursor: 'grab' }}
+                              >
+                                <span style={{ cursor: 'grab', color: 'var(--text-tertiary)', padding: '0 0.2rem', display: 'flex', alignItems: 'center', userSelect: 'none', fontSize: '1.2rem' }}>
+                                  ⋮⋮
+                                </span>
+                                <div style={{ flex: 1, border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--bg-primary)' }}>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{sortObj.field}</span>
+                                </div>
+                                <div style={{ position: 'relative', width: '120px' }}>
+                                  <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === `sort-${sIdx}` && prev?.type === 'direction' ? null : { index: `sort-${sIdx}`, type: 'direction' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    {sortObj.direction === 'asc' ? 'Ascending' : 'Descending'} <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                                  </div>
+                                  {openFilterDropdown?.index === `sort-${sIdx}` && openFilterDropdown?.type === 'direction' && (
+                                    <div style={{ position: 'absolute', top: '100%', right: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 101, marginTop: '4px', padding: '4px 0' }}>
+                                      <div onClick={(e) => { e.stopPropagation(); const ns = [...activeSorts]; ns[sIdx].direction = 'asc'; setActiveSorts(ns); setOpenFilterDropdown(null); }} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', backgroundColor: sortObj.direction === 'asc' ? '#EEF2F6' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = sortObj.direction === 'asc' ? '#EEF2F6' : 'transparent'}>Ascending</div>
+                                      <div onClick={(e) => { e.stopPropagation(); const ns = [...activeSorts]; ns[sIdx].direction = 'desc'; setActiveSorts(ns); setOpenFilterDropdown(null); }} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', backgroundColor: sortObj.direction === 'desc' ? '#EEF2F6' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = sortObj.direction === 'desc' ? '#EEF2F6' : 'transparent'}>Descending</div>
+                                    </div>
+                                  )}
+                                </div>
+                                <span
+                                  style={{ cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 4px', fontSize: '1.2rem' }}
+                                  onClick={(e) => { e.stopPropagation(); const ns = activeSorts.filter((_, i) => i !== sIdx); setActiveSorts(ns); }}
+                                >×</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div style={{ position: 'relative' }}>
+                            <div
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}
+                              onClick={(e) => { e.stopPropagation(); setSortDropdownView(sortDropdownView === 'add' ? 'main' : 'add'); }}
+                            >
+                              <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>+</span> Add sort <span style={{ fontSize: '0.8rem' }}>⌄</span>
+                            </div>
+                            {sortDropdownView === 'add' && (
+                              <div style={{ ...styles.sortDropdownMenu, position: 'absolute', top: '100%', left: '0', right: 'auto', marginTop: '4px', width: '220px', zIndex: 102, padding: '0.5rem 0' }} onClick={(e) => e.stopPropagation()}>
+                                {[
+                                  { icon: '📅', label: 'Start date' },
+                                  { icon: '📅', label: 'Due date' },
+                                  { icon: '👤', label: 'Assignee' },
+                                  { icon: '👤', label: 'Created by' },
+                                  { icon: '🕒', label: 'Created on' },
+                                  { icon: '🕒', label: 'Last modified on' },
+                                  { icon: '🕒', label: 'Completed on' },
+                                  { icon: '👍', label: 'Likes' },
+                                  { icon: 'A', label: 'Alphabetical' },
+                                  ...getParsedCustomFields(selectedProject).map(cf => ({ icon: '⌄', label: cf.title }))
+                                ].map((item, idx) => {
+                                  const activeObj = activeSorts.find(s => s.field === item.label);
+                                  const isActive = !!activeObj;
+                                  return (
+                                    <div
+                                      key={idx}
+                                      style={{ ...styles.sortDropdownItem, backgroundColor: isActive ? '#EEF2F6' : 'transparent', fontWeight: isActive ? '600' : '400' }}
+                                      onMouseEnter={(e) => !isActive && (e.currentTarget.style.backgroundColor = '#F3F4F6')}
+                                      onMouseLeave={(e) => !isActive && (e.currentTarget.style.backgroundColor = 'transparent')}
+                                      onClick={() => { handleSortOptionClick(item.label); setSortDropdownView('main'); setIsSortDropdownOpen(true); }}
+                                    >
+                                      <span style={styles.sortDropdownIcon}>{item.icon}</span>
+                                      <span style={{ flex: 1 }}>{item.label}</span>
+                                      {isActive && <span style={{ fontSize: '0.8rem', color: '#4F46E5' }}>{activeObj.direction === 'asc' ? '↑' : '↓'}</span>}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
                         <>
-                          <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
-                          <div
-                            style={{ ...styles.sortDropdownItem, color: '#EF4444', justifyContent: 'center' }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FEF2F2'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                            onClick={() => { setActiveSort(null); setIsSortDropdownOpen(false); }}
-                          >
-                            Clear sort
-                          </div>
+                          {[
+                            { icon: '📅', label: 'Start date' },
+                            { icon: '📅', label: 'Due date' },
+                            { icon: '👤', label: 'Assignee' },
+                            { icon: '👤', label: 'Created by' },
+                            { icon: '🕒', label: 'Created on' },
+                            { icon: '🕒', label: 'Last modified on' },
+                            { icon: '🕒', label: 'Completed on' },
+                            { icon: '👍', label: 'Likes' },
+                            { icon: 'A', label: 'Alphabetical' },
+                            ...getParsedCustomFields(selectedProject).map(cf => ({ icon: '⌄', label: cf.title }))
+                          ].map((item, idx) => {
+                            const activeObj = activeSorts.find(s => s.field === item.label);
+                            const isActive = !!activeObj;
+                            return (
+                              <div
+                                key={idx}
+                                style={{ ...styles.sortDropdownItem, backgroundColor: isActive ? '#EEF2F6' : 'transparent', fontWeight: isActive ? '600' : '400' }}
+                                onMouseEnter={(e) => !isActive && (e.currentTarget.style.backgroundColor = '#F3F4F6')}
+                                onMouseLeave={(e) => !isActive && (e.currentTarget.style.backgroundColor = 'transparent')}
+                                onClick={() => handleSortOptionClick(item.label)}
+                              >
+                                <span style={styles.sortDropdownIcon}>{item.icon}</span>
+                                <span style={{ flex: 1 }}>{item.label}</span>
+                                {isActive && <span style={{ fontSize: '0.8rem', color: '#4F46E5' }}>{activeObj.direction === 'asc' ? '↑' : '↓'}</span>}
+                              </div>
+                            )
+                          })}
+                          {activeSorts.length > 0 && (
+                            <>
+                              <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
+                              <div
+                                style={{ ...styles.sortDropdownItem, color: '#EF4444', justifyContent: 'center' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FEF2F2'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                onClick={() => { setActiveSorts([]); setIsSortDropdownOpen(false); }}
+                              >
+                                Clear sorts
+                              </div>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -2248,7 +2387,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 </div>
 
                 <div style={styles.dividerVertical}></div>
-                <div className="option-sub-item" style={styles.optionSubItem} onClick={() => { setIsOptionsPaneOpen(true); setIsCustomizePanelOpen(false); }}><span style={styles.optionIcon}>⚙️</span> Options</div>
+                <div id="options-pane-toggle-btn" className="option-sub-item" style={styles.optionSubItem} onClick={() => { setIsOptionsPaneOpen(true); setIsCustomizePanelOpen(false); }}><span style={styles.optionIcon}>⚙️</span> Options</div>
                 {isSearchOpen ? (
                   <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '2px 8px', backgroundColor: 'var(--bg-primary)', marginLeft: '8px' }}>
                     <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginRight: '6px' }}>🔍</span>
@@ -2335,7 +2474,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           applyTaskFilter={applyTaskFilter}
           applyTaskSort={applyTaskSort}
           handleSortOptionClick={handleSortOptionClick}
-          activeSort={activeSort}
+          activeSorts={activeSorts}
           handleTaskUpdate={handleTaskUpdate}
           handleGeneralDrop={handleGeneralDrop}
           handleToggleTaskCompleteInline={handleToggleTaskCompleteInline}
@@ -2524,8 +2663,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       {/* Customize Panel */}
       {isCustomizePanelOpen && (
         <>
-          <div style={styles.customizePanelOverlay} onClick={() => { setIsCustomizePanelOpen(false); setCustomizeView('main'); }}></div>
-          <div style={styles.customizePanel}>
+          <div style={styles.customizePanel} id="customize-pane-container">
             {customizeView === 'main' && (
               <>
                 <div style={styles.customizeHeader}>
@@ -2773,93 +2911,480 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       {/* Options Pane */}
       {isOptionsPaneOpen && (
         <>
-          <div style={styles.customizePanelOverlay} onClick={() => setIsOptionsPaneOpen(false)}></div>
-          <div style={styles.customizePanel}>
-            <div style={styles.customizeHeader}>
-              <h2 style={styles.customizeTitle}>{activeViewObj?.name || activeViewObj?.type || 'Board'}</h2>
-              <button style={styles.customizeCloseBtn} onClick={() => setIsOptionsPaneOpen(false)}>→</button>
-            </div>
-            <div style={styles.customizeBody}>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-                 <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>
-                   🗂️
-                 </div>
-                 <div style={{ flex: 1 }}>
-                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>View name</div>
-                   <input 
-                     type="text" 
-                     key={activeViewObj?.id || 'board'}
-                     defaultValue={activeViewObj?.name || activeViewObj?.type || 'Board'} 
-                     onBlur={(e) => {
-                       const newName = e.target.value;
-                       if (newName && newName.trim() !== '' && newName !== (activeViewObj?.name || activeViewObj?.type)) {
-                         const newViews = parsedViews.map(v => v.id === activeViewObj?.id ? { ...v, name: newName.trim() } : v);
-                         handleUpdateViews(newViews);
-                       }
-                     }}
-                     onKeyDown={(e) => {
-                       if (e.key === 'Enter') {
-                         e.target.blur();
-                       }
-                     }}
-                     style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '0.9rem', color: 'var(--text-primary)', outline: 'none' }} 
-                   />
-                 </div>
-              </div>
+          <div style={styles.customizePanel} id="options-pane-container">
+            {optionsView === 'main' ? (
+              <>
+                <div style={styles.customizeHeader}>
+                  <h2 style={styles.customizeTitle}>{activeViewObj?.name || activeViewObj?.type || 'Board'}</h2>
+                  <button style={styles.customizeCloseBtn} onClick={() => setIsOptionsPaneOpen(false)}>→</button>
+                </div>
+                <div style={styles.customizeBody}>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>◫</span>
-                    <span style={styles.customizeItemLabel}>Layout options</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>
+                      🗂️
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>View name</div>
+                      <input
+                        type="text"
+                        key={activeViewObj?.id || 'board'}
+                        defaultValue={activeViewObj?.name || activeViewObj?.type || 'Board'}
+                        onBlur={(e) => {
+                          const newName = e.target.value;
+                          if (newName && newName.trim() !== '' && newName !== (activeViewObj?.name || activeViewObj?.type)) {
+                            const newViews = parsedViews.map(v => v.id === activeViewObj?.id ? { ...v, name: newName.trim() } : v);
+                            handleUpdateViews(newViews);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.target.blur();
+                          }
+                        }}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '0.9rem', color: 'var(--text-primary)', outline: 'none' }}
+                      />
+                    </div>
                   </div>
-                  <span style={{ color: 'var(--text-secondary)' }}>›</span>
-                </div>
-                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>👁️</span>
-                    <span style={styles.customizeItemLabel}>Show/hide fields</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>1 hidden</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>›</span>
-                  </div>
-                </div>
-                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>≡</span>
-                    <span style={styles.customizeItemLabel}>Filters</span>
-                  </div>
-                  <span style={{ color: 'var(--text-secondary)' }}>›</span>
-                </div>
-                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>⇅</span>
-                    <span style={styles.customizeItemLabel}>Sorts</span>
-                  </div>
-                  <span style={{ color: 'var(--text-secondary)' }}>›</span>
-                </div>
-                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>⊞</span>
-                    <span style={styles.customizeItemLabel}>Groups</span>
-                  </div>
-                  <span style={{ color: 'var(--text-secondary)' }}>›</span>
-                </div>
-                <div className="customize-list-card" style={{...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF'}} onClick={() => {}}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>⮑</span>
-                    <span style={styles.customizeItemLabel}>Subtasks</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Collapsed</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>›</span>
-                  </div>
-                </div>
-              </div>
 
-            </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div className="customize-list-card" style={{ ...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF' }} onClick={() => { }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>◫</span>
+                        <span style={styles.customizeItemLabel}>Layout options</span>
+                      </div>
+                      <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                    </div>
+                    <div className="customize-list-card" style={{ ...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF' }} onClick={() => { }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>👁️</span>
+                        <span style={styles.customizeItemLabel}>Show/hide fields</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>1 hidden</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                      </div>
+                    </div>
+                    <div className="customize-list-card" style={{ ...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF' }} onClick={() => setOptionsView(activeFilters.filter(f => typeof f === 'object').length > 0 ? 'filters_list' : 'add_filter')}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>≡</span>
+                        <span style={styles.customizeItemLabel}>Filters</span>
+                      </div>
+                      <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                    </div>
+                    <div className="customize-list-card" style={{ ...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF' }} onClick={() => setOptionsView(activeSorts.length > 0 ? 'sorts_list' : 'add_sort')}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>⇅</span>
+                        <span style={styles.customizeItemLabel}>Sorts</span>
+                      </div>
+                      <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                    </div>
+                    <div className="customize-list-card" style={{ ...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF' }} onClick={() => setOptionsView('groups_list')}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>⊞</span>
+                        <span style={styles.customizeItemLabel}>Groups</span>
+                      </div>
+                      <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                    </div>
+                    <div className="customize-list-card" style={{ ...styles.customizeListItem, justifyContent: 'space-between', padding: '14px 16px', border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#FFF' }} onClick={() => { }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>⮑</span>
+                        <span style={styles.customizeItemLabel}>Subtasks</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Collapsed</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>›</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : optionsView === 'filters_list' ? (
+              <>
+                <div style={{ ...styles.customizeHeader, justifyContent: 'flex-start', gap: '12px' }}>
+                  <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }} onClick={() => setOptionsView('main')}>←</button>
+                  <h2 style={{ ...styles.customizeTitle, fontWeight: 'normal' }}>Filters</h2>
+                </div>
+                <div style={{ ...styles.customizeBody, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', overflowY: 'auto' }}>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Manage filters on this view</span>
+                    <button onClick={() => { setActiveFilters([]); setOptionsView('main'); }} style={{ background: 'none', border: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}>Clear</button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {renderActiveFiltersList(true)}
+                  </div>
+
+                  <div
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '12px' }}
+                    onClick={() => setOptionsView('add_filter')}
+                  >
+                    <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>+</span> Add filter
+                  </div>
+
+                  <div style={{ marginTop: 'auto', borderTop: '1px solid #E5E7EB', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button style={{ padding: '6px 12px', border: '1px solid #D1D5DB', borderRadius: '6px', backgroundColor: '#FFF', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                      Save view <span style={{ color: 'var(--text-secondary)' }}>⌄</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : optionsView === 'add_filter' ? (
+              <>
+                <div style={{ ...styles.customizeHeader, justifyContent: 'flex-start', gap: '12px' }}>
+                  <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }} onClick={() => setOptionsView(activeFilters.filter(f => typeof f === 'object').length > 0 ? 'filters_list' : 'main')}>←</button>
+                  <h2 style={{ ...styles.customizeTitle, fontWeight: 'normal' }}>Add filter</h2>
+                </div>
+                <div style={{ ...styles.customizeBody, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', overflowY: 'auto' }}>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF' }}>🔍</span>
+                    <input type="text" placeholder="Filter by" style={{ width: '100%', padding: '8px 12px 8px 32px', borderRadius: '6px', border: '1px solid #D1D5DB', outline: 'none', fontSize: '0.9rem' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {[
+                      { icon: '✓', label: 'Completion status' },
+                      { icon: '👤', label: 'Assignee' },
+                      { icon: '📅', label: 'Start date', type: 'date' },
+                      { icon: '📅', label: 'Due date', type: 'date' },
+                      { icon: '👤', label: 'Created by' },
+                      { icon: '🕒', label: 'Created on', type: 'date' },
+                      { icon: '✏️', label: 'Last modified on', type: 'date' },
+                      { icon: '✓', label: 'Completed on', type: 'date' },
+                      { icon: '✓', label: 'Task type' },
+                      ...getParsedCustomFields(selectedProject).map(cf => ({ icon: cf.type === 'date' ? '📅' : cf.type === 'people' ? '👤' : cf.type === 'checkbox' ? '☑' : '⌄', label: cf.title, type: cf.type || cf.fieldType, options: cf.options }))
+                    ].map((item, i) => (
+                      <div
+                        key={i}
+                        className="customize-list-card"
+                        style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 12px', cursor: 'pointer', borderRadius: '6px', color: 'var(--text-primary)', transition: 'background-color 0.15s' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          let defOperator = 'is';
+                          let defValue = '';
+                          const isDateField = ['Start date', 'Due date', 'Created on', 'Completed on', 'Last modified on'].includes(item.label) || item.type === 'date';
+                          const isAssigneeField = ['Assignee', 'Created by'].includes(item.label);
+                          const isMulti = item.type === 'multi_select';
+
+                          if (isDateField) {
+                            defOperator = 'is between';
+                            defValue = { start: '', end: '' };
+                          } else if (isAssigneeField) {
+                            defOperator = 'is';
+                            defValue = null;
+                          } else if (item.label === 'Completion status') {
+                            defOperator = 'is';
+                            defValue = 'Incomplete';
+                          } else if (item.label === 'Task type') {
+                            defOperator = 'is';
+                            defValue = 'Task';
+                          } else if (isMulti) {
+                            defOperator = 'contains any';
+                            defValue = [];
+                          } else {
+                            defOperator = 'is';
+                            defValue = null;
+                          }
+
+                          const newFilters = [...activeFilters];
+                          newFilters.push({ field: item.label, icon: item.icon, operator: defOperator, value: defValue, type: item.type, options: item.options });
+                          setActiveFilters(newFilters);
+                          setOptionsView('filters_list');
+                        }}
+                      >
+                        <span style={{ color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>{item.icon}</span>
+                        <span style={{ fontSize: '0.9rem' }}>{item.label}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: 'auto', borderTop: '1px solid #E5E7EB', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button style={{ padding: '6px 12px', border: '1px solid #D1D5DB', borderRadius: '6px', backgroundColor: '#FFF', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                      Save view <span style={{ color: 'var(--text-secondary)' }}>⌄</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : optionsView === 'sorts_list' ? (
+              <>
+                <div style={{ ...styles.customizeHeader, justifyContent: 'flex-start', gap: '12px' }}>
+                  <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }} onClick={() => setOptionsView('main')}>←</button>
+                  <h2 style={{ ...styles.customizeTitle, fontWeight: 'normal' }}>Sorts</h2>
+                </div>
+                <div style={{ ...styles.customizeBody, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', overflowY: 'auto' }}>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Manage sorts on this view</span>
+                    <button onClick={() => { setActiveSorts([]); setOptionsView('main'); }} style={{ background: 'none', border: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}>Clear</button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {activeSorts.map((sortObj, sIdx) => (
+                      <div 
+                        key={sIdx} 
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggingSortIdx(sIdx);
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (draggingSortIdx === null || draggingSortIdx === sIdx) return;
+                          
+                          const newSorts = [...activeSorts];
+                          const [removed] = newSorts.splice(draggingSortIdx, 1);
+                          newSorts.splice(sIdx, 0, removed);
+                          setActiveSorts(newSorts);
+                          setDraggingSortIdx(sIdx);
+                        }}
+                        onDragEnd={() => setDraggingSortIdx(null)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', opacity: draggingSortIdx === sIdx ? 0.5 : 1, cursor: 'grab' }}
+                      >
+                        <span style={{ cursor: 'grab', color: 'var(--text-tertiary)', padding: '0 0.2rem', display: 'flex', alignItems: 'center', userSelect: 'none', fontSize: '1.2rem' }}>
+                          ⋮⋮
+                        </span>
+                        <div style={{ flex: 1, border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--bg-primary)' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{sortObj.field}</span>
+                        </div>
+                        <div style={{ position: 'relative', width: '120px' }}>
+                          <div onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === `sort-${sIdx}` && prev?.type === 'direction' ? null : { index: `sort-${sIdx}`, type: 'direction' }) }} style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            {sortObj.direction === 'asc' ? 'Ascending' : 'Descending'} <span style={{ color: '#9CA3AF', marginLeft: 'auto' }}>⌄</span>
+                          </div>
+                          {openFilterDropdown?.index === `sort-${sIdx}` && openFilterDropdown?.type === 'direction' && (
+                            <div style={{ position: 'absolute', top: '100%', right: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 101, marginTop: '4px', padding: '4px 0' }}>
+                              <div onClick={(e) => { e.stopPropagation(); const ns = [...activeSorts]; ns[sIdx].direction = 'asc'; setActiveSorts(ns); setOpenFilterDropdown(null); }} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', backgroundColor: sortObj.direction === 'asc' ? '#EEF2F6' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = sortObj.direction === 'asc' ? '#EEF2F6' : 'transparent'}>Ascending</div>
+                              <div onClick={(e) => { e.stopPropagation(); const ns = [...activeSorts]; ns[sIdx].direction = 'desc'; setActiveSorts(ns); setOpenFilterDropdown(null); }} style={{ padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', backgroundColor: sortObj.direction === 'desc' ? '#EEF2F6' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = sortObj.direction === 'desc' ? '#EEF2F6' : 'transparent'}>Descending</div>
+                            </div>
+                          )}
+                        </div>
+                        <span
+                          style={{ cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 4px', fontSize: '1.2rem' }}
+                          onClick={(e) => { e.stopPropagation(); const ns = activeSorts.filter((_, i) => i !== sIdx); setActiveSorts(ns); if (ns.length === 0) setOptionsView('main'); }}
+                        >×</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '12px' }}
+                    onClick={() => setOptionsView('add_sort')}
+                  >
+                    <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>+</span> Add sort
+                  </div>
+
+                  <div style={{ marginTop: 'auto', borderTop: '1px solid #E5E7EB', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button style={{ padding: '6px 12px', border: '1px solid #D1D5DB', borderRadius: '6px', backgroundColor: '#FFF', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                      Save view <span style={{ color: 'var(--text-secondary)' }}>⌄</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : optionsView === 'add_sort' ? (
+              <>
+                <div style={{ ...styles.customizeHeader, justifyContent: 'flex-start', gap: '12px' }}>
+                  <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }} onClick={() => setOptionsView(activeSorts.length > 0 ? 'sorts_list' : 'main')}>←</button>
+                  <h2 style={{ ...styles.customizeTitle, fontWeight: 'normal' }}>Add sort</h2>
+                </div>
+                <div style={{ ...styles.customizeBody, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', overflowY: 'auto' }}>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF' }}>🔍</span>
+                    <input type="text" placeholder="Sort by" style={{ width: '100%', padding: '8px 12px 8px 32px', borderRadius: '6px', border: '1px solid #D1D5DB', outline: 'none', fontSize: '0.9rem' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {[
+                      { icon: '📅', label: 'Start date' },
+                      { icon: '📅', label: 'Due date' },
+                      { icon: '👤', label: 'Assignee' },
+                      { icon: '👤', label: 'Created by' },
+                      { icon: '🕒', label: 'Created on' },
+                      { icon: '🕒', label: 'Last modified on' },
+                      { icon: '🕒', label: 'Completed on' },
+                      { icon: '👍', label: 'Likes' },
+                      { icon: 'A', label: 'Alphabetical' },
+                      ...getParsedCustomFields(selectedProject).map(cf => ({ icon: '⌄', label: cf.title }))
+                    ].map((item, i) => (
+                      <div
+                        key={i}
+                        className="customize-list-card"
+                        style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 12px', cursor: 'pointer', borderRadius: '6px', color: 'var(--text-primary)', transition: 'background-color 0.15s' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const existingIdx = activeSorts.findIndex(s => s.field === item.label);
+                          if (existingIdx === -1) {
+                            setActiveSorts([...activeSorts, { field: item.label, direction: 'asc' }]);
+                          }
+                          setOptionsView('sorts_list');
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <span style={{ color: 'var(--text-secondary)', width: '20px', textAlign: 'center' }}>{item.icon}</span>
+                        <span>{item.label}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: 'auto', borderTop: '1px solid #E5E7EB', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button style={{ padding: '6px 12px', border: '1px solid #D1D5DB', borderRadius: '6px', backgroundColor: '#FFF', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                      Save view <span style={{ color: 'var(--text-secondary)' }}>⌄</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : optionsView === 'groups_list' ? (
+              <>
+                <div style={{ ...styles.customizeHeader, justifyContent: 'flex-start', gap: '12px' }}>
+                  <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }} onClick={() => setOptionsView('main')}>←</button>
+                  <h2 style={{ ...styles.customizeTitle, fontWeight: 'normal' }}>Groups</h2>
+                </div>
+                <div style={{ ...styles.customizeBody, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Manage groups on this view</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: '#9CA3AF', cursor: 'grab', userSelect: 'none' }}>⋮⋮</span>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <div
+                        style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }}
+                        onClick={(e) => { e.stopPropagation(); setIsGroupInnerDropdownOpen(!isGroupInnerDropdownOpen); setIsGroupMoreMenuOpen(false); setIsGroupOrderMenuOpen(false); }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>≡</span> {activeGroup || 'Sections'}
+                        </div>
+                        <span style={{ color: '#9CA3AF' }}>⌄</span>
+                      </div>
+
+                      {isGroupInnerDropdownOpen && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '4px', maxHeight: '250px', overflowY: 'auto' }}>
+                          {[
+                            { icon: '≡', label: 'Sections' },
+                            { icon: '📅', label: 'Start date' },
+                            { icon: '📅', label: 'Due date' },
+                            { icon: '👤', label: 'Assignee' },
+                            { icon: '👤', label: 'Created by' },
+                            { icon: '🕒', label: 'Created on' },
+                            { icon: '🕒', label: 'Last modified on' },
+                            { icon: '🕒', label: 'Completed on' },
+                            { icon: '📋', label: 'Project' },
+                            ...getParsedCustomFields(selectedProject).map(cf => ({ icon: 'A', label: cf.title }))
+                          ].map((item, idx) => (
+                            <div
+                              key={idx}
+                              style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onClick={() => {
+                                setActiveGroup(item.label);
+                                setIsGroupInnerDropdownOpen(false);
+                                if (item.label === 'Sections') {
+                                  setGroupOrder('Custom order');
+                                } else if (groupOrder === 'Custom order') {
+                                  setGroupOrder('Ascending');
+                                }
+                              }}
+                            >
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>{item.icon}</span>
+                              {item.label}
+                            </div>
+                          ))}
+                          <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
+                          <div
+                            style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#4F46E5', fontWeight: '500' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            onClick={() => { setShowAddFieldMenu(true); setIsOptionsPaneOpen(false); setIsGroupInnerDropdownOpen(false); }}
+                          >
+                            + Add Custom Field
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ position: 'relative' }}>
+                      <div
+                        style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: (!activeGroup || activeGroup === 'Sections') ? 'not-allowed' : 'pointer', fontSize: '0.9rem', color: (!activeGroup || activeGroup === 'Sections') ? '#9CA3AF' : 'var(--text-primary)', width: '130px', backgroundColor: (!activeGroup || activeGroup === 'Sections') ? '#F9FAFB' : '#FFF' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!activeGroup || activeGroup === 'Sections') return;
+                          setIsGroupOrderMenuOpen(!isGroupOrderMenuOpen);
+                          setIsGroupInnerDropdownOpen(false);
+                          setIsGroupMoreMenuOpen(false);
+                        }}
+                      >
+                        {(!activeGroup || activeGroup === 'Sections') ? 'Custom order' : groupOrder} <span style={{ color: '#9CA3AF' }}>⌄</span>
+                      </div>
+                      {isGroupOrderMenuOpen && (
+                        <div style={{ position: 'absolute', top: '100%', right: 0, width: '150px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
+                          {['Ascending', 'Descending'].map((opt) => (
+                            <div
+                              key={opt}
+                              style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onClick={() => { setGroupOrder(opt); setIsGroupOrderMenuOpen(false); }}
+                            >
+                              <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
+                                {groupOrder === opt && <span style={{ color: '#4F46E5' }}>✓</span>}
+                              </div>
+                              {opt}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                      <span
+                        style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 4px', fontWeight: 'bold' }}
+                        onClick={(e) => { e.stopPropagation(); setIsGroupMoreMenuOpen(!isGroupMoreMenuOpen); setIsGroupInnerDropdownOpen(false); setIsGroupOrderMenuOpen(false); }}
+                      >
+                        ...
+                      </span>
+                      {isGroupMoreMenuOpen && (
+                        <div style={{ position: 'absolute', top: '100%', right: 0, width: '200px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
+                          <div
+                            style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            onClick={() => { setShowEmptyGroups(false); setIsGroupMoreMenuOpen(false); }}
+                          >
+                            <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
+                              {!showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
+                            </div>
+                            Hide empty groups
+                          </div>
+                          <div
+                            style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            onClick={() => { setShowEmptyGroups(true); setIsGroupMoreMenuOpen(false); }}
+                          >
+                            <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
+                              {showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
+                            </div>
+                            Show empty groups
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '12px' }}
+                  >
+                    <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>+</span> Add subgroup
+                  </div>
+
+                  <div style={{ marginTop: 'auto', borderTop: '1px solid #E5E7EB', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button style={{ padding: '6px 12px', border: '1px solid #D1D5DB', borderRadius: '6px', backgroundColor: '#FFF', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                      Save view <span style={{ color: 'var(--text-secondary)' }}>⌄</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
         </>
       )}
@@ -2912,7 +3437,7 @@ const styles = {
   tabItemBack: { fontSize: '0.8rem', color: 'var(--accent-primary)', cursor: 'pointer', fontWeight: '600', padding: '6px 12px', borderRadius: '6px' },
   tabItemPassive: { fontSize: '0.85rem', color: 'var(--text-secondary)', padding: '6px 12px', fontWeight: '500', cursor: 'pointer', borderRadius: '6px' },
   tabItemActive: { fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: '700', padding: '6px 12px', cursor: 'pointer', borderRadius: '6px', backgroundColor: 'var(--bg-secondary)' },
-  asanaOptionsSubHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 1.5rem', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', flexShrink: 0 },
+  asanaOptionsSubHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 1.5rem', height: '52px', boxSizing: 'border-box', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', flexShrink: 0 },
   addTaskDropdownBtn: { backgroundColor: '#6366F1', color: '#FFF', border: 'none', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.8rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', transition: 'background-color 0.2s' },
   optionsRightGroup: { display: 'flex', alignItems: 'center', gap: '1rem' },
   optionSubItem: { fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '500', padding: '4px 8px', borderRadius: '6px' },
@@ -2956,7 +3481,7 @@ const styles = {
   customizeListItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', transition: 'background-color 0.2s' },
   customizeItemLabel: { fontSize: '0.9rem', color: 'var(--text-primary)' },
   customizeBadge: { backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: '0.75rem', padding: '0.1rem 0.5rem', borderRadius: '12px', fontWeight: '500' },
-  sortDropdownMenu: { position: 'absolute', top: '100%', left: '0', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', padding: '0.5rem 0', width: '220px', zIndex: 10005, marginTop: '8px', display: 'flex', flexDirection: 'column' },
+  sortDropdownMenu: { position: 'absolute', top: '100%', right: '0', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', padding: '0.5rem 0', width: '220px', zIndex: 10005, marginTop: '8px', display: 'flex', flexDirection: 'column' },
   sortDropdownItem: { padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.85rem' },
   sortDropdownIcon: { fontSize: '1.1rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center', display: 'inline-block' }
 }

@@ -4,7 +4,7 @@ import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusLabel, 
 
 let globalLastDragY = 0;
 
-export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId }) {
+export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, fieldConfig }) {
   const [openFieldMenuId, setOpenFieldMenuId] = useState(null)
   const [isHovered, setIsHovered] = useState(false)
   const [isEditingMode, setIsEditingMode] = useState(false)
@@ -115,7 +115,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (e.target.closest('.dropdownMenu') || e.target.closest('[class*="popover"]')) return;
-      
+
       // If clicked on the scrollbar of the task list container, do not close
       if (e.target.classList && e.target.classList.contains('kanban-task-list')) {
         if (e.offsetX > e.target.clientWidth || e.offsetY > e.target.clientHeight) {
@@ -257,12 +257,13 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
         ...styles.cardContainer,
         ...styles.taskCard,
         backgroundColor: 'var(--bg-primary)',
-        border: '1px solid var(--border-color)',
+        border: `1px solid ${isHovered ? '#9CA3AF' : 'var(--border-color)'}`,
         boxShadow: isEditingMode ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)' : '0 1px 3px rgba(0,0,0,0.05)',
         zIndex: (openFieldMenuId || isEditingMode) ? 100 : 1,
         cursor: isEditingMode ? 'default' : 'pointer',
-        opacity: (task.isCompleted && !isEditingMode) ? 0.6 : 1,
+        opacity: (task.isCompleted && !isEditingMode && !openFieldMenuId) ? 0.6 : 1,
         position: 'relative',
+        transition: 'border-color 0.15s ease',
         WebkitUserDrag: isEditingMode ? 'none' : 'element',
         userDrag: isEditingMode ? 'none' : 'element'
       }}
@@ -386,14 +387,19 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
 
 
 
-        {customFieldSettings?.map(cf => {
+        {(() => {
+          const activeFields = fieldConfig && fieldConfig.length > 0 
+            ? fieldConfig.filter(f => f.visible).map(f => customFieldSettings?.find(c => c.id === f.id)).filter(Boolean)
+            : customFieldSettings;
+
+          return activeFields?.map(cf => {
           const parsedFields = getParsedTaskCustomFields(task.customFields);
           const value = parsedFields[cf.id];
           const cfType = cf.type || 'single-select';
-          
+
           let isEmpty = !value || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0);
           if (cfType === 'github_pr') {
-             isEmpty = getParsedGithubPRs(task.githubPRs).length === 0;
+            isEmpty = getParsedGithubPRs(task.githubPRs).length === 0;
           }
 
           if (isEmpty && !isEditingMode) return null;
@@ -486,10 +492,10 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
             if (!value && !isEditingMode) return null;
             const formatted = value ? new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric' }) : `Set ${cf.title}`;
             return (
-              <span 
-                key={cf.id} 
-                onClick={(e) => { 
-                  e.stopPropagation(); e.preventDefault(); 
+              <span
+                key={cf.id}
+                onClick={(e) => {
+                  e.stopPropagation(); e.preventDefault();
                   if (!isReadOnly) {
                     const rect = e.currentTarget.getBoundingClientRect();
                     const coords = { left: rect.left };
@@ -498,9 +504,9 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
                     } else {
                       coords.top = rect.bottom + 5;
                     }
-                    onOpenPopover('custom-date', task, coords, { customFieldId: cf.id }); 
+                    onOpenPopover('custom-date', task, coords, { customFieldId: cf.id });
                   }
-                }} 
+                }}
                 style={{ ...styles.staticCustomBadge, opacity: value ? 1 : 0.7, cursor: !isReadOnly ? 'pointer' : 'default', border: !value ? '1px dashed var(--border-color)' : styles.staticCustomBadge.border }}
               >
                 📅 {formatted}
@@ -672,7 +678,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
             const elapsed = timerData.elapsed || 0;
             const isRunning = timerData.running || false;
             if (elapsed === 0 && !isRunning && !isEditingMode) return null;
-            
+
             const formatTime = (secs) => {
               const h = Math.floor(secs / 3600);
               const m = Math.floor((secs % 3600) / 60);
@@ -721,7 +727,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
           }
 
           return null;
-        })}
+        })})()}
 
         {task.tags && task.tags.map(tag => (
           <span key={tag.id} title={tag.name} style={{ color: tag.color, fontSize: '0.75rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px' }}>
