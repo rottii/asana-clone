@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { getParsedGithubPRs, getGithubPRStatusLabel, getGithubPRStatusColor } from '../utils/customFields';
 import AddFieldModal from './AddFieldModal'
 
@@ -34,7 +34,12 @@ export default function ProjectListView({
   onDeleteSection,
   onOpenTaskPane,
   syncProjectStates,
-  handleTopAddTaskGlobal
+  handleTopAddTaskGlobal,
+  selectedTaskIds,
+  setSelectedTaskIds,
+  onTaskSelect,
+  activeTaskPaneId,
+  onMarqueeMouseDown
 }) {
   const [collapsedSections, setCollapsedSections] = useState({})
   const [quickTaskInputs, setQuickTaskInputs] = useState({})
@@ -105,15 +110,10 @@ export default function ProjectListView({
   const [editCursorPos, setEditCursorPos] = useState(null)
   const inputRef = useRef(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (editingTaskId && inputRef.current && editCursorPos !== null) {
       inputRef.current.focus();
-      // setTimeout is used to ensure the input has finished rendering and is visible
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.setSelectionRange(editCursorPos, editCursorPos);
-        }
-      }, 0);
+      inputRef.current.setSelectionRange(editCursorPos, editCursorPos);
     }
   }, [editingTaskId, editCursorPos]);
 
@@ -430,7 +430,16 @@ export default function ProjectListView({
     return (
       <div
         key={task.id}
-        onClickCapture={() => {
+        onClickCapture={(e) => {
+          let handled = false;
+          if (onTaskSelect) {
+            handled = onTaskSelect(e, task.id);
+          }
+          if (handled) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+
           setLastInteractedSectionId(sectionId);
           if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
         }}
@@ -439,9 +448,9 @@ export default function ProjectListView({
           ...styles.taskDataTableRow,
           position: 'relative',
           zIndex: (openApprovalMenuTaskId === task.id || (openCellMenuId && openCellMenuId.startsWith(`${task.id}-`))) ? 9999 : 0,
-          backgroundColor: lastInteractedTaskId === task.id ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+          backgroundColor: (selectedTaskIds?.has(task.id) || activeTaskPaneId === task.id) ? 'var(--bg-secondary)' : 'var(--bg-primary)',
           opacity: draggingTaskId === task.id ? 0.4 : 1,
-          borderLeft: lastInteractedTaskId === task.id ? '3px solid #4F46E5' : '3px solid transparent'
+          borderLeft: (selectedTaskIds?.has(task.id) || activeTaskPaneId === task.id) ? '3px solid #4F46E5' : '3px solid transparent'
         }}
         onContextMenu={(e) => { e.preventDefault(); onTaskContextMenu(e, task.id); }}
         onDragOver={(e) => {
@@ -475,7 +484,7 @@ export default function ProjectListView({
         {/* Hücre 1: Checkbox & Başlık */}
         <div
           style={{ ...styles.gridBodyCell, width: colWidths.name, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '1rem', cursor: 'pointer', overflow: openApprovalMenuTaskId === task.id ? 'visible' : 'hidden', position: openApprovalMenuTaskId === task.id ? 'relative' : 'static', zIndex: openApprovalMenuTaskId === task.id ? 9999 : 'auto' }}
-          onClick={() => {
+          onClick={(e) => {
             if (onOpenTaskPane) onOpenTaskPane(task.id);
           }}
         >
@@ -875,7 +884,7 @@ export default function ProjectListView({
   };
 
   return (
-    <div style={styles.listSpreadsheetWrapper}>
+    <div style={styles.listSpreadsheetWrapper} onMouseDown={onMarqueeMouseDown}>
       {resizingCol && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, cursor: 'col-resize' }} />
       )}
@@ -989,11 +998,15 @@ export default function ProjectListView({
             style={{ ...styles.gridHeaderCell, width: colWidths.name, flexShrink: 0, paddingLeft: '42px', position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
             onMouseEnter={() => setHoveredColumnName('name')}
             onMouseLeave={() => setHoveredColumnName(null)}
-            onClick={() => handleSortOptionClick && handleSortOptionClick('Alphabetical')}
+            onClick={(e) => {
+              handleSortOptionClick && handleSortOptionClick('Alphabetical')
+            }}
           >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, fontWeight: activeSorts?.find(s => s.field === 'Alphabetical') ? '700' : '500' }}>
-              Name {activeSorts?.find(s => s.field === 'Alphabetical') && (activeSorts.find(s => s.field === 'Alphabetical').direction === 'asc' ? '↑' : '↓')}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, gap: '0.5rem' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: activeSorts?.find(s => s.field === 'Alphabetical') ? '700' : '500' }}>
+                Name {activeSorts?.find(s => s.field === 'Alphabetical') && (activeSorts.find(s => s.field === 'Alphabetical').direction === 'asc' ? '↑' : '↓')}
+              </span>
+            </div>
             {(hoveredColumnName === 'name' || openColumnMenuName === 'name') && (
               <button onClick={(e) => { document.body.click(); e.stopPropagation(); const isOpen = openColumnMenuName === 'name'; closeAllMenus(); if (!isOpen) setOpenColumnMenuName('name'); }} style={styles.columnHeaderMenuBtn}>▼</button>
             )}
@@ -1087,8 +1100,9 @@ export default function ProjectListView({
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
               >
                 {/* BÖLÜM (SECTION) BAÅLIK SATIRI */}
-                <div style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
+                <div className="list-section-header" style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
                   <div
+                    className="drag6DotHandleCell"
                     draggable={!isReadOnly && !isEditing && !isVirtualGrouping}
                     onDragStart={(e) => {
                       setDraggingSectionId(section.id);
@@ -1223,11 +1237,11 @@ export default function ProjectListView({
         listSpreadsheetWrapper: {flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
       listTableHeaderRow: {display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', flexShrink: 0, borderLeft: '3px solid transparent' },
       gridHeaderCell: {boxSizing: 'border-box', padding: '0.6rem', fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderRight: '1px solid var(--border-color)' },
-      sectionAccordionRow: {display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none' },
+      sectionAccordionRow: {display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', cursor: 'pointer' },
       accordionArrowIcon: {fontSize: '0.7rem', color: 'var(--text-primary)', width: '12px' },
       sectionTitleText: {fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' },
       sectionTaskCountBadge: {backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' },
-      taskDataTableRow: {display: 'flex', borderBottom: '1px solid var(--bg-tertiary)', transition: 'background-color 0.1s, opacity 0.15s ease' },
+      taskDataTableRow: {display: 'flex', borderBottom: '1px solid var(--bg-tertiary)', transition: 'background-color 0.1s, opacity 0.15s ease', userSelect: 'none' },
       gridBodyCell: {boxSizing: 'border-box', padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center', borderRight: '1px solid var(--bg-tertiary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
       listAvatarIcon: {width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' },
       quickAddTaskRowList: {display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--bg-tertiary)', padding: '0.35rem 0' },

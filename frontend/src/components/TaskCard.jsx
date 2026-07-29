@@ -4,7 +4,7 @@ import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusLabel, 
 
 let globalLastDragY = 0;
 
-export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, fieldConfig }) {
+export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, fieldConfig, selectedTaskIds, onTaskSelect }) {
   const [openFieldMenuId, setOpenFieldMenuId] = useState(null)
   const [isHovered, setIsHovered] = useState(false)
   const [isEditingMode, setIsEditingMode] = useState(false)
@@ -249,23 +249,32 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
           }
         }
       }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        onTaskContextMenu(e, task.id);
-      }}
+
+      onContextMenu={(e) => { e.preventDefault(); onTaskContextMenu(e, task.id) }}
+      className="task-card"
       style={{
         ...styles.cardContainer,
         ...styles.taskCard,
         backgroundColor: 'var(--bg-primary)',
-        border: `1px solid ${isHovered ? '#9CA3AF' : 'var(--border-color)'}`,
-        boxShadow: isEditingMode ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)' : '0 1px 3px rgba(0,0,0,0.05)',
+        border: selectedTaskIds?.has(task.id) ? '1px solid #4F46E5' : `1px solid ${isHovered ? '#9CA3AF' : 'var(--border-color)'}`,
+        boxShadow: selectedTaskIds?.has(task.id) ? 'inset 0 0 0 1px #4F46E5' : (isEditingMode ? '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)' : '0 1px 3px rgba(0,0,0,0.05)'),
         zIndex: (openFieldMenuId || isEditingMode) ? 100 : 1,
         cursor: isEditingMode ? 'default' : 'pointer',
-        opacity: (task.isCompleted && !isEditingMode && !openFieldMenuId) ? 0.6 : 1,
+        opacity: (task.isCompleted && !isEditingMode && !openFieldMenuId) ? 0.6 : (draggingTaskId === task.id ? 0.4 : 1),
         position: 'relative',
-        transition: 'border-color 0.15s ease',
+        transition: 'all 0.15s ease',
         WebkitUserDrag: isEditingMode ? 'none' : 'element',
         userDrag: isEditingMode ? 'none' : 'element'
+      }}
+      onClickCapture={(e) => {
+        let handled = false;
+        if (onTaskSelect) {
+          handled = onTaskSelect(e, task.id);
+        }
+        if (handled) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
       }}
       onClick={(e) => {
         if (!e.defaultPrevented && !isEditingMode) {

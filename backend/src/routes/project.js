@@ -2326,4 +2326,97 @@ router.delete('/tasks/:taskId/projects/:projectId', authenticateToken, async (re
     }
 });
 
+// ─── BULK TASK UPDATE ──────────────────────────────────────────────────────────
+router.patch('/tasks/bulk-update', authenticateToken, async (req, res) => {
+    try {
+        const { taskIds, updates } = req.body;
+        if (!Array.isArray(taskIds) || taskIds.length === 0) {
+            return res.status(400).json({ error: 'taskIds array is required.' });
+        }
+
+        // Build update data
+        const updateData = {};
+        if (updates.isCompleted !== undefined) {
+            updateData.isCompleted = updates.isCompleted;
+            updateData.completedAt = updates.isCompleted ? new Date() : null;
+        }
+        if (updates.assigneeId !== undefined) updateData.assigneeId = updates.assigneeId || null;
+        if (updates.dueDate !== undefined) updateData.dueDate = updates.dueDate ? new Date(updates.dueDate) : null;
+
+        // Handle section move separately since it needs per-task ordering
+        if (updates.sectionId) {
+            const maxOrderTask = await prisma.task.findFirst({
+                where: { sectionId: updates.sectionId },
+                orderBy: { order: 'desc' },
+                select: { order: true }
+            });
+            let nextOrder = (maxOrderTask?.order || 0) + 1;
+
+            for (const taskId of taskIds) {
+                await prisma.task.update({
+                    where: { id: taskId },
+                    data: { ...updateData, sectionId: updates.sectionId, order: nextOrder++ }
+                });
+            }
+        } else if (Object.keys(updateData).length > 0) {
+            await prisma.task.updateMany({
+                where: { id: { in: taskIds } },
+                data: updateData
+            });
+        }
+
+        // Determine project IDs to emit socket events
+        const affectedTasks = await prisma.task.findMany({
+            where: { id: { in: taskIds } },
+            select: { section: { select: { projectId: true } } }
+        });
+        const projectIds = [...new Set(affectedTasks.map(t => t.section.projectId))];
+
+        const io = req.app.get('io');
+        if (io) {
+            for (const pid of projectIds) {
+                io.to(pid).emit('task_updated', { bulk: true });
+            }
+        }
+
+        res.json({ message: `${taskIds.length} tasks updated.` });
+    } catch (error) {
+        console.error('Error bulk updating tasks:', error);
+        res.status(500).json({ error: 'Bulk update failed.', details: error.message });
+    }
+});
+
+// ─── BULK TASK DELETE ──────────────────────────────────────────────────────────
+router.delete('/tasks/bulk-delete', authenticateToken, async (req, res) => {
+    try {
+        const { taskIds } = req.body;
+        if (!Array.isArray(taskIds) || taskIds.length === 0) {
+            return res.status(400).json({ error: 'taskIds array is required.' });
+        }
+
+        // Determine project IDs before deletion for socket events
+        const affectedTasks = await prisma.task.findMany({
+            where: { id: { in: taskIds } },
+            select: { section: { select: { projectId: true } } }
+        });
+        const projectIds = [...new Set(affectedTasks.map(t => t.section.projectId))];
+
+        await prisma.task.deleteMany({
+            where: { id: { in: taskIds } }
+        });
+
+        const io = req.app.get('io');
+        if (io) {
+            for (const pid of projectIds) {
+                io.to(pid).emit('task_deleted', { bulk: true });
+            }
+        }
+
+        res.json({ message: `${taskIds.length} tasks deleted.` });
+    } catch (error) {
+        console.error('Error bulk deleting tasks:', error);
+        res.status(500).json({ error: 'Bulk delete failed.', details: error.message });
+    }
+});
+
 module.exports = router;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { io } from 'socket.io-client'
 import KanbanColumn from './KanbanColumn'
 import DatePickerPopover from './DatePickerPopover'
@@ -20,6 +20,7 @@ import IconColorPicker from './IconColorPicker'
 import ProjectNoteView from './ProjectNoteView'
 import ProjectFilesView from './ProjectFilesView'
 import ProjectMessagesView from './ProjectMessagesView'
+import BulkActionBar from './BulkActionBar'
 import './KanbanBoard.css'
 import { getParsedCustomFields, getParsedGithubPRs, getGithubPRStatusLabel, GITHUB_PR_STATUSES, GITHUB_PR_SORT_MAP } from '../utils/customFields'
 
@@ -50,6 +51,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [showEmptyGroups, setShowEmptyGroups] = useState(true)
   const [activeGroup, setActiveGroup] = useState(null)
   const [showAddFieldMenu, setShowAddFieldMenu] = useState(false)
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set())
 
   // Üst menü ve görünüm tab kontrolü
   const [isEditingName, setIsEditingName] = useState(false)
@@ -129,6 +131,12 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [undoToast, setUndoToast] = useState(false);
   const pendingDeleteRef = useRef(null);
 
+  // Marquee (lasso) selection
+  const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
+  const marqueeRef = useRef(null); // keeps latest marquee for event handlers
+  const marqueeContainerRef = useRef(null);
+  const wasDraggingMarqueeRef = useRef(false);
+
   const projectRole = selectedProject.ownerId === user.id
     ? 'ADMIN'
     : (selectedProject.members?.find(m => (m.user?.id || m.userId) === user.id)?.role || 'VIEWER');
@@ -156,6 +164,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   useEffect(() => {
     localStorage.setItem(`currentProjectTab_${selectedProject.id}`, currentTab);
+    setSelectedTaskIds(new Set());
   }, [currentTab, selectedProject.id]);
 
   useEffect(() => {
@@ -251,9 +260,26 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       setIsGroupMoreMenuOpen(false)
       setIsGroupOrderMenuOpen(false)
       setIsIconPickerOpen(false)
+
+      if (e && e.target.closest && !e.target.closest('.bulk-action-bar-ignore-click')) {
+        setSelectedTaskIds(new Set())
+      }
     }
+    
+    const preventClickAfterDrag = (e) => {
+      if (wasDraggingMarqueeRef.current) {
+        e.stopPropagation();
+        e.preventDefault();
+        wasDraggingMarqueeRef.current = false;
+      }
+    }
+
     window.addEventListener('click', closeAll)
-    return () => window.removeEventListener('click', closeAll)
+    window.addEventListener('click', preventClickAfterDrag, true) // capture phase
+    return () => {
+      window.removeEventListener('click', closeAll)
+      window.removeEventListener('click', preventClickAfterDrag, true)
+    }
   }, [])
 
   const handleSetProjectStatus = async (newStatusId) => {
@@ -1142,6 +1168,221 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     setUndoToast(false);
     pendingDeleteRef.current = null;
   }
+
+  const handleTaskSelect = (e, taskId) => {
+    if (e.ctrlKey || e.metaKey) {
+      const newSet = new Set(selectedTaskIds);
+      if (newSet.size === 0 && activeTaskPaneId && activeTaskPaneId !== taskId) {
+        newSet.add(activeTaskPaneId);
+      }
+      if (newSet.has(taskId)) newSet.delete(taskId);
+      else newSet.add(taskId);
+      setSelectedTaskIds(newSet);
+      if (newSet.size > 0) setActiveTaskPaneId(null);
+      return true;
+    } else if (e.shiftKey) {
+      if (!lastInteractedTaskId) {
+        setSelectedTaskIds(new Set([taskId]));
+        setActiveTaskPaneId(null);
+        return true;
+      }
+      const flat = [];
+      const sections = virtualGroupedSections || selectedProject.sections?.sort((a, b) => a.order - b.order) || [];
+      sections.forEach(sec => {
+        const tasks = virtualGroupedSections ? sec.tasks : (applyTaskSort ? applyTaskSort(applyTaskFilter(sec.tasks)) : applyTaskFilter(sec.tasks));
+        flat.push(...tasks.map(t => t.id));
+      });
+      const idx1 = flat.indexOf(lastInteractedTaskId);
+      const idx2 = flat.indexOf(taskId);
+      if (idx1 !== -1 && idx2 !== -1) {
+        const start = Math.min(idx1, idx2);
+        const end = Math.max(idx1, idx2);
+        const newSet = new Set(selectedTaskIds);
+        for (let i = start; i <= end; i++) {
+          newSet.add(flat[i]);
+        }
+        setSelectedTaskIds(newSet);
+        if (newSet.size > 0) setActiveTaskPaneId(null);
+      }
+      return true;
+    } else {
+      if (selectedTaskIds.size > 0) {
+        setSelectedTaskIds(new Set());
+      }
+      return false; 
+    }
+  };
+
+  // Marquee selection helpers
+  const getMarqueeRect = (m) => {
+    if (!m) return null;
+    return {
+      left: Math.min(m.startX, m.currentX),
+      top: Math.min(m.startY, m.currentY),
+      width: Math.abs(m.currentX - m.startX),
+      height: Math.abs(m.currentY - m.startY),
+    };
+  };
+
+  const rectsIntersect = (a, b) => {
+    return !(a.left > b.left + b.width || a.left + a.width < b.left || a.top > b.top + b.height || a.top + a.height < b.top);
+  };
+
+  const getTaskIdsInMarquee = useCallback((m) => {
+    if (!m) return new Set();
+    const mRect = {
+      left: Math.min(m.startX, m.currentX),
+      top: Math.min(m.startY, m.currentY),
+      width: Math.abs(m.currentX - m.startX),
+      height: Math.abs(m.currentY - m.startY),
+    };
+    const ids = new Set();
+    const taskEls = document.querySelectorAll('[data-task-id]');
+    taskEls.forEach(el => {
+      const r = el.getBoundingClientRect();
+      const elRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+      if (!(mRect.left > elRect.left + elRect.width || mRect.left + mRect.width < elRect.left || mRect.top > elRect.top + elRect.height || mRect.top + mRect.height < elRect.top)) {
+        ids.add(el.getAttribute('data-task-id'));
+      }
+    });
+    return ids;
+  }, []);
+
+  const handleMarqueeMouseDown = useCallback((e) => {
+    // Only start marquee on left click, no modifier keys (Ctrl/Shift have their own behavior)
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.target.closest('.task-card, button, input, select, textarea, a, .bulk-action-bar-ignore-click, .task-pane-ignore-click, .kanban-section-header, .drag6DotHandle, .drag6DotHandleCell, .section-header')) return;
+
+    const m = { startX: e.clientX, startY: e.clientY, currentX: e.clientX, currentY: e.clientY };
+    marqueeRef.current = m;
+    setMarquee(m);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!marqueeRef.current) return;
+      e.preventDefault();
+      const m = { ...marqueeRef.current, currentX: e.clientX, currentY: e.clientY };
+      marqueeRef.current = m;
+      setMarquee(m);
+
+      // Live highlight during drag
+      const ids = getTaskIdsInMarquee(m);
+      if (Math.abs(m.currentX - m.startX) > 5 || Math.abs(m.currentY - m.startY) > 5) {
+        wasDraggingMarqueeRef.current = true;
+        if (!document.body.classList.contains('marquee-active')) {
+          document.body.classList.add('marquee-active');
+          if (window.getSelection) {
+            window.getSelection().removeAllRanges();
+          }
+        }
+      }
+      setSelectedTaskIds(ids);
+      if (ids.size > 0) setActiveTaskPaneId(null);
+    };
+
+    const handleMouseUp = () => {
+      document.body.classList.remove('marquee-active');
+      if (!marqueeRef.current) return;
+      marqueeRef.current = null;
+      setMarquee(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [getTaskIdsInMarquee]);
+
+  const handleBulkAction = async (action, payload) => {
+    if (isReadOnly) return;
+    const taskIds = [...selectedTaskIds];
+    if (taskIds.length === 0) return;
+
+    try {
+      if (action === 'delete') {
+        // Optimistic UI: remove tasks locally
+        const updatedSections = selectedProject.sections.map(sec => ({
+          ...sec,
+          tasks: (sec.tasks || []).filter(t => !selectedTaskIds.has(t.id))
+        }));
+        syncProjectStates({ ...selectedProject, sections: updatedSections });
+
+        await fetch('http://localhost:5001/api/projects/tasks/bulk-delete', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ taskIds })
+        });
+      } else {
+        let updates = {};
+        if (action === 'complete') updates = { isCompleted: payload.isCompleted };
+        else if (action === 'assign') updates = { assigneeId: payload.assigneeId };
+        else if (action === 'dueDate') updates = { dueDate: payload.dueDate };
+        else if (action === 'move') updates = { sectionId: payload.sectionId };
+
+        // Optimistic UI for non-move actions
+        if (action !== 'move') {
+          const updatedSections = selectedProject.sections.map(sec => ({
+            ...sec,
+            tasks: (sec.tasks || []).map(t => {
+              if (!selectedTaskIds.has(t.id)) return t;
+              if (action === 'complete') return { ...t, isCompleted: payload.isCompleted, completedAt: payload.isCompleted ? new Date().toISOString() : null };
+              if (action === 'assign') {
+                let memberUser = null;
+                if (payload.assigneeId) {
+                  if (selectedProject.owner?.id === payload.assigneeId) {
+                    memberUser = selectedProject.owner;
+                  } else {
+                    const member = selectedProject.members?.find(m => (m.user?.id || m.userId) === payload.assigneeId);
+                    memberUser = member?.user || null;
+                  }
+                }
+                return { ...t, assigneeId: payload.assigneeId, assignee: memberUser };
+              }
+              if (action === 'dueDate') return { ...t, dueDate: payload.dueDate };
+              return t;
+            })
+          }));
+          syncProjectStates({ ...selectedProject, sections: updatedSections });
+        } else {
+          // Move: remove from old sections, add to target
+          const tasksToMove = [];
+          const updatedSections = selectedProject.sections.map(sec => {
+            const kept = [];
+            (sec.tasks || []).forEach(t => {
+              if (selectedTaskIds.has(t.id)) {
+                tasksToMove.push({ ...t, sectionId: payload.sectionId });
+              } else {
+                kept.push(t);
+              }
+            });
+            return { ...sec, tasks: kept };
+          });
+          const finalSections = updatedSections.map(sec => {
+            if (sec.id === payload.sectionId) {
+              return { ...sec, tasks: [...(sec.tasks || []), ...tasksToMove] };
+            }
+            return sec;
+          });
+          syncProjectStates({ ...selectedProject, sections: finalSections });
+        }
+
+        await fetch('http://localhost:5001/api/projects/tasks/bulk-update', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ taskIds, updates })
+        });
+      }
+    } catch (err) {
+      console.error('Bulk action error:', err);
+    }
+
+    if (action === 'delete') {
+      setSelectedTaskIds(new Set());
+    }
+  };
 
   const handleConvertTask = async (newType, taskId) => {
     const taskIdToConvert = taskId || contextMenu.taskId;
@@ -2421,7 +2662,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         <ProjectOverviewView selectedProject={selectedProject} projectRole={projectRole} isReadOnly={isReadOnly} token={token} onUpdate={syncProjectStates} onOpenShareModal={() => setIsShareModalOpen(true)} />
       ) : activeViewObj.type === 'Board' ? (
         /* ================= BOARD (KART) GÖRÜNÜMÜ ================= */
-        <div style={styles.columnsWrapper}>
+        <div style={{...styles.columnsWrapper, position: 'relative'}} onMouseDown={handleMarqueeMouseDown}>
           {(virtualGroupedSections || selectedProject.sections?.sort((a, b) => a.order - b.order))?.map(section => {
             const filteredTasks = virtualGroupedSections ? section.tasks : applyTaskSort(applyTaskFilter(section.tasks))
             return (
@@ -2439,7 +2680,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
                 style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
               >
-                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra = {}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} />
+                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra = {}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} selectedTaskIds={selectedTaskIds} setSelectedTaskIds={setSelectedTaskIds} onTaskSelect={handleTaskSelect} />
               </div>
             )
           })}
@@ -2464,6 +2705,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           setLastInteractedSectionId={setLastInteractedSectionId}
           lastInteractedTaskId={lastInteractedTaskId}
           setLastInteractedTaskId={setLastInteractedTaskId}
+          activeTaskPaneId={activeTaskPaneId}
           draggingTaskId={draggingTaskId}
           setDraggingTaskId={setDraggingTaskId}
           draggingSectionId={draggingSectionId}
@@ -2487,6 +2729,10 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           onOpenTaskPane={setActiveTaskPaneId}
           syncProjectStates={syncProjectStates}
           handleTopAddTaskGlobal={handleTopAddTaskGlobal}
+          selectedTaskIds={selectedTaskIds}
+          setSelectedTaskIds={setSelectedTaskIds}
+          onTaskSelect={handleTaskSelect}
+          onMarqueeMouseDown={handleMarqueeMouseDown}
         />
       ) : activeViewObj.type === 'Dashboard' ? (
         <ProjectDashboardView
@@ -3406,6 +3652,44 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           </div>
         </div>
       )}
+
+      {selectedTaskIds.size > 0 && (
+        <BulkActionBar
+          selectedCount={selectedTaskIds.size}
+          sections={selectedProject.sections}
+          projectMembers={
+            (() => {
+              const mems = selectedProject.members || [];
+              const ownerObj = selectedProject.owner;
+              if (ownerObj && !mems.find(m => (m.user?.id || m.id) === ownerObj.id)) {
+                return [ownerObj, ...mems];
+              }
+              return mems;
+            })()
+          }
+          onAction={handleBulkAction}
+          onClearSelection={() => setSelectedTaskIds(new Set())}
+        />
+      )}
+
+      {marquee && (() => {
+        const r = getMarqueeRect(marquee);
+        if (!r || (r.width < 5 && r.height < 5)) return null;
+        return (
+          <div style={{
+            position: 'fixed',
+            left: r.left,
+            top: r.top,
+            width: r.width,
+            height: r.height,
+            backgroundColor: 'rgba(79, 70, 229, 0.08)',
+            border: '1px solid rgba(79, 70, 229, 0.4)',
+            borderRadius: '2px',
+            pointerEvents: 'none',
+            zIndex: 99999,
+          }} />
+        );
+      })()}
 
     </div>
   )

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import TaskCard from './TaskCard'
 
-export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId, fieldConfig }) {
+export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId, fieldConfig, selectedTaskIds, onTaskSelect }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [isEditingName, setIsEditingName] = useState(false)
@@ -56,7 +56,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
         draggable={draggableSection}
         onDragStart={onDragStartSection}
         onDragEnd={onDragEndSection}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', position: 'relative', cursor: isReadOnly || isEditingName || isVirtualGrouping ? 'default' : 'move', flexShrink: 0 }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', position: 'relative', cursor: isReadOnly || isEditingName || isVirtualGrouping ? 'default' : 'pointer', flexShrink: 0 }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
           {isEditingName ? (
@@ -120,6 +120,8 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
               draggingTaskId={draggingTaskId}
               setDraggingTaskId={setDraggingTaskId}
               fieldConfig={fieldConfig}
+              selectedTaskIds={selectedTaskIds}
+              onTaskSelect={onTaskSelect}
             />
           </div>
         ))}
