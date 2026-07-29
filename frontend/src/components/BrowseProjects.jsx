@@ -153,28 +153,41 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
                 </div>
               </div>
               <div className="bp-col-members">
-                {project.members && project.members.length > 0 ? (
-                  <>
-                    {project.members.slice(0, 3).map((m, i) => (
-                      <div key={i} className="bp-member-avatar" title={m.user?.name}>
-                        {m.user?.name?.[0]?.toUpperCase() || '?'}
-                      </div>
-                    ))}
-                    {project.members.length > 3 && (
-                      <div className="bp-member-more">+{project.members.length - 3}</div>
-                    )}
-                  </>
-                ) : (
-                  <div className="bp-member-avatar" title={project.owner?.name || 'Owner'}>
-                    {project.owner?.name?.[0]?.toUpperCase() || '?'}
-                  </div>
-                )}
+                {(() => {
+                  const allUsers = [];
+                  if (project.owner && !allUsers.find(u => u.id === project.owner.id)) {
+                    allUsers.push(project.owner);
+                  }
+                  if (project.members) {
+                    project.members.forEach(m => {
+                      if (m.user && !allUsers.find(u => u.id === m.user.id)) {
+                        allUsers.push(m.user);
+                      }
+                    });
+                  }
+                  if (allUsers.length === 0) return null;
+                  
+                  return (
+                    <>
+                      {allUsers.slice(0, 3).map((u, i) => (
+                        <div key={i} className="bp-member-avatar" title={u.name}>
+                          {u.name?.[0]?.toUpperCase() || '?'}
+                        </div>
+                      ))}
+                      {allUsers.length > 3 && (
+                        <div className="bp-member-more">+{allUsers.length - 3}</div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
               <div className="bp-col-portfolios">
                 {project.portfolios && project.portfolios.length > 0 ? (
-                  project.portfolios.map(pItem => (
-                    <span key={pItem.portfolio?.id} className="bp-portfolio-pill">📁 {pItem.portfolio?.name}</span>
-                  ))
+                  project.portfolios
+                    .filter(pItem => pItem.portfolio?.ownerId === (user?.userId || user?.id))
+                    .map(pItem => (
+                      <span key={pItem.portfolio?.id} className="bp-portfolio-pill">📁 {pItem.portfolio?.name}</span>
+                    ))
                 ) : ''}
               </div>
               <div className="bp-col-lastmod bp-text-muted">
@@ -190,33 +203,6 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
         </div>
       </div>
 
-      {showTemplates && (
-        <div className="bp-templates-section">
-          <div className="bp-templates-header">
-            <h2>Explore ready-made templates to jumpstart your next project</h2>
-            <button className="bp-close-templates" onClick={() => setShowTemplates(false)}>✕</button>
-          </div>
-          
-          <div className="bp-templates-grid">
-            {templates.map(template => (
-              <div key={template.id} className="bp-template-card" onClick={() => handleUseTemplate(template)} style={{ cursor: 'pointer' }}>
-                <div className="bp-template-icon" style={{ backgroundColor: template.color || '#4F46E5', color: '#fff' }}>
-                  <span>{template.icon || '📋'}</span>
-                </div>
-                <h3>{template.name}</h3>
-                <p>{template.description || "Start your project efficiently using this pre-made template."}</p>
-              </div>
-            ))}
-            {templates.length === 0 && (
-              <div className="bp-empty-state" style={{ gridColumn: '1 / -1', padding: '2rem' }}>No templates available. Save a project as a template to see it here!</div>
-            )}
-          </div>
-
-          <div className="bp-templates-footer">
-            <button className="bp-gallery-btn">View the template gallery</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

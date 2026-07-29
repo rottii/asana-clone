@@ -10,7 +10,7 @@ const statusConfig = {
   COMPLETE: { color: 'var(--accent-primary)', label: 'Complete', desc: 'Project is finished.' }
 };
 
-export default function ProjectOverviewView({ selectedProject, projectRole, isReadOnly, token, onUpdate, onOpenShareModal }) {
+export default function ProjectOverviewView({ selectedProject, projectRole, isReadOnly, token, currentUser, onUpdate, onOpenShareModal }) {
   const [isEditingDesc, setIsEditingDesc] = useState(false);
   const [descInput, setDescInput] = useState(selectedProject.description || '');
   const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
@@ -19,6 +19,18 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
   const [isEditingGithub, setIsEditingGithub] = useState(false);
   const [githubInput, setGithubInput] = useState(selectedProject.githubRepo || '');
   const [githubDetails, setGithubDetails] = useState(null);
+  const [isHoveringStatus, setIsHoveringStatus] = useState(false);
+
+  const allUsers = React.useMemo(() => {
+    let list = selectedProject?.members?.map(m => m.user) || [];
+    if (selectedProject?.owner && !list.find(u => u.id === selectedProject.owner.id)) {
+      list.push(selectedProject.owner);
+    }
+    if (currentUser && !list.find(u => u.id === currentUser.id)) {
+      list.push(currentUser);
+    }
+    return list;
+  }, [selectedProject, currentUser]);
 
   useEffect(() => {
     if (selectedProject.githubRepo && !isEditingGithub) {
@@ -129,13 +141,13 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
           <div style={styles.descriptionBox}>
             {isEditingDesc ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <RichTextEditor
-                  value={descInput}
-                  onChange={setDescInput}
-                  users={members}
-                  minHeight="100px"
-                />
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                  <RichTextEditor
+                    value={descInput}
+                    onChange={setDescInput}
+                    users={allUsers}
+                    minHeight="200px"
+                    autoFocus
+                  /><div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                   <button style={styles.cancelBtn} onClick={() => { setIsEditingDesc(false); setDescInput(selectedProject.description || ''); }}>Cancel</button>
                   <button style={styles.saveBtn} onClick={handleSaveDescription}>Save</button>
                 </div>

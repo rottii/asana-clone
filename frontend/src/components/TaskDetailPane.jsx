@@ -121,13 +121,17 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   // Click outside to close the entire pane
   useEffect(() => {
     const handlePaneClickOutside = (e) => {
+      // Ignore clicks on detached DOM nodes (e.g. popups that just closed)
+      if (!document.body.contains(e.target)) return;
+      
       // Ignore clicks inside the pane itself
       if (paneRef.current && paneRef.current.contains(e.target)) return;
       
       // Ignore clicks on popovers, dropdowns, or other floating menus that belong to the pane
       // Also ignore clicks on the sidebar hamburger toggle
       // Ignore clicks on tasks so they can open/update the pane instead of closing it
-      if (e.target.closest('.dropdownMenu') || e.target.closest('.popover') || e.target.closest('.more-menu-container') || e.target.closest('.flatpickr-calendar') || e.target.closest('.topnav-hamburger') || e.target.closest('[data-task-id]')) return;
+      // Ignore tippy popups used by RichTextEditor Mentions
+      if (e.target.closest('.dropdownMenu') || e.target.closest('.popover') || e.target.closest('.more-menu-container') || e.target.closest('.flatpickr-calendar') || e.target.closest('.topnav-hamburger') || e.target.closest('[data-task-id]') || e.target.closest('[data-tippy-root]')) return;
 
       onClose();
     };
@@ -136,6 +140,17 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   }, [onClose]);
 
   if (!task) return null;
+
+  const allUsers = React.useMemo(() => {
+    let list = selectedProject?.members?.map(m => m.user) || [];
+    if (selectedProject?.owner && !list.find(u => u.id === selectedProject.owner.id)) {
+      list.push(selectedProject.owner);
+    }
+    if (currentUser && !list.find(u => u.id === currentUser.id)) {
+      list.push(currentUser);
+    }
+    return list;
+  }, [selectedProject, currentUser]);
 
   const handleAddGithubPr = async () => {
     if (!githubPrUrlValue.trim() || isReadOnly) return;
@@ -1337,9 +1352,9 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
             {!isReadOnly ? (
               <RichTextEditor
                 value={editForm.description}
-                onChange={val => setEditForm({ ...editForm, description: val })}
+                onChange={(val) => setEditForm({ ...editForm, description: val })}
                 onBlur={() => handleSave('description', editForm.description)}
-                users={selectedProject?.members?.map(m => m.user) || []}
+                users={allUsers}
                 minHeight="150px"
               />
             ) : (
@@ -1726,9 +1741,10 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <RichTextEditor
                     value={newCommentText}
-                    onChange={val => setNewCommentText(val)}
-                    users={selectedProject?.members?.map(m => m.user) || []}
-                    minHeight="60px"
+                    onChange={setNewCommentText}
+                    users={allUsers}
+                    placeholder="Ask a question or post an update..."
+                    minHeight="80px"
                   />
                   <button onClick={handleAddComment} style={{ ...styles.saveBtn, alignSelf: 'flex-end', padding: '6px 12px', fontSize: '0.85rem' }}>
                     Comment

@@ -76,3 +76,14 @@ body {
 .github-dropdown-item:hover {
   background-color: var(--bg-secondary) !important;
 }
+
+/* Tippy styles for Mention Dropdown */
+.tippy-box[data-theme~='mention-popup'] {
+  background-color: transparent !important;
+  color: inherit !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.tippy-box[data-theme~='mention-popup'] > .tippy-content {
+  padding: 0 !important;
+}

@@ -18,14 +18,16 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
   }, [activeWorkspace, teamId]);
 
   useEffect(() => {
-    if (!token) return;
-    fetch('http://localhost:5001/api/projects/templates', {
+    if (!token || !activeWorkspace) return;
+    fetch(`http://localhost:5001/api/projects/templates?workspaceId=${activeWorkspace.id}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => setTemplates(data))
+      .then(data => {
+        if (Array.isArray(data)) setTemplates(data);
+      })
       .catch(console.error);
-  }, [token]);
+  }, [token, activeWorkspace]);
 
   const handleUseTemplate = async (template) => {
     try {

@@ -34,6 +34,44 @@ const { authenticateToken } = require('../middleware/auth');
 // Hierarchy: ADMIN > EDITOR > COMMENTER > VIEWER
 const ROLE_LEVEL = { VIEWER: 0, COMMENTER: 1, EDITOR: 2, ADMIN: 3 };
 
+// ─── Mention Helpers ───────────────────────────────────────────────────────────
+function extractMentions(htmlText) {
+    if (!htmlText) return [];
+    const regex = /<span[^>]*data-type="mention"[^>]*data-id="([^"]+)"/g;
+    const ids = new Set();
+    let match;
+    while ((match = regex.exec(htmlText)) !== null) {
+        ids.add(match[1]);
+    }
+    return Array.from(ids);
+}
+
+async function processMentions({ newHtml, oldHtml, actorId, taskId, projectId, messagePrefix = 'Mentioned you in' }) {
+    const newIds = extractMentions(newHtml);
+    const oldIds = extractMentions(oldHtml);
+    
+    // Find IDs that are in newHtml but not in oldHtml
+    const addedIds = newIds.filter(id => !oldIds.includes(id) && id !== actorId);
+    
+    for (const userId of addedIds) {
+        try {
+            await prisma.notification.create({
+                data: {
+                    type: 'MENTIONED',
+                    message: `${messagePrefix} a ${taskId ? 'task' : 'message'}`,
+                    userId,
+                    actorId,
+                    taskId: taskId || null,
+                    projectId: projectId || null
+                }
+            });
+        } catch (err) {
+            console.error('Error creating mention notification for user', userId, err);
+        }
+    }
+    return addedIds; // return IDs that were notified, so we can emit sockets
+}
+
 // Resolve user's role in a project. Owner = ADMIN.
 async function getProjectRole(userId, projectId) {
     const project = await prisma.project.findUnique({
@@ -270,7 +308,13 @@ router.get('/templates', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Çalışma alanı (workspaceId) gereklidir.' });
         }
 
-        const templates = await prisma.project.findMany({
+        // Fix any orphaned templates (from before this fix) by assigning them to this workspace
+        await prisma.project.updateMany({
+            where: { isTemplate: true, workspaceId: null },
+            data: { workspaceId: workspaceId }
+        });
+
+        let templates = await prisma.project.findMany({
             where: { 
                 isTemplate: true,
                 workspaceId: workspaceId
@@ -278,6 +322,70 @@ router.get('/templates', authenticateToken, async (req, res) => {
             include: fullProjectInclude,
             orderBy: { createdAt: 'desc' }
         });
+
+        if (templates.length === 0) {
+            // Seed a default template "Cross-Functional Project Plan"
+            await prisma.project.create({
+                data: {
+                    name: 'Cross-functional project plan',
+                    isTemplate: true,
+                    workspaceId: workspaceId,
+                    ownerId: req.user.userId,
+                    color: '#10B981',
+                    icon: '📋',
+                    defaultView: 'Board',
+                    activeViews: JSON.stringify([
+                        { id: 'view-board', type: 'Board', name: 'Board' },
+                        { id: 'view-list', type: 'List', name: 'List' },
+                        { id: 'view-timeline', type: 'Timeline', name: 'Timeline' },
+                        { id: 'view-dashboard', type: 'Dashboard', name: 'Dashboard' }
+                    ]),
+                    sections: {
+                        create: [
+                            { name: 'To Do', order: 0 },
+                            { name: 'In Progress', order: 1 },
+                            { name: 'Done', order: 2 }
+                        ]
+                    }
+                }
+            });
+
+            // Seed another template
+            await prisma.project.create({
+                data: {
+                    name: 'Product Roadmap',
+                    isTemplate: true,
+                    workspaceId: workspaceId,
+                    ownerId: req.user.userId,
+                    color: '#6366F1',
+                    icon: '🗺️',
+                    defaultView: 'Timeline',
+                    activeViews: JSON.stringify([
+                        { id: 'view-timeline', type: 'Timeline', name: 'Timeline' },
+                        { id: 'view-list', type: 'List', name: 'List' },
+                        { id: 'view-board', type: 'Board', name: 'Board' }
+                    ]),
+                    sections: {
+                        create: [
+                            { name: 'Q1', order: 0 },
+                            { name: 'Q2', order: 1 },
+                            { name: 'Q3', order: 2 },
+                            { name: 'Q4', order: 3 }
+                        ]
+                    }
+                }
+            });
+
+            // Re-fetch after seeding
+            templates = await prisma.project.findMany({
+                where: { 
+                    isTemplate: true,
+                    workspaceId: workspaceId
+                },
+                include: fullProjectInclude,
+                orderBy: { createdAt: 'desc' }
+            });
+        }
 
         // Merge secondary tasks into the sections
         templates.forEach(project => {
@@ -531,7 +639,8 @@ router.post('/:id/save-as-template', authenticateToken, async (req, res) => {
                 icon: sourceProject.icon,
                 isTemplate: true,
                 customFieldSettings: sourceProject.customFieldSettings,
-                formSettings: sourceProject.formSettings
+                formSettings: sourceProject.formSettings,
+                workspaceId: sourceProject.workspaceId
             }
         });
 
@@ -826,6 +935,11 @@ router.post('/:id/share', authenticateToken, async (req, res) => {
             where: { id: req.params.id },
             include: fullProjectInclude
         });
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(userToAdd.id).emit('project_shared', updatedProject);
+        }
 
         res.json(updatedProject);
     } catch (error) {
@@ -1563,6 +1677,22 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
             }
         }
 
+        if (description !== undefined && description !== currentTask.description) {
+            const notifiedIds = await processMentions({
+                newHtml: description,
+                oldHtml: currentTask.description,
+                actorId: req.user.userId,
+                taskId: updatedTask.id,
+                projectId,
+                messagePrefix: 'Mentioned you in the description of'
+            });
+            if (io) {
+                notifiedIds.forEach(id => {
+                    io.to(id).emit('new_notification');
+                });
+            }
+        }
+
         // ─── Refetch Final Task for Rule Engine Changes ─────────────────────
         const finalTask = await prisma.task.findUnique({
             where: { id: updatedTask.id },
@@ -1735,6 +1865,26 @@ router.post('/tasks/:taskId/comments', authenticateToken, async (req, res) => {
                 if (io) io.to(task.assigneeId).emit('new_notification');
             } catch (notifErr) {
                 console.error('Notification error:', notifErr);
+            }
+        }
+
+        // Process Mentions
+        if (task) {
+            const notifiedIds = await processMentions({
+                newHtml: text,
+                oldHtml: '',
+                actorId: req.user.userId,
+                taskId: task.id,
+                projectId: task.section?.projectId,
+                messagePrefix: 'Mentioned you in a comment on'
+            });
+            const io = req.app.get('io');
+            if (io) {
+                notifiedIds.forEach(id => {
+                    if (id !== task.assigneeId) { // Assignee already got a notification if they were assigned, wait, maybe notify them too if mentioned
+                        io.to(id).emit('new_notification');
+                    }
+                });
             }
         }
 

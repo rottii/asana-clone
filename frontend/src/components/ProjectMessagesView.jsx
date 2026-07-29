@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import RichTextEditor from './RichTextEditor';
 
 const styles = {
   container: {
@@ -207,13 +208,24 @@ const styles = {
   }
 };
 
-export default function ProjectMessagesView({ selectedProject, token }) {
+export default function ProjectMessagesView({ selectedProject, token, currentUser }) {
   const [messages, setMessages] = useState([]);
   const [isComposing, setIsComposing] = useState(false);
   const [newSubject, setNewSubject] = useState('');
   const [newBody, setNewBody] = useState('');
   
   const [replyText, setReplyText] = useState({}); // messageId -> text
+
+  const allUsers = React.useMemo(() => {
+    let list = selectedProject?.members?.map(m => m.user) || [];
+    if (selectedProject?.owner && !list.find(u => u.id === selectedProject.owner.id)) {
+      list.push(selectedProject.owner);
+    }
+    if (currentUser && !list.find(u => u.id === currentUser.id)) {
+      list.push(currentUser);
+    }
+    return list;
+  }, [selectedProject, currentUser]);
 
   useEffect(() => {
     fetchMessages();
@@ -314,12 +326,11 @@ export default function ProjectMessagesView({ selectedProject, token }) {
             value={newSubject}
             onChange={(e) => setNewSubject(e.target.value)}
           />
-          <textarea 
-            placeholder="Type your message here..." 
-            style={styles.inputBody}
+          <RichTextEditor 
             value={newBody}
-            onChange={(e) => setNewBody(e.target.value)}
-            autoFocus
+            onChange={(val) => setNewBody(val)}
+            users={allUsers}
+            minHeight="120px"
           />
           <div style={styles.composerActions}>
             <button style={styles.cancelBtn} onClick={() => setIsComposing(false)}>Cancel</button>
@@ -348,7 +359,7 @@ export default function ProjectMessagesView({ selectedProject, token }) {
             </div>
             
             {msg.subject && <h3 style={styles.messageSubject}>{msg.subject}</h3>}
-            <p style={styles.messageBody}>{msg.body}</p>
+            <div className="rich-text-content" style={styles.messageBody} dangerouslySetInnerHTML={{ __html: msg.body }} />
 
             <div style={styles.repliesSection}>
               {msg.replies && msg.replies.map(reply => (
@@ -356,28 +367,28 @@ export default function ProjectMessagesView({ selectedProject, token }) {
                   <div style={styles.replyAvatar}>{getInitials(reply.user?.name)}</div>
                   <div style={styles.replyContent}>
                     <p style={styles.replyAuthor}>{reply.user?.name || 'Unknown User'} <span style={{fontWeight: 'normal', color: 'var(--text-secondary)', marginLeft: 8}}>{formatDate(reply.createdAt)}</span></p>
-                    <p style={styles.replyText}>{reply.text}</p>
+                    <div className="rich-text-content" style={styles.replyText} dangerouslySetInnerHTML={{ __html: reply.text }} />
                   </div>
                 </div>
               ))}
 
               <div style={styles.replyComposer}>
                 <div style={styles.replyAvatar}>Me</div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <textarea 
-                    placeholder="Write a reply..."
-                    style={styles.replyInput}
+                <div style={styles.replyInputContainer}>
+                  <RichTextEditor
                     value={replyText[msg.id] || ''}
-                    onChange={(e) => setReplyText({ ...replyText, [msg.id]: e.target.value })}
+                    onChange={(val) => setReplyText(prev => ({ ...prev, [msg.id]: val }))}
+                    users={allUsers}
+                    minHeight="60px"
+                    placeholder="Write a reply..."
                   />
-                  {(replyText[msg.id] && replyText[msg.id].trim()) ? (
-                    <button 
-                      style={{...styles.submitBtn, alignSelf: 'flex-end'}} 
-                      onClick={() => handleSendReply(msg.id)}
-                    >
-                      Reply
-                    </button>
-                  ) : null}
+                  <button 
+                    style={{...styles.submitBtn, padding: '6px 12px', fontSize: '0.85rem'}} 
+                    onClick={() => handleSendReply(msg.id)}
+                    disabled={!(replyText[msg.id] || '').trim()}
+                  >
+                    Reply
+                  </button>
                 </div>
               </div>
             </div>

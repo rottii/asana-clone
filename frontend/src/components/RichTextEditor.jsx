@@ -6,6 +6,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
 import tippy from 'tippy.js';
+import 'tippy.js/dist/tippy.css';
 import { GithubPRExtension } from './GithubPRExtension';
 
 // ---- Mention Dropdown UI ----
@@ -57,12 +58,13 @@ const MentionList = forwardRef((props, ref) => {
         props.items.map((item, index) => (
           <button
             key={item.id}
-            onClick={() => selectItem(index)}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); selectItem(index); }}
             style={{
               display: 'block',
               width: '100%',
               padding: '8px 12px',
               border: 'none',
+              borderLeft: index === selectedIndex ? '3px solid #4F46E5' : '3px solid transparent',
               background: index === selectedIndex ? 'var(--bg-secondary)' : 'transparent',
               color: 'var(--text-primary)',
               textAlign: 'left',
@@ -70,7 +72,14 @@ const MentionList = forwardRef((props, ref) => {
               fontSize: '0.9rem'
             }}
           >
-            {item.name}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <span>{item.name}</span>
+              {item.email && (
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginLeft: '8px' }}>
+                  {item.email}
+                </span>
+              )}
+            </div>
           </button>
         ))
       ) : (
@@ -99,6 +108,12 @@ const IconMagicWand = () => <svg width="16" height="16" viewBox="0 0 24 24" fill
 
 // ---- Rich Text Editor Component ----
 export default function RichTextEditor({ value, onChange, onBlur, placeholder = 'Type / for menu', users = [], minHeight = '120px', autoFocus = false }) {
+  const usersRef = React.useRef(users);
+
+  React.useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -116,8 +131,8 @@ export default function RichTextEditor({ value, onChange, onBlur, placeholder = 
         },
         suggestion: {
           items: ({ query }) => {
-            return users
-              .filter(user => user.name.toLowerCase().startsWith(query.toLowerCase()))
+            return usersRef.current
+              .filter(user => user?.name?.toLowerCase().startsWith(query.toLowerCase()))
               .slice(0, 5);
           },
           render: () => {
@@ -126,12 +141,16 @@ export default function RichTextEditor({ value, onChange, onBlur, placeholder = 
 
             return {
               onStart: (props) => {
+                console.log('Mention suggestion onStart triggered with query:', props.query);
                 component = new ReactRenderer(MentionList, {
                   props,
                   editor: props.editor,
                 });
 
-                if (!props.clientRect) return;
+                if (!props.clientRect) {
+                  console.log('No clientRect provided');
+                  return;
+                }
 
                 popup = tippy('body', {
                   getReferenceClientRect: props.clientRect,
@@ -141,6 +160,9 @@ export default function RichTextEditor({ value, onChange, onBlur, placeholder = 
                   interactive: true,
                   trigger: 'manual',
                   placement: 'bottom-start',
+                  theme: 'mention-popup',
+                  arrow: false,
+                  zIndex: 99999,
                 });
               },
               onUpdate(props) {

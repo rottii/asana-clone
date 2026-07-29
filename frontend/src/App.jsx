@@ -131,6 +131,15 @@ export default function App() {
           return [...prev, newProj];
         });
       });
+
+      socket.on('project_shared', (sharedProj) => {
+        setProjects(prev => {
+          if (prev.find(p => p.id === sharedProj.id)) {
+            return prev.map(p => p.id === sharedProj.id ? sharedProj : p);
+          }
+          return [...prev, sharedProj];
+        });
+      });
       
       return () => {
         socket.disconnect();
@@ -169,9 +178,9 @@ export default function App() {
     return <Auth setToken={setToken} setUser={setUser} />
   }
 
-  // Yalnızca aktif workspace'e ait olanları filtrele
-  const filteredProjects = projects.filter(p => p.workspaceId === activeWorkspaceId)
-  const filteredPortfolios = portfolios.filter(p => p.workspaceId === activeWorkspaceId)
+  // Relax workspace filtering so users can see all their projects (helps when invited to projects in other workspaces)
+  const filteredProjects = projects;
+  const filteredPortfolios = portfolios;
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
 
   return (

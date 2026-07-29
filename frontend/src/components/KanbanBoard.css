@@ -46,6 +46,10 @@
   overflow: hidden;
   user-select: none;
   pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+  text-align: center;
 }
 
 /* Custom scrollbar for Kanban column */

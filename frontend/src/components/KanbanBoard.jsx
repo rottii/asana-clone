@@ -2042,8 +2042,10 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               gap: '4px'
             }}
           >
-            <span className="view-tab-text" data-text={view.name} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
-              {view.name}
+            <span className="view-tab-text" data-text={view.name} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', maxWidth: '120px' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', textAlign: 'center' }}>
+                {view.name}
+              </span>
             </span>
             {selectedProject.defaultView === view.id && <span style={{ fontSize: '10px' }}>⭐</span>}
           </span>
@@ -2659,7 +2661,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
       {/* --- GÖRÜNÜM SEÇİM ALANI --- */}
       {activeViewObj.type === 'Overview' ? (
-        <ProjectOverviewView selectedProject={selectedProject} projectRole={projectRole} isReadOnly={isReadOnly} token={token} onUpdate={syncProjectStates} onOpenShareModal={() => setIsShareModalOpen(true)} />
+        <ProjectOverviewView selectedProject={selectedProject} projectRole={projectRole} isReadOnly={isReadOnly} token={token} currentUser={user} onUpdate={syncProjectStates} onOpenShareModal={() => setIsShareModalOpen(true)} />
       ) : activeViewObj.type === 'Board' ? (
         /* ================= BOARD (KART) GÖRÜNÜMÜ ================= */
         <div style={{...styles.columnsWrapper, position: 'relative'}} onMouseDown={handleMarqueeMouseDown}>
@@ -2765,6 +2767,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           onOpenTaskPane={setActiveTaskPaneId}
           token={token}
           isReadOnly={isReadOnly}
+          currentUser={user}
         />
       ) : activeViewObj.type === 'Gantt' ? (
         <ProjectGanttView
@@ -2797,7 +2800,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       ) : activeViewObj.type === 'Files' ? (
         <ProjectFilesView selectedProject={selectedProject} token={token} onTaskUpdate={handleTaskUpdate} />
       ) : activeViewObj.type === 'Messages' ? (
-        <ProjectMessagesView selectedProject={selectedProject} token={token} />
+        <ProjectMessagesView selectedProject={selectedProject} token={token} currentUser={user} />
       ) : null}
 
       {/* Sürükleme Ghost Önizleme Taslağı */}

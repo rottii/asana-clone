@@ -7,6 +7,7 @@ const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
 
 const { authenticateToken } = require('../middleware/auth');
+const { processMentions } = require('../utils/mentions');
 
 // GET /api/projects/:projectId/messages — Projenin tüm mesajlarını getir
 router.get('/', authenticateToken, async (req, res) => {
@@ -65,6 +66,21 @@ router.post('/', authenticateToken, async (req, res) => {
             }
         });
 
+        // Process Mentions
+        const notifiedIds = await processMentions({
+            newHtml: body,
+            oldHtml: '',
+            actorId: req.user.userId,
+            projectId,
+            messagePrefix: 'Mentioned you in a message'
+        });
+        const io = req.app.get('io');
+        if (io) {
+            notifiedIds.forEach(id => {
+                io.to(id).emit('new_notification');
+            });
+        }
+
         res.status(201).json(message);
     } catch (err) {
         console.error(err);
@@ -92,6 +108,24 @@ router.post('/:messageId/replies', authenticateToken, async (req, res) => {
                 user: { select: { id: true, name: true, email: true } }
             }
         });
+
+        // Get projectId from message to pass to notification
+        const message = await prisma.projectMessage.findUnique({ where: { id: messageId } });
+
+        // Process Mentions
+        const notifiedIds = await processMentions({
+            newHtml: text,
+            oldHtml: '',
+            actorId: req.user.userId,
+            projectId: message?.projectId,
+            messagePrefix: 'Mentioned you in a reply'
+        });
+        const io = req.app.get('io');
+        if (io) {
+            notifiedIds.forEach(id => {
+                io.to(id).emit('new_notification');
+            });
+        }
 
         res.status(201).json(reply);
     } catch (err) {
