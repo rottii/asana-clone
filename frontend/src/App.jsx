@@ -15,6 +15,7 @@ import ProfileView from './components/ProfileView'
 import Goals from './components/Goals'
 import Reporting from './components/Reporting'
 import PublicForm from './components/PublicForm'
+import { UndoProvider } from './context/UndoContext'
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token'))
@@ -262,7 +263,8 @@ export default function App() {
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <UndoProvider>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <TopNav 
         isSidebarCollapsed={isSidebarCollapsed} 
         setIsSidebarCollapsed={setIsSidebarCollapsed} 
@@ -408,6 +410,7 @@ export default function App() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </UndoProvider>
   )
 }

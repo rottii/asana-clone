@@ -24,6 +24,8 @@ import BulkActionBar from './BulkActionBar'
 import './KanbanBoard.css'
 import { getParsedCustomFields, getParsedGithubPRs, getGithubPRStatusLabel, GITHUB_PR_STATUSES, GITHUB_PR_SORT_MAP } from '../utils/customFields'
 
+import { useUndo } from '../context/UndoContext'
+
 export default function KanbanBoard({ selectedProject, setSelectedProject, projects, setProjects, token, user, handleLogout }) {
   const [newSectionName, setNewSectionName] = useState('')
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, taskId: null })
@@ -128,8 +130,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [draggingTabId, setDraggingTabId] = useState(null)
   const [dropTargetTab, setDropTargetTab] = useState({ id: null, position: null })
 
-  const [undoToast, setUndoToast] = useState(false);
-  const pendingDeleteRef = useRef(null);
+  const { showUndo } = useUndo();
+  const [optimisticDeletedTaskIds, setOptimisticDeletedTaskIds] = useState(new Set());
+  const [optimisticDeletedSectionIds, setOptimisticDeletedSectionIds] = useState(new Set());
 
   // Marquee (lasso) selection
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -145,14 +148,6 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   // Sürükle bırak işlemlerinde state gecikmesini önlemek için senkron referans
   const latestSectionsRef = useRef(selectedProject.sections);
-  useEffect(() => {
-    return () => {
-      if (pendingDeleteRef.current) {
-        clearTimeout(pendingDeleteRef.current.timeoutId);
-        fetch(`http://localhost:5001/api/projects/tasks/${pendingDeleteRef.current.task.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }).catch(console.error);
-      }
-    };
-  }, [token]);
 
   useEffect(() => {
     latestSectionsRef.current = selectedProject.sections;
@@ -188,12 +183,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         if (response.ok) {
           let updatedProj = await response.json();
 
-          // Filter out the currently pending deleted task so it doesn't reappear
-          if (pendingDeleteRef.current) {
-            const pendingTaskId = pendingDeleteRef.current.task.id;
+          // Filter out the optimistically deleted items so they don't reappear
+          if (optimisticDeletedSectionIds.size > 0) {
+            updatedProj.sections = updatedProj.sections.filter(sec => !optimisticDeletedSectionIds.has(sec.id));
+          }
+          if (optimisticDeletedTaskIds.size > 0) {
             updatedProj.sections = updatedProj.sections.map(sec => ({
               ...sec,
-              tasks: (sec.tasks || []).filter(t => t.id !== pendingTaskId)
+              tasks: (sec.tasks || []).filter(t => !optimisticDeletedTaskIds.has(t.id))
             }));
           }
 
@@ -966,11 +963,37 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   const handleDeleteSection = async (sectionId) => {
     if (isReadOnly) return;
-    if (!window.confirm("Bölümü silmek istediğinize emin misiniz?")) return;
-    try {
-      await fetch(`http://localhost:5001/api/projects/sections/${sectionId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
-      syncProjectStates({ ...selectedProject, sections: selectedProject.sections.filter(s => s.id !== sectionId) })
-    } catch (err) { console.error(err) }
+    const sectionToDelete = selectedProject.sections.find(s => s.id === sectionId);
+    if (!sectionToDelete) return;
+    
+    // Optimistic UI
+    syncProjectStates({ ...selectedProject, sections: selectedProject.sections.filter(s => s.id !== sectionId) });
+    setOptimisticDeletedSectionIds(prev => new Set(prev).add(sectionId));
+
+    showUndo({
+      message: "Section deleted",
+      onUndo: () => {
+        // Revert optimistic UI
+        syncProjectStates({ ...selectedProject, sections: [...selectedProject.sections] }); // Since selectedProject wasn't mutated, selectedProject.sections is still the original array with the section inside. Actually wait, syncProjectStates updates selectedProject in the parent. We need to restore it explicitly.
+        // Actually, just pushing it back or re-rendering works if we rely on the parent state not being fully lost. To be safe, we just use the original array.
+        setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, sections: p.sections.filter(s => s.id !== sectionId).concat(sectionToDelete) } : p));
+        setOptimisticDeletedSectionIds(prev => {
+          const next = new Set(prev);
+          next.delete(sectionId);
+          return next;
+        });
+      },
+      onCommit: async () => {
+        try {
+          await fetch(`http://localhost:5001/api/projects/sections/${sectionId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+        } catch (err) { console.error(err); }
+        setOptimisticDeletedSectionIds(prev => {
+          const next = new Set(prev);
+          next.delete(sectionId);
+          return next;
+        });
+      }
+    });
   }
 
   const handleRenameSection = async (sectionId, newName) => {
@@ -1113,13 +1136,36 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     }
 
     try {
+      // Optimistic UI
+      const previousState = task.isCompleted;
+      handleTaskUpdate(task.id, { ...task, isCompleted: !previousState });
+
       const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ isCompleted: !task.isCompleted })
-      })
-      const data = await response.json()
-      if (response.ok) handleTaskUpdate(task.id, data)
+        body: JSON.stringify({ isCompleted: !previousState })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        handleTaskUpdate(task.id, data);
+        
+        showUndo({
+          message: !previousState ? "Task marked complete" : "Task marked incomplete",
+          onUndo: async () => {
+            // Revert Optimistic UI
+            handleTaskUpdate(task.id, { ...task, isCompleted: previousState });
+            try {
+              const revRes = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ isCompleted: previousState })
+              });
+              const revData = await revRes.json();
+              if (revRes.ok) handleTaskUpdate(task.id, revData);
+            } catch (err) { console.error("Undo error:", err); }
+          }
+        });
+      }
     } catch (err) { console.error(err) }
   }
 
@@ -1185,42 +1231,39 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
     if (!taskToDelete) return;
 
-    if (pendingDeleteRef.current) {
-      clearTimeout(pendingDeleteRef.current.timeoutId);
-      executeDeleteTask(pendingDeleteRef.current.task.id);
-    }
-
     const updatedSections = selectedProject.sections.map(sec => ({ ...sec, tasks: (sec.tasks || []).filter(t => t.id !== taskIdToDelete) }))
     syncProjectStates({ ...selectedProject, sections: updatedSections })
+    setOptimisticDeletedTaskIds(prev => new Set(prev).add(taskIdToDelete));
 
-    const timeoutId = setTimeout(() => {
-      executeDeleteTask(taskIdToDelete);
-      setUndoToast(false);
-      pendingDeleteRef.current = null;
-    }, 5000);
-
-    pendingDeleteRef.current = { task: taskToDelete, sectionId: secId, index: taskIndex, timeoutId };
-    setUndoToast(true);
-  }
-
-  const handleUndoDelete = () => {
-    if (!pendingDeleteRef.current) return;
-    clearTimeout(pendingDeleteRef.current.timeoutId);
-
-    const { task, sectionId, index } = pendingDeleteRef.current;
-
-    const updatedSections = selectedProject.sections.map(sec => {
-      if (sec.id === sectionId) {
-        const newTasks = [...(sec.tasks || [])];
-        newTasks.splice(index, 0, task);
-        return { ...sec, tasks: newTasks };
+    showUndo({
+      message: "Task deleted",
+      onUndo: () => {
+        // Revert optimistic UI
+        const revertedSections = updatedSections.map(sec => {
+          if (sec.id === secId) {
+            const newTasks = [...(sec.tasks || [])];
+            newTasks.splice(taskIndex, 0, taskToDelete);
+            return { ...sec, tasks: newTasks };
+          }
+          return sec;
+        });
+        syncProjectStates({ ...selectedProject, sections: revertedSections });
+        
+        setOptimisticDeletedTaskIds(prev => {
+          const next = new Set(prev);
+          next.delete(taskIdToDelete);
+          return next;
+        });
+      },
+      onCommit: () => {
+        executeDeleteTask(taskIdToDelete);
+        setOptimisticDeletedTaskIds(prev => {
+          const next = new Set(prev);
+          next.delete(taskIdToDelete);
+          return next;
+        });
       }
-      return sec;
     });
-    syncProjectStates({ ...selectedProject, sections: updatedSections });
-
-    setUndoToast(false);
-    pendingDeleteRef.current = null;
   }
 
   const handleTaskSelect = (e, taskId) => {
@@ -1355,86 +1398,116 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     const taskIds = [...selectedTaskIds];
     if (taskIds.length === 0) return;
 
-    try {
-      if (action === 'delete') {
-        // Optimistic UI: remove tasks locally
-        const updatedSections = selectedProject.sections.map(sec => ({
-          ...sec,
-          tasks: (sec.tasks || []).filter(t => !selectedTaskIds.has(t.id))
-        }));
-        syncProjectStates({ ...selectedProject, sections: updatedSections });
-
-        await fetch('http://localhost:5001/api/projects/tasks/bulk-delete', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ taskIds })
-        });
-      } else {
-        let updates = {};
-        if (action === 'complete') updates = { isCompleted: payload.isCompleted };
-        else if (action === 'assign') updates = { assigneeId: payload.assigneeId };
-        else if (action === 'dueDate') updates = { dueDate: payload.dueDate };
-        else if (action === 'move') updates = { sectionId: payload.sectionId };
-
-        // Optimistic UI for non-move actions
-        if (action !== 'move') {
-          const updatedSections = selectedProject.sections.map(sec => ({
-            ...sec,
-            tasks: (sec.tasks || []).map(t => {
-              if (!selectedTaskIds.has(t.id)) return t;
-              if (action === 'complete') return { ...t, isCompleted: payload.isCompleted, completedAt: payload.isCompleted ? new Date().toISOString() : null };
-              if (action === 'assign') {
-                let memberUser = null;
-                if (payload.assigneeId) {
-                  if (selectedProject.owner?.id === payload.assigneeId) {
-                    memberUser = selectedProject.owner;
-                  } else {
-                    const member = selectedProject.members?.find(m => (m.user?.id || m.userId) === payload.assigneeId);
-                    memberUser = member?.user || null;
-                  }
-                }
-                return { ...t, assigneeId: payload.assigneeId, assignee: memberUser };
-              }
-              if (action === 'dueDate') return { ...t, dueDate: payload.dueDate };
-              return t;
-            })
-          }));
-          syncProjectStates({ ...selectedProject, sections: updatedSections });
-        } else {
-          // Move: remove from old sections, add to target
-          const tasksToMove = [];
-          const updatedSections = selectedProject.sections.map(sec => {
-            const kept = [];
-            (sec.tasks || []).forEach(t => {
-              if (selectedTaskIds.has(t.id)) {
-                tasksToMove.push({ ...t, sectionId: payload.sectionId });
-              } else {
-                kept.push(t);
-              }
-            });
-            return { ...sec, tasks: kept };
-          });
-          const finalSections = updatedSections.map(sec => {
-            if (sec.id === payload.sectionId) {
-              return { ...sec, tasks: [...(sec.tasks || []), ...tasksToMove] };
-            }
-            return sec;
-          });
-          syncProjectStates({ ...selectedProject, sections: finalSections });
-        }
-
-        await fetch('http://localhost:5001/api/projects/tasks/bulk-update', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ taskIds, updates })
-        });
-      }
-    } catch (err) {
-      console.error('Bulk action error:', err);
-    }
+    const previousSections = selectedProject.sections;
 
     if (action === 'delete') {
+      // Optimistic UI: remove tasks locally
+      const updatedSections = selectedProject.sections.map(sec => ({
+        ...sec,
+        tasks: (sec.tasks || []).filter(t => !selectedTaskIds.has(t.id))
+      }));
+      syncProjectStates({ ...selectedProject, sections: updatedSections });
+      
+      const idsSet = new Set(taskIds);
+      setOptimisticDeletedTaskIds(prev => new Set([...prev, ...idsSet]));
       setSelectedTaskIds(new Set());
+
+      showUndo({
+        message: `${taskIds.length} tasks deleted`,
+        onUndo: () => {
+          syncProjectStates({ ...selectedProject, sections: previousSections });
+          setOptimisticDeletedTaskIds(prev => {
+            const next = new Set(prev);
+            taskIds.forEach(id => next.delete(id));
+            return next;
+          });
+        },
+        onCommit: async () => {
+          try {
+            await fetch('http://localhost:5001/api/projects/tasks/bulk-delete', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ taskIds })
+            });
+          } catch (err) { console.error('Bulk action error:', err); }
+          setOptimisticDeletedTaskIds(prev => {
+            const next = new Set(prev);
+            taskIds.forEach(id => next.delete(id));
+            return next;
+          });
+        }
+      });
+    } else {
+      let updates = {};
+      if (action === 'complete') updates = { isCompleted: payload.isCompleted };
+      else if (action === 'assign') updates = { assigneeId: payload.assigneeId };
+      else if (action === 'dueDate') updates = { dueDate: payload.dueDate };
+      else if (action === 'move') updates = { sectionId: payload.sectionId };
+
+      // Optimistic UI for non-move actions
+      if (action !== 'move') {
+        const updatedSections = selectedProject.sections.map(sec => ({
+          ...sec,
+          tasks: (sec.tasks || []).map(t => {
+            if (!selectedTaskIds.has(t.id)) return t;
+            if (action === 'complete') return { ...t, isCompleted: payload.isCompleted, completedAt: payload.isCompleted ? new Date().toISOString() : null };
+            if (action === 'assign') {
+              let memberUser = null;
+              if (payload.assigneeId) {
+                if (selectedProject.owner?.id === payload.assigneeId) {
+                  memberUser = selectedProject.owner;
+                } else {
+                  const member = selectedProject.members?.find(m => (m.user?.id || m.userId) === payload.assigneeId);
+                  memberUser = member?.user || null;
+                }
+              }
+              return { ...t, assigneeId: payload.assigneeId, assignee: memberUser };
+            }
+            if (action === 'dueDate') return { ...t, dueDate: payload.dueDate };
+            return t;
+          })
+        }));
+        syncProjectStates({ ...selectedProject, sections: updatedSections });
+      } else {
+        // Move: remove from old sections, add to target
+        const tasksToMove = [];
+        const updatedSections = selectedProject.sections.map(sec => {
+          const kept = [];
+          (sec.tasks || []).forEach(t => {
+            if (selectedTaskIds.has(t.id)) {
+              tasksToMove.push({ ...t, sectionId: payload.sectionId });
+            } else {
+              kept.push(t);
+            }
+          });
+          return { ...sec, tasks: kept };
+        });
+        const finalSections = updatedSections.map(sec => {
+          if (sec.id === payload.sectionId) {
+            return { ...sec, tasks: [...(sec.tasks || []), ...tasksToMove] };
+          }
+          return sec;
+        });
+        syncProjectStates({ ...selectedProject, sections: finalSections });
+      }
+
+      setSelectedTaskIds(new Set());
+
+      showUndo({
+        message: `${taskIds.length} tasks updated`,
+        onUndo: () => {
+          syncProjectStates({ ...selectedProject, sections: previousSections });
+        },
+        onCommit: async () => {
+          try {
+            await fetch('http://localhost:5001/api/projects/tasks/bulk-update', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ taskIds, updates })
+            });
+          } catch (err) { console.error('Bulk action error:', err); }
+        }
+      });
     }
   };
 
@@ -2972,8 +3045,46 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           token={token}
         />
       )}
-      {activePopover && (activePopover.type === 'date' || activePopover.type === 'custom-date') && <DatePickerPopover task={activePopover.task} token={token} coords={activePopover.coords} customFieldId={activePopover.customFieldId} onDatesUpdated={(id, updated) => { handleTaskUpdate(id, updated); setActivePopover(null); }} />}
-      {activePopover && activePopover.type === 'assignee' && <AssigneePopover task={activePopover.task} token={token} coords={activePopover.coords} project={selectedProject} onAssigneeUpdated={(id, updated) => { handleTaskUpdate(id, updated); setActivePopover(null); }} />}
+      {activePopover && (activePopover.type === 'date' || activePopover.type === 'custom-date') && <DatePickerPopover task={activePopover.task} token={token} coords={activePopover.coords} customFieldId={activePopover.customFieldId} onDatesUpdated={(id, updated) => { 
+        handleTaskUpdate(id, updated); 
+        setActivePopover(null); 
+        const prevTask = activePopover.task;
+        showUndo({
+          message: "Date updated",
+          onUndo: async () => {
+            handleTaskUpdate(id, prevTask);
+            try {
+              const revRes = await fetch(`http://localhost:5001/api/projects/tasks/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ dueDate: prevTask.dueDate, startDate: prevTask.startDate })
+              });
+              const revData = await revRes.json();
+              if (revRes.ok) handleTaskUpdate(id, revData);
+            } catch (err) { console.error("Undo error:", err); }
+          }
+        });
+      }} />}
+      {activePopover && activePopover.type === 'assignee' && <AssigneePopover task={activePopover.task} token={token} coords={activePopover.coords} project={selectedProject} onAssigneeUpdated={(id, updated) => { 
+        handleTaskUpdate(id, updated); 
+        setActivePopover(null); 
+        const prevTask = activePopover.task;
+        showUndo({
+          message: "Assignee updated",
+          onUndo: async () => {
+            handleTaskUpdate(id, prevTask);
+            try {
+              const revRes = await fetch(`http://localhost:5001/api/projects/tasks/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ assigneeId: prevTask.assigneeId })
+              });
+              const revData = await revRes.json();
+              if (revRes.ok) handleTaskUpdate(id, revData);
+            } catch (err) { console.error("Undo error:", err); }
+          }
+        });
+      }} />}
 
       {/* Global Task Detail Pane */}
       {activeTaskPaneId && (
@@ -3739,18 +3850,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           <div className="view-context-menu-item" onMouseDown={(e) => { e.stopPropagation(); handleSetDefaultView(); }}>⭐ Set as default</div>
           <div className="view-context-menu-item delete-item" onMouseDown={(e) => { e.stopPropagation(); handleDeleteView(); }}>🗑️ Delete</div>
         </div>
-      )}
-      {undoToast && (
-        <div style={{ position: 'fixed', bottom: '24px', left: '24px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', padding: '12px 16px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '24px', zIndex: 99999, border: '1px solid var(--border-color)' }}>
-          <span style={{ fontSize: '0.9rem', fontWeight: '400' }}>Task deleted</span>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => { if (pendingDeleteRef.current) { clearTimeout(pendingDeleteRef.current.timeoutId); executeDeleteTask(pendingDeleteRef.current.task.id); } setUndoToast(false); pendingDeleteRef.current = null; }}>✕</button>
-            <button style={{ border: '1px solid var(--border-color)', background: 'transparent', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: '500' }} onClick={handleUndoDelete}>Undo</button>
-          </div>
-        </div>
-      )}
-
-      {selectedTaskIds.size > 0 && (
+      )}      {selectedTaskIds.size > 0 && (
         <BulkActionBar
           selectedCount={selectedTaskIds.size}
           sections={selectedProject.sections}
