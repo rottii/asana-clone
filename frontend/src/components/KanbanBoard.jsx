@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { io } from 'socket.io-client'
 import KanbanColumn from './KanbanColumn'
 import DatePickerPopover from './DatePickerPopover'
@@ -23,10 +23,11 @@ import ProjectMessagesView from './ProjectMessagesView'
 import BulkActionBar from './BulkActionBar'
 import './KanbanBoard.css'
 import { getParsedCustomFields, getParsedGithubPRs, getGithubPRStatusLabel, GITHUB_PR_STATUSES, GITHUB_PR_SORT_MAP } from '../utils/customFields'
+import UserAvatar from './UserAvatar'
 
 import { useUndo } from '../context/UndoContext'
 
-export default function KanbanBoard({ selectedProject, setSelectedProject, projects, setProjects, token, user, handleLogout }) {
+export default function KanbanBoard({ selectedProject, setSelectedProject, projects, setProjects, token, user, handleLogout, isMyTasks }) {
   const [newSectionName, setNewSectionName] = useState('')
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, taskId: null })
   const [approvalMenu, setApprovalMenu] = useState({ visible: false, x: 0, y: 0, task: null })
@@ -104,10 +105,29 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   // Parse views for backward compatibility
   const rawViews = selectedProject.activeViews || ['Overview', 'List', 'Board', 'Timeline', 'Gantt', 'Dashboard', 'Calendar', 'Workload'];
-  const parsedViews = rawViews.map((v, i) => {
+  let parsedViews = rawViews.map((v, i) => {
     if (typeof v === 'string') return { id: `legacy-${v.toLowerCase()}`, type: v, name: v };
     return v;
   });
+
+  if (isMyTasks) {
+    parsedViews = parsedViews.filter(v => v.type !== 'Overview');
+  }
+
+  const parsedSections = useMemo(() => {
+    return (selectedProject.sections || []).map(s => {
+      if (!s.tasks) return s;
+      const filteredTasks = s.tasks.filter(t => {
+        const isTempPrim = t.section?.project?.isTemplate;
+        const isTempSec = t.secondaryProjects?.some(sp => sp.project?.isTemplate);
+        if (isTempPrim || isTempSec) {
+           return false;
+        }
+        return true;
+      });
+      return { ...s, tasks: filteredTasks };
+    });
+  }, [selectedProject.sections]);
 
   // Determine current active view object
   const activeViewObj = parsedViews.find(v => v.id === currentTab) || parsedViews.find(v => v.type === currentTab) || parsedViews[0];
@@ -147,11 +167,11 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const isReadOnly = projectRole === 'VIEWER' || projectRole === 'COMMENTER';
 
   // Sürükle bırak işlemlerinde state gecikmesini önlemek için senkron referans
-  const latestSectionsRef = useRef(selectedProject.sections);
+  const latestSectionsRef = useRef(parsedSections);
 
   useEffect(() => {
-    latestSectionsRef.current = selectedProject.sections;
-  }, [selectedProject.sections]);
+    latestSectionsRef.current = parsedSections;
+  }, [parsedSections]);
 
   useEffect(() => {
     setNameInput(selectedProject.name);
@@ -226,8 +246,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     setLastInteractedSectionId(null);
     setLastInteractedTaskId(null);
 
-    if (selectedProject?.sections?.length > 0) {
-      setLastInteractedSectionId(selectedProject.sections[0].id)
+    if (parsedSections?.length > 0) {
+      setLastInteractedSectionId(parsedSections[0].id)
     }
   }, [selectedProject?.id])
 
@@ -732,7 +752,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   // CANLI SWAP ALGORİTMASI
   const handleLiveSectionSwap = (draggedId, targetId) => {
-    const currentSections = latestSectionsRef.current || selectedProject.sections || [];
+    const currentSections = latestSectionsRef.current || parsedSections || [];
     const sortedSections = [...currentSections].sort((a, b) => a.order - b.order);
     const draggedIdx = sortedSections.findIndex(s => s.id === draggedId);
     const targetIdx = sortedSections.findIndex(s => s.id === targetId);
@@ -753,7 +773,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     // For single drag, hovering over itself is a no-op.
     if (!isMultiDrag && dragId === hoverId) return;
 
-    const currentSections = latestSectionsRef.current || selectedProject.sections || [];
+    const currentSections = latestSectionsRef.current || parsedSections || [];
     const draggedIds = isMultiDrag ? Array.from(selectedTaskIds) : [dragId];
 
     let dragSecIdx = -1, dragTaskIdx = -1;
@@ -839,7 +859,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   // SÜRÜKLEME BİTTİĞİNDE VERİTABANINA YAZMA
   const handleFinalSectionMove = async () => {
     if (isReadOnly) return;
-    const currentSections = latestSectionsRef.current || selectedProject.sections || [];
+    const currentSections = latestSectionsRef.current || parsedSections || [];
     const orderedSectionIds = [...currentSections].sort((a, b) => a.order - b.order).map(s => s.id);
     try {
       const response = await fetch('http://localhost:5001/api/projects/sections/move', {
@@ -866,7 +886,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       return;
     }
 
-    const targetSectionId = overrides.sectionId || lastInteractedSectionId || selectedProject.sections?.[0]?.id;
+    const targetSectionId = overrides.sectionId || lastInteractedSectionId || parsedSections?.[0]?.id;
     if (!targetSectionId) return;
 
     try {
@@ -904,6 +924,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   const handleRenameProject = async () => {
+    if (isMyTasks) { setIsEditingName(false); return; }
     if ((projectRole !== 'ADMIN' && projectRole !== 'EDITOR') || !nameInput.trim() || nameInput.trim() === selectedProject.name) {
       setIsEditingName(false); return;
     }
@@ -916,7 +937,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   const handleArchiveProject = async () => {
-    if (projectRole !== 'ADMIN' && projectRole !== 'EDITOR') return;
+    if (isMyTasks || (projectRole !== 'ADMIN' && projectRole !== 'EDITOR')) return;
     const isCurrentlyArchived = selectedProject.isArchived;
     if (!window.confirm(`Proje ${isCurrentlyArchived ? 'arşivden çıkarılsın' : 'arşivlensin'} mi?`)) return;
     try {
@@ -928,7 +949,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   const handleSaveAsTemplate = async () => {
-    if (projectRole !== 'ADMIN' && projectRole !== 'EDITOR') return;
+    if (isMyTasks || (projectRole !== 'ADMIN' && projectRole !== 'EDITOR')) return;
     if (!window.confirm("Bu projeyi şablon olarak kaydetmek istediğinize emin misiniz?")) return;
     try {
       const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/save-as-template`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
@@ -942,7 +963,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   const handleDeleteProject = async () => {
-    if (projectRole !== 'ADMIN') return;
+    if (isMyTasks || projectRole !== 'ADMIN') return;
     if (!window.confirm("Proje silinsin mi?")) return;
     try {
       await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
@@ -1016,6 +1037,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   // --- CUSTOMIZE PANEL LOGIC ---
   const fetchProjectRules = async () => {
+    if (isMyTasks) return;
     try {
       const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/rules`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -1039,6 +1061,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   };
 
   const handleDeleteRule = async (ruleId) => {
+    if (isMyTasks) return;
     try {
       const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/rules/${ruleId}`, {
         method: 'DELETE',
@@ -1049,6 +1072,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   const handleDuplicateRule = async (rule) => {
+    if (isMyTasks) return;
     try {
       const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/rules`, {
         method: 'POST',
@@ -1219,7 +1243,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     let taskToDelete = null;
     let secId = null;
     let taskIndex = -1;
-    for (const sec of selectedProject.sections) {
+    for (const sec of parsedSections) {
       const idx = sec.tasks?.findIndex(t => t.id === taskIdToDelete);
       if (idx !== -1 && idx !== undefined) {
         taskToDelete = sec.tasks[idx];
@@ -1231,7 +1255,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
     if (!taskToDelete) return;
 
-    const updatedSections = selectedProject.sections.map(sec => ({ ...sec, tasks: (sec.tasks || []).filter(t => t.id !== taskIdToDelete) }))
+    const updatedSections = parsedSections.map(sec => ({ ...sec, tasks: (sec.tasks || []).filter(t => t.id !== taskIdToDelete) }))
     syncProjectStates({ ...selectedProject, sections: updatedSections })
     setOptimisticDeletedTaskIds(prev => new Set(prev).add(taskIdToDelete));
 
@@ -1284,7 +1308,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         return true;
       }
       const flat = [];
-      const sections = virtualGroupedSections || selectedProject.sections?.sort((a, b) => a.order - b.order) || [];
+      const sections = virtualGroupedSections || parsedSections?.sort((a, b) => a.order - b.order) || [];
       sections.forEach(sec => {
         const tasks = virtualGroupedSections ? sec.tasks : (applyTaskSort ? applyTaskSort(applyTaskFilter(sec.tasks)) : applyTaskFilter(sec.tasks));
         flat.push(...tasks.map(t => t.id));
@@ -1398,11 +1422,11 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     const taskIds = [...selectedTaskIds];
     if (taskIds.length === 0) return;
 
-    const previousSections = selectedProject.sections;
+    const previousSections = parsedSections;
 
     if (action === 'delete') {
       // Optimistic UI: remove tasks locally
-      const updatedSections = selectedProject.sections.map(sec => ({
+      const updatedSections = parsedSections.map(sec => ({
         ...sec,
         tasks: (sec.tasks || []).filter(t => !selectedTaskIds.has(t.id))
       }));
@@ -1446,7 +1470,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
       // Optimistic UI for non-move actions
       if (action !== 'move') {
-        const updatedSections = selectedProject.sections.map(sec => ({
+        const updatedSections = parsedSections.map(sec => ({
           ...sec,
           tasks: (sec.tasks || []).map(t => {
             if (!selectedTaskIds.has(t.id)) return t;
@@ -1471,7 +1495,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       } else {
         // Move: remove from old sections, add to target
         const tasksToMove = [];
-        const updatedSections = selectedProject.sections.map(sec => {
+        const updatedSections = parsedSections.map(sec => {
           const kept = [];
           (sec.tasks || []).forEach(t => {
             if (selectedTaskIds.has(t.id)) {
@@ -1583,7 +1607,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       setLastInteractedSectionId(targetSectionId);
       setLastInteractedTaskId(explicitTargetTaskId);
 
-      let currentSections = latestSectionsRef.current || selectedProject.sections;
+      let currentSections = latestSectionsRef.current || parsedSections;
       
       const isMultiDrag = selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(taskId);
       const draggedIds = isMultiDrag ? Array.from(selectedTaskIds) : [taskId];
@@ -1698,7 +1722,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     return `${formattedStart} - ${formattedDue}`;
   }
   const getGroupedSections = () => {
-    let rawSections = selectedProject?.sections || [];
+    let rawSections = parsedSections || [];
     if (!activeGroup || activeGroup === 'Sections') return null;
 
     let allTasks = [];
@@ -2020,19 +2044,23 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       <div style={styles.asanaMainHeader}>
         <div style={styles.headerLeftBlock}>
           <div style={{ position: 'relative' }}>
-            <div
-              style={{ ...styles.asanaProjectIcon, backgroundColor: selectedProject.color || '#4F46E5', cursor: (projectRole === 'ADMIN' || projectRole === 'EDITOR') ? 'pointer' : 'default' }}
-              onClick={(e) => {
-                if (projectRole === 'ADMIN' || projectRole === 'EDITOR') {
-                  document.body.click();
-                  e.stopPropagation();
-                  setIsIconPickerOpen(!isIconPickerOpen);
-                }
-              }}
-            >
-              {selectedProject.icon || '📋'}
-            </div>
-            {isIconPickerOpen && (
+            {selectedProject?.status === 'MY_TASKS' ? (
+              <UserAvatar name={user?.name} size={32} style={{ marginRight: '4px' }} />
+            ) : (
+              <div
+                style={{ ...styles.asanaProjectIcon, backgroundColor: selectedProject.color || '#4F46E5', cursor: (projectRole === 'ADMIN' || projectRole === 'EDITOR') ? 'pointer' : 'default' }}
+                onClick={(e) => {
+                  if (projectRole === 'ADMIN' || projectRole === 'EDITOR') {
+                    document.body.click();
+                    e.stopPropagation();
+                    setIsIconPickerOpen(!isIconPickerOpen);
+                  }
+                }}
+              >
+                {selectedProject.icon || '📋'}
+              </div>
+            )}
+            {isIconPickerOpen && selectedProject?.status !== 'MY_TASKS' && (
               <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '8px', zIndex: 10000 }}>
                 <IconColorPicker
                   selectedColor={selectedProject.color || '#4F46E5'}
@@ -2050,7 +2078,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <h1 style={styles.projectTitleText}>{selectedProject.name}</h1>
-                <button onClick={(e) => { document.body.click(); e.stopPropagation(); setIsHeaderDropdownOpen(!isHeaderDropdownOpen); }} style={styles.titleDropdownArrowBtn}>▼</button>
+                {selectedProject?.status !== 'MY_TASKS' && (
+                  <button onClick={(e) => { document.body.click(); e.stopPropagation(); setIsHeaderDropdownOpen(!isHeaderDropdownOpen); }} style={styles.titleDropdownArrowBtn}>▼</button>
+                )}
               </div>
             )}
             {isHeaderDropdownOpen && (
@@ -2069,88 +2099,92 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               </div>
             )}
           </div>
-          <span
-            style={{
-              ...styles.starIconStyle,
-              color: selectedProject?.starredBy?.some(s => s.userId === user.id) ? '#F59E0B' : 'var(--text-tertiary)'
-            }}
-            onClick={handleToggleStar}
-          >
-            {selectedProject?.starredBy?.some(s => s.userId === user.id) ? '★' : '☆'}
-          </span>
+          {selectedProject?.status !== 'MY_TASKS' && (
+            <>
+              <span
+                style={{
+                  ...styles.starIconStyle,
+                  color: selectedProject?.starredBy?.some(s => s.userId === user.id) ? '#F59E0B' : 'var(--text-tertiary)'
+                }}
+                onClick={handleToggleStar}
+              >
+                {selectedProject?.starredBy?.some(s => s.userId === user.id) ? '★' : '☆'}
+              </span>
 
-          {/* Status Dropdown */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={(e) => { document.body.click(); e.stopPropagation(); setIsStatusDropdownOpen(!isStatusDropdownOpen); }}
-              style={{
-                ...styles.setStatusDummyBtn,
-                backgroundColor: selectedProject.status && selectedProject.status !== 'NONE' ? projectStatuses.find(s => s.id === selectedProject.status)?.bgColor : 'transparent',
-                color: selectedProject.status && selectedProject.status !== 'NONE' ? projectStatuses.find(s => s.id === selectedProject.status)?.color : 'var(--text-secondary)',
-                border: selectedProject.status && selectedProject.status !== 'NONE' ? 'none' : '1px dashed #D1D5DB'
-              }}
-            >
-              {selectedProject.status && selectedProject.status !== 'NONE' ? (
-                <>
-                  {projectStatuses.find(s => s.id === selectedProject.status)?.icon}{' '}
-                  {projectStatuses.find(s => s.id === selectedProject.status)?.label} ▼
-                </>
-              ) : (
-                'Set status ▼'
-              )}
-            </button>
+              {/* Status Dropdown */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={(e) => { document.body.click(); e.stopPropagation(); setIsStatusDropdownOpen(!isStatusDropdownOpen); }}
+                  style={{
+                    ...styles.setStatusDummyBtn,
+                    backgroundColor: selectedProject.status && selectedProject.status !== 'NONE' ? projectStatuses.find(s => s.id === selectedProject.status)?.bgColor : 'transparent',
+                    color: selectedProject.status && selectedProject.status !== 'NONE' ? projectStatuses.find(s => s.id === selectedProject.status)?.color : 'var(--text-secondary)',
+                    border: selectedProject.status && selectedProject.status !== 'NONE' ? 'none' : '1px dashed #D1D5DB'
+                  }}
+                >
+                  {selectedProject.status && selectedProject.status !== 'NONE' ? (
+                    <>
+                      {projectStatuses.find(s => s.id === selectedProject.status)?.icon}{' '}
+                      {projectStatuses.find(s => s.id === selectedProject.status)?.label} ▼
+                    </>
+                  ) : (
+                    'Set status ▼'
+                  )}
+                </button>
 
-            {isStatusDropdownOpen && (
-              <div style={styles.statusDropdownMenu} onClick={(e) => e.stopPropagation()}>
-                {projectStatuses.map(status => {
-                  if (status.isDivider) {
-                    return <div key="divider" style={{ height: '1px', backgroundColor: 'var(--text-primary)', margin: '4px 0' }} />;
-                  }
-                  return (
-                    <div
-                      key={status.id}
-                      style={{
-                        padding: '6px 12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        cursor: 'pointer',
-                        borderRadius: '4px',
-                        marginBottom: '2px',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--text-primary)'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      onClick={() => handleSetProjectStatus(status.id)}
-                    >
-                      <span style={{
-                        backgroundColor: status.bgColor,
-                        color: status.color,
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '0.8rem',
-                        fontWeight: '500',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}>
-                        <span>{status.icon}</span> {status.label}
-                      </span>
-                    </div>
-                  );
-                })}
+                {isStatusDropdownOpen && (
+                  <div style={styles.statusDropdownMenu} onClick={(e) => e.stopPropagation()}>
+                    {projectStatuses.map(status => {
+                      if (status.isDivider) {
+                        return <div key="divider" style={{ height: '1px', backgroundColor: 'var(--text-primary)', margin: '4px 0' }} />;
+                      }
+                      return (
+                        <div
+                          key={status.id}
+                          style={{
+                            padding: '6px 12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            marginBottom: '2px',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--text-primary)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          onClick={() => handleSetProjectStatus(status.id)}
+                        >
+                          <span style={{
+                            backgroundColor: status.bgColor,
+                            color: status.color,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '0.8rem',
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}>
+                            <span>{status.icon}</span> {status.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
 
         <div style={styles.headerRightBlock}>
           <div style={styles.avatarListWrapper}>
-            <div
-              style={styles.avatarCircleOwner}
+            <UserAvatar 
+              name={selectedProject.owner?.name} 
+              size={28} 
               onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }}
-            >
-              {selectedProject.owner?.name?.[0].toUpperCase()}
-            </div>
+              style={{ cursor: 'pointer', border: '1px solid #FFF' }}
+            />
           </div>
           <button onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }} style={{ ...styles.asanaShareButtonLight, fontWeight: 'normal' }}>👥 Share</button>
           <button id="customize-pane-toggle-btn" onClick={(e) => { e.stopPropagation(); setIsCustomizePanelOpen(prev => !prev); setIsOptionsPaneOpen(false); }} style={styles.asanaCustomizeBtn}>🎛️ Customize</button>
@@ -2227,7 +2261,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           </span>
           {isAddViewMenuOpen && (
             <div style={{ ...styles.addWidgetDropdownMenu, top: '100%', left: 0, marginTop: '4px', zIndex: 100 }} onClick={(e) => e.stopPropagation()}>
-              {['Overview', 'List', 'Board', 'Timeline', 'Gantt', 'Dashboard', 'Calendar', 'Workload', 'Note', 'Files', 'Messages'].map(type => (
+              {['Overview', 'List', 'Board', 'Timeline', 'Gantt', 'Dashboard', 'Calendar', 'Workload', 'Note', 'Files', 'Messages']
+                .filter(type => !(isMyTasks && type === 'Overview'))
+                .map(type => (
                 <div key={type} style={styles.addWidgetDropdownItem} onClick={() => handleAddView(type)}>
                   {type}
                 </div>

@@ -101,7 +101,71 @@ async function getProjectRoleFromSection(userId, sectionId) {
         select: { projectId: true }
     });
     if (!section) return null;
-    return getProjectRole(userId, section.projectId);
+}
+
+// Ensure the user has a "My Tasks" project, create if not
+async function ensureMyTasksProject(userId) {
+    let myTasksProject = await prisma.project.findFirst({
+        where: { status: 'MY_TASKS', ownerId: userId },
+        include: { sections: true }
+    });
+    if (!myTasksProject) {
+        myTasksProject = await prisma.project.create({
+            data: {
+                name: 'My Tasks',
+                status: 'MY_TASKS',
+                ownerId: userId,
+                color: '#4F46E5',
+                icon: '👤',
+                sections: {
+                    create: [
+                        { name: 'Recently assigned', order: 1000 },
+                        { name: 'Do today', order: 2000 },
+                        { name: 'Do next week', order: 3000 },
+                        { name: 'Do later', order: 4000 }
+                    ]
+                },
+                members: {
+                    create: { userId, role: 'ADMIN' }
+                }
+            },
+            include: { sections: true }
+        });
+    }
+
+    // Auto-migrate legacy assigned tasks into the My Tasks project if missing
+    try {
+        const recentlyAssignedSection = myTasksProject.sections.find(s => s.name === 'Recently assigned') || myTasksProject.sections[0];
+        if (recentlyAssignedSection) {
+            const assignedTasks = await prisma.task.findMany({
+                where: { assigneeId: userId },
+                include: { secondaryProjects: true }
+            });
+            for (const task of assignedTasks) {
+                const isPrimary = myTasksProject.sections.some(s => s.id === task.sectionId);
+                const isSecondary = task.secondaryProjects.some(sp => sp.projectId === myTasksProject.id);
+                if (!isPrimary && !isSecondary) {
+                    const maxOrderTask = await prisma.taskProject.findFirst({
+                        where: { sectionId: recentlyAssignedSection.id },
+                        orderBy: { order: 'desc' }
+                    });
+                    const newOrder = maxOrderTask ? maxOrderTask.order + 1000 : 1000;
+                    await prisma.taskProject.create({
+                        data: {
+                            taskId: task.id,
+                            projectId: myTasksProject.id,
+                            sectionId: recentlyAssignedSection.id,
+                            order: newOrder
+                        }
+                    });
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Error migrating legacy tasks to My Tasks:", err);
+    }
+
+    return myTasksProject;
 }
 
 // Check if role meets minimum required level
@@ -171,7 +235,7 @@ const fullProjectInclude = {
                     },
                     secondaryProjects: {
                         include: {
-                            project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } },
+                            project: { select: { id: true, name: true, color: true, icon: true, isTemplate: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } },
                             section: { select: { id: true, name: true } }
                         }
                     }
@@ -183,7 +247,7 @@ const fullProjectInclude = {
                         include: {
                             section: {
                                 include: {
-                                    project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } }
+                                    project: { select: { id: true, name: true, color: true, icon: true, isTemplate: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } }
                                 }
                             },
                             assignee: { select: { id: true, name: true, email: true } },
@@ -443,7 +507,45 @@ router.get('/', authenticateToken, async (req, res) => {
             }
         });
 
-        res.json(projects);
+        // Ensure user has a MY_TASKS project and it's migrated
+        await ensureMyTasksProject(req.user.userId);
+        
+        // Remove any outdated MY_TASKS project that might have been fetched before migration
+        const filteredProjects = projects.filter(p => !(p.status === 'MY_TASKS' && p.ownerId === req.user.userId));
+        
+        let myTasksProject = await prisma.project.findFirst({
+            where: { status: 'MY_TASKS', ownerId: req.user.userId },
+            include: fullProjectInclude
+        });
+            
+            if (myTasksProject && myTasksProject.sections) {
+                myTasksProject.sections.forEach(section => {
+                    const primaryTasks = section.tasks || [];
+                    const secondaryTasks = (section.secondaryTasks || []).map(st => ({
+                        ...st.task,
+                        order: st.order,
+                        sectionId: st.sectionId,
+                        isSecondary: true
+                    }));
+                    
+                    let allTasks = [...primaryTasks, ...secondaryTasks];
+                    // Filter out template tasks
+                    allTasks = allTasks.filter(t => {
+                        if (t.section?.project?.isTemplate) return false;
+                        if (t.secondaryProjects?.some(sp => sp.project?.isTemplate)) return false;
+                        return true;
+                    });
+                    
+                    section.tasks = allTasks.sort((a, b) => a.order - b.order);
+                    delete section.secondaryTasks;
+                });
+            }
+            
+            if (myTasksProject) {
+                filteredProjects.push(myTasksProject);
+            }
+
+        res.json(filteredProjects);
     } catch (error) {
         console.error('Error fetching projects:', error);
         res.status(500).json({ error: 'Projeler yüklenirken hata oluştu.', details: error.message });
@@ -469,7 +571,19 @@ router.get('/:id', authenticateToken, async (req, res) => {
                     sectionId: st.sectionId,
                     isSecondary: true
                 }));
-                section.tasks = [...primaryTasks, ...secondaryTasks].sort((a, b) => a.order - b.order);
+                
+                let allTasks = [...primaryTasks, ...secondaryTasks];
+                
+                // If this is the MY_TASKS project, filter out template tasks
+                if (project.status === 'MY_TASKS') {
+                    allTasks = allTasks.filter(t => {
+                        if (t.section?.project?.isTemplate) return false;
+                        if (t.secondaryProjects?.some(sp => sp.project?.isTemplate)) return false;
+                        return true;
+                    });
+                }
+                
+                section.tasks = allTasks.sort((a, b) => a.order - b.order);
                 delete section.secondaryTasks;
             });
         }
@@ -1217,6 +1331,29 @@ router.post('/tasks', authenticateToken, async (req, res) => {
                 console.error('Notification error:', notifErr);
             }
         }
+        
+        // Multi-home to assignee's My Tasks project
+        if (assigneeId) {
+            try {
+                const myTasksProj = await ensureMyTasksProject(assigneeId);
+                // Find "Recently assigned" section
+                const recentlyAssignedSec = await prisma.section.findFirst({
+                    where: { projectId: myTasksProj.id, name: 'Recently assigned' }
+                });
+                if (recentlyAssignedSec) {
+                    await prisma.taskProject.create({
+                        data: {
+                            taskId: newTask.id,
+                            projectId: myTasksProj.id,
+                            sectionId: recentlyAssignedSec.id,
+                            order: 0
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('Error multi-homing to My Tasks on create:', err);
+            }
+        }
 
         res.status(201).json(newTask);
     } catch (error) {
@@ -1662,6 +1799,43 @@ router.patch('/tasks/:taskId', authenticateToken, async (req, res) => {
                 if (io) io.to(assigneeId).emit('new_notification');
             } catch (notifErr) {
                 console.error('Notification error:', notifErr);
+            }
+        }
+        
+        // ─── My Tasks Sync ───────────────────────────────────────────────────
+        if (assigneeId !== undefined && assigneeId !== currentTask.assigneeId) {
+            try {
+                // Remove from previous assignee's My Tasks if it exists
+                if (currentTask.assigneeId) {
+                    const prevMyTasksProj = await prisma.project.findFirst({
+                        where: { status: 'MY_TASKS', ownerId: currentTask.assigneeId }
+                    });
+                    if (prevMyTasksProj) {
+                        await prisma.taskProject.deleteMany({
+                            where: { taskId: updatedTask.id, projectId: prevMyTasksProj.id }
+                        });
+                    }
+                }
+                
+                // Add to new assignee's My Tasks
+                if (assigneeId) {
+                    const newMyTasksProj = await ensureMyTasksProject(assigneeId);
+                    const recentlyAssignedSec = await prisma.section.findFirst({
+                        where: { projectId: newMyTasksProj.id, name: 'Recently assigned' }
+                    });
+                    if (recentlyAssignedSec) {
+                        await prisma.taskProject.create({
+                            data: {
+                                taskId: updatedTask.id,
+                                projectId: newMyTasksProj.id,
+                                sectionId: recentlyAssignedSec.id,
+                                order: 0
+                            }
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('Error syncing My Tasks on task update:', err);
             }
         }
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import UserAvatar from './UserAvatar';
 
 export default function ProfileView({ user, projects, activeWorkspace, setActiveView, handleSelectProject, token }) {
   const [goals, setGoals] = useState([]);
@@ -56,8 +57,8 @@ export default function ProfileView({ user, projects, activeWorkspace, setActive
 
       {/* HEADER */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '24px' }}>
-        <div style={{ width: '120px', height: '120px', borderRadius: '50%', backgroundColor: '#60A5FA', color: '#1E3A8A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', fontWeight: 'bold', position: 'relative' }}>
-          {user?.name?.[0]?.toUpperCase() || 'A'}
+        <div style={{ position: 'relative', width: '120px', height: '120px' }}>
+          <UserAvatar name={user?.name} size={120} />
           <div style={{ position: 'absolute', bottom: '0', right: '0', backgroundColor: 'white', borderRadius: '50%', padding: '4px', border: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px' }}>
             <span style={{ fontSize: '0.8rem' }}>📷</span>
           </div>
@@ -167,9 +168,7 @@ export default function ProfileView({ user, projects, activeWorkspace, setActive
               ) : (
                 collaborators.map(c => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#FBCFE8', color: '#BE185D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                      {c.name?.[0]?.toUpperCase() || 'U'}
-                    </div>
+                    <UserAvatar name={c.name || c.email} size={36} />
                     <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{c.email}</span>
                   </div>
                 ))

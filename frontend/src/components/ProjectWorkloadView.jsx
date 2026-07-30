@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import UserAvatar from './UserAvatar';
 
 export default function ProjectWorkloadView({ 
   selectedProject, handleTaskUpdate, onOpenTaskPane, token, isReadOnly
@@ -258,7 +259,7 @@ export default function ProjectWorkloadView({
                   onClick={() => toggleExpand(assignee.name)}
                 >
                   <span style={{ ...styles.chevron, transform: expandedAssignees[assignee.name] ? 'rotate(90deg)' : 'rotate(0)' }}>▶</span>
-                  <div style={styles.avatar}>{assignee.avatar}</div>
+                  <UserAvatar name={assignee.name} size={24} style={{ marginRight: '8px' }} />
                   <span style={styles.assigneeName}>{assignee.name}</span>
                 </div>
                 {expandedAssignees[assignee.name] && (

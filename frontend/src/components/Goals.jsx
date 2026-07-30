@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import GoalDetail from './GoalDetail';
 import './Goals.css';
+import UserAvatar from './UserAvatar';
 
 export default function Goals({ token, user, setActiveView }) {
   const [goals, setGoals] = useState([]);
@@ -109,8 +110,8 @@ export default function Goals({ token, user, setActiveView }) {
             </div>
             <span className="goal-progress-text">{Math.round(cappedProgress)}%</span>
           </div>
-          <div className="goal-owner-avatar" title={goal.owner?.name}>
-            {goal.owner?.name?.[0]?.toUpperCase()}
+          <div title={goal.owner?.name}>
+            <UserAvatar name={goal.owner?.name} size={24} />
           </div>
         </div>
       </div>

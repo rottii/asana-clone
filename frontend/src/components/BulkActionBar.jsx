@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import UserAvatar from './UserAvatar';
 
 export default function BulkActionBar({ selectedCount, sections, projectMembers, onAction, onClearSelection }) {
   const [openMenu, setOpenMenu] = useState(null); // 'assign' | 'date' | 'section' | null
@@ -74,7 +75,7 @@ export default function BulkActionBar({ selectedCount, sections, projectMembers,
                 const member = m.user || m;
                 return (
                   <button key={member.id} style={styles.dropdownItem} onClick={() => handleAction('assign', { assigneeId: member.id })}>
-                    <div style={styles.avatar}>{(member.name || '?')[0].toUpperCase()}</div>
+                    <UserAvatar name={member.name} size={20} style={{ marginRight: '8px' }} />
                     <span>{member.name}</span>
                   </button>
                 );

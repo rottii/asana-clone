@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react'
-import { getParsedGithubPRs, getGithubPRStatusLabel, getGithubPRStatusColor } from '../utils/customFields';
+import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusColor, getGithubPRStatusLabel } from '../utils/customFields';
+import UserAvatar from './UserAvatar';
 import AddFieldModal from './AddFieldModal'
 
 export default function ProjectListView({
@@ -171,9 +172,11 @@ export default function ProjectListView({
 
   useEffect(() => {
     setColumnOrder(prev => {
-      const base = ['assignee', 'dueDate'].filter(f => !hiddenFields.includes(f));
+      const isMyTasks = selectedProject?.status === 'MY_TASKS';
+      const base = isMyTasks ? ['projects', 'assignee', 'dueDate'] : ['assignee', 'dueDate'];
+      const filteredBase = base.filter(f => !hiddenFields.includes(f));
       const cfs = customFields.map(cf => cf.id);
-      const allExpected = [...base, ...cfs];
+      const allExpected = [...filteredBase, ...cfs];
       const newOrder = prev.filter(id => allExpected.includes(id));
       const missing = allExpected.filter(id => !prev.includes(id));
       if (missing.length > 0 || newOrder.length !== allExpected.length) {
@@ -181,7 +184,7 @@ export default function ProjectListView({
       }
       return prev;
     });
-  }, [customFields]);
+  }, [customFields, selectedProject?.status, hiddenFields]);
 
   const [dropTargetCol, setDropTargetCol] = useState({ id: null, position: null });
 
@@ -364,10 +367,10 @@ export default function ProjectListView({
   };
 
   const renderColumnDropdownMenu = (colName) => {
-    const titles = { name: 'Name', assignee: 'Assignee', dueDate: 'Due date' };
+    const titles = { name: 'Name', assignee: 'Assignee', dueDate: 'Due date', projects: 'Projects' };
     return (
       <div style={styles.columnDropdownMenu} onClick={(e) => e.stopPropagation()}>
-        {(colName !== 'name' && colName !== 'assignee' && colName !== 'dueDate') && (
+        {(colName !== 'name' && colName !== 'assignee' && colName !== 'dueDate' && colName !== 'projects') && (
           <button onClick={() => {
             setEditingFieldOptions(true);
             setFieldTitle(titles[colName] || colName);
@@ -388,7 +391,7 @@ export default function ProjectListView({
         <div style={styles.menuDivider}></div>
         <button style={styles.dropdownItem}>✨ AI auto-fill</button>
         <div style={styles.menuDivider}></div>
-        {(colName !== 'name' && colName !== 'assignee' && colName !== 'dueDate') && (
+        {(colName !== 'name' && colName !== 'assignee' && colName !== 'dueDate' && colName !== 'projects') && (
           <button onClick={(e) => { e.stopPropagation(); handleDeleteField(titles[colName] || colName); }} style={{ ...styles.dropdownItemDelete, padding: '0.5rem 0.75rem', marginTop: 0 }}>🗑️ Delete field</button>
         )}
       </div>
@@ -625,12 +628,12 @@ export default function ProjectListView({
             return (
               <div key="assignee" style={{ ...styles.gridBodyCell, width: colWidths.assignee, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'assignee', task, sectionId)}>
                 {task.assignee ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', height: '22px' }}>
-                    <div style={styles.listAvatarIcon}>{task.assignee.name?.[0].toUpperCase()}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', height: '24px' }}>
+                    <UserAvatar name={task.assignee.name} size={24} />
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.assignee.name}</span>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', height: '22px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', height: '24px' }}>
                     <span style={{ color: '#9CA3AF', fontSize: '0.8rem' }}>👤 Unassigned</span>
                   </div>
                 )}
@@ -640,6 +643,27 @@ export default function ProjectListView({
             return (
               <div key="dueDate" style={{ ...styles.gridBodyCell, width: colWidths.dueDate, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer', color: (task.dueDate && new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0) && !task.isCompleted) ? '#EF4444' : '#4F46E5', fontSize: '0.8rem', fontWeight: '500' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'date', task, sectionId)}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatFriendlyDate(task.startDate, task.dueDate)}</span>
+              </div>
+            );
+          } else if (colId === 'projects') {
+            const taskProjectNames = [];
+            if (task.section?.project && task.section.project.status !== 'MY_TASKS') {
+              taskProjectNames.push(task.section.project.name);
+            }
+            if (task.secondaryProjects) {
+              task.secondaryProjects.forEach(sp => {
+                if (sp.project && sp.project.status !== 'MY_TASKS' && sp.project.id !== selectedProject?.id) {
+                  taskProjectNames.push(sp.project.name);
+                }
+              });
+            }
+            const uniqueTaskProjects = [...new Set(taskProjectNames)];
+            
+            return (
+              <div key="projects" style={{ ...styles.gridBodyCell, width: colWidths.projects || 140, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer', color: 'var(--text-secondary)', fontSize: '0.8rem' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'projects', task, sectionId)}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {uniqueTaskProjects.length > 0 ? uniqueTaskProjects.join(', ') : '—'}
+                </span>
               </div>
             );
           } else {
@@ -728,9 +752,9 @@ export default function ProjectListView({
                         {selectedPeople.map((uid, i) => {
                           const member = members.find(m => m.id === uid);
                           return (
-                            <span key={i} style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold', flexShrink: 0 }} title={member?.name || 'Unknown'}>
-                              {member?.name?.charAt(0).toUpperCase() || '?'}
-                            </span>
+                            <div key={i} title={member?.name || 'Unknown'}>
+                              <UserAvatar name={member?.name} size={20} />
+                            </div>
                           );
                         })}
                       </div>
@@ -817,9 +841,7 @@ export default function ProjectListView({
                               <div style={{ width: '14px', height: '14px', border: '1px solid var(--border-color)', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? 'var(--accent-primary)' : 'transparent' }}>
                                 {isSelected && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>}
                               </div>
-                              <span style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                                {m.name?.charAt(0).toUpperCase() || '?'}
-                              </span>
+                              <UserAvatar name={m.name} size={20} />
                               <span style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{m.name}</span>
                             </button>
                           );
@@ -1038,6 +1060,7 @@ export default function ProjectListView({
 
             if (colId === 'assignee') title = 'Assignee';
             else if (colId === 'dueDate') title = 'Due date';
+            else if (colId === 'projects') title = 'Projects';
             else {
               const cf = customFields.find(f => f.id === colId);
               if (cf) {

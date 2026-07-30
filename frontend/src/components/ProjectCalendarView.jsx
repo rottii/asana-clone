@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import UserAvatar from './UserAvatar';
 
 export default function ProjectCalendarView({ selectedProject, applyTaskFilter, applyTaskSort, onOpenTaskPane, handleTaskUpdate, token }) {
   const containerRef = useRef(null);
@@ -349,9 +350,7 @@ export default function ProjectCalendarView({ selectedProject, applyTaskFilter, 
                       }}
                     >
                       {task.assignee && (
-                        <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: '#4F46E5', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 'bold', marginRight: '6px', flexShrink: 0 }}>
-                          {task.assignee.name.charAt(0).toUpperCase()}
-                        </div>
+                        <UserAvatar name={task.assignee.name} size={16} style={{ marginRight: '6px' }} />
                       )}
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
                         {task.title}

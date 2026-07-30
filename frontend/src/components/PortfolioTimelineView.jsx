@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import './PortfolioTimelineView.css';
+import UserAvatar from './UserAvatar';
 
 const MONTH_WIDTH = 150;
 const TOTAL_MONTHS = 18; // 6 months past, 12 months future
@@ -315,7 +316,7 @@ export default function PortfolioTimelineView({ projectsList, token, setDetails,
                 <span style={{ fontWeight: 500 }}>{p.name}</span>
               </div>
               <div className="pt-cell pt-col-owner">
-                <div className="pt-owner-avatar">{p.ownerInitials}</div>
+                <UserAvatar name={p.owner?.name} size={24} style={{ marginRight: '8px' }} />
                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                   {p.owner ? p.owner.name : 'Unknown'}
                 </span>
@@ -383,9 +384,7 @@ export default function PortfolioTimelineView({ projectsList, token, setDetails,
                     </div>
                   )}
                   <div className="pt-project-bar-content">
-                    <div className="pt-owner-avatar" style={{ width: '18px', height: '18px', fontSize: '8px' }}>
-                      {p.ownerInitials}
-                    </div>
+                    <UserAvatar name={p.owner?.name} size={18} style={{ marginRight: '6px' }} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {p.owner ? p.owner.name : 'Unknown'}
                     </span>

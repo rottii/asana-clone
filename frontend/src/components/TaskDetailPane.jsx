@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import RichTextEditor from './RichTextEditor';
 import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusColor, getGithubPRStatusLabel } from '../utils/customFields';
+import UserAvatar from './UserAvatar';
 
 export default function TaskDetailPane({ task, selectedProject, onClose, onTaskUpdate, onDeleteTask, onConvertTask, token, projectRole, customFieldSettings, onOpenPopover, currentUser }) {
   const paneRef = useRef(null);
@@ -1160,9 +1161,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                                       const member = members.find(m => m.id === uid);
                                       return (
                                         <span key={uid} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#EDE9FE', color: '#4F46E5', padding: '0.15rem 0.5rem', borderRadius: '12px', fontSize: '0.8rem' }}>
-                                          <span style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold' }}>
-                                            {member?.name?.charAt(0).toUpperCase() || '?'}
-                                          </span>
+                                          <UserAvatar name={member?.name || 'Unknown'} size={16} />
                                           {member?.name || 'Unknown'}
                                         </span>
                                       );
@@ -1185,9 +1184,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                                             <div style={{ width: 14, height: 14, borderRadius: '3px', border: isSelected ? 'none' : '1px solid #D1D5DB', backgroundColor: isSelected ? '#4F46E5' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '10px', color: '#fff' }}>
                                               {isSelected && '✓'}
                                             </div>
-                                            <span style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold', flexShrink: 0 }}>
-                                              {m.name?.charAt(0).toUpperCase() || '?'}
-                                            </span>
+                                            <UserAvatar name={m.name || m.email} size={18} />
                                             <span>{m.name || m.email}</span>
                                           </button>
                                         );
@@ -1629,7 +1626,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                         onMouseEnter={() => setHoveredCommentId(item.id)}
                         onMouseLeave={() => setHoveredCommentId(null)}
                       >
-                        <div style={styles.commentAvatar}>{item.user?.name?.charAt(0).toUpperCase() || '?'}</div>
+                        <UserAvatar name={item.user?.name} size={32} />
                         <div style={{ ...styles.commentContent, position: 'relative' }}>
                           <div style={styles.commentHeader}>
                             <span style={styles.commentAuthor}>{item.user?.name || 'Unknown'}</span>
@@ -1694,7 +1691,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                     try { pr = JSON.parse(item.newValue); } catch (e) { }
                     return (
                       <div key={`activity-${item.id}`} style={styles.activityItem}>
-                        <div style={styles.activityAvatar}>{item.user?.name?.charAt(0).toUpperCase() || '?'}</div>
+                        <UserAvatar name={item.user?.name} size={32} />
                         <div style={styles.activityContent}>
                           <span style={styles.activityAuthor}>{item.user?.name || 'Unknown'}</span> attached
                           <span style={styles.activityTime}>
@@ -1719,7 +1716,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                   } else {
                     return (
                       <div key={`activity-${item.id}`} style={styles.activityItem}>
-                        <div style={styles.activityAvatar}>{item.user?.name?.charAt(0).toUpperCase() || '?'}</div>
+                        <UserAvatar name={item.user?.name} size={32} />
                         <div style={styles.activityContent}>
                           <span style={styles.activityAuthor}>{item.user?.name || 'Unknown'}</span> {item.action}
                           {item.oldValue && item.newValue && (
@@ -1737,7 +1734,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
             </div>
             {projectRole !== 'VIEWER' && (
               <div style={styles.commentForm}>
-                <div style={styles.commentAvatarCurrentUser}>{currentUser?.name?.charAt(0).toUpperCase() || '?'}</div>
+                <UserAvatar name={currentUser?.name} size={32} />
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <RichTextEditor
                     value={newCommentText}

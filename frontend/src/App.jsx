@@ -132,6 +132,20 @@ export default function App() {
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
+            // Filter out tasks that belong to template projects from MY_TASKS
+            const myTasksProject = data.find(p => p.status === 'MY_TASKS');
+            if (myTasksProject) {
+              myTasksProject.sections?.forEach(s => {
+                if (s.tasks) {
+                  s.tasks = s.tasks.filter(t => {
+                    if (t.section?.project?.isTemplate) return false;
+                    if (t.secondaryProjects?.some(sp => sp.project?.isTemplate)) return false;
+                    return true;
+                  });
+                }
+              });
+            }
+
             setProjects(data)
             
             const savedProjectId = localStorage.getItem('selectedProjectId')
@@ -334,7 +348,7 @@ export default function App() {
               handleLogout={handleLogout} 
             />
           ) : activeView === 'my-tasks' ? (
-            <MyTasks token={token} user={user} projects={filteredProjects} />
+            <MyTasks token={token} user={user} projects={filteredProjects} setProjects={setProjects} />
           ) : activeView === 'projects' ? (
             <BrowseProjects 
               projects={filteredProjects}

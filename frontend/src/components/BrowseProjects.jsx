@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './BrowseProjects.css';
+import UserAvatar from './UserAvatar';
 
 export default function BrowseProjects({ projects, user, handleSelectProject, setActiveView, token, setProjects, activeWorkspaceId }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,6 +57,7 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
   const statusLabels = { ON_TRACK: 'On track', AT_RISK: 'At risk', OFF_TRACK: 'Off track', ON_HOLD: 'On hold', NONE: 'No status' };
 
   const filteredProjects = safeProjects.filter(p => {
+    if (p.status === 'MY_TASKS') return false;
     if (p.isTemplate) return false;
     if (searchTerm && !p.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
     if (activeOwner && p.owner?.name !== activeOwner) return false;
@@ -170,8 +172,8 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
                   return (
                     <>
                       {allUsers.slice(0, 3).map((u, i) => (
-                        <div key={i} className="bp-member-avatar" title={u.name}>
-                          {u.name?.[0]?.toUpperCase() || '?'}
+                        <div key={i} title={u.name} style={{ display: 'inline-flex', marginRight: '-6px' }}>
+                          <UserAvatar name={u.name} size={24} style={{ border: '2px solid var(--bg-primary)' }} />
                         </div>
                       ))}
                       {allUsers.length > 3 && (

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import RichTextEditor from './RichTextEditor';
+import UserAvatar from './UserAvatar';
 
 const statusConfig = {
   NONE: { color: 'var(--text-tertiary)', label: 'Set status', desc: 'No status set. Click to update.' },
@@ -267,10 +268,10 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
           <h3 style={styles.sideSectionTitle}>Project status</h3>
           <div style={styles.statusBox}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-              <div style={{ ...styles.statusDot, backgroundColor: statusConfig[selectedProject.status || 'NONE'].color }}></div>
-              <span style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>{statusConfig[selectedProject.status || 'NONE'].label}</span>
+              <div style={{ ...styles.statusDot, backgroundColor: (statusConfig[selectedProject.status] || statusConfig.NONE).color }}></div>
+              <span style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>{(statusConfig[selectedProject.status] || statusConfig.NONE).label}</span>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>{statusConfig[selectedProject.status || 'NONE'].desc}</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>{(statusConfig[selectedProject.status] || statusConfig.NONE).desc}</p>
             {!isReadOnly && (
               <div style={{ position: 'relative' }} ref={statusMenuRef}>
                 <button 
@@ -309,7 +310,7 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {members.map((member, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div style={styles.avatarCircle}>{member.name?.[0]?.toUpperCase() || '?'}</div>
+                <UserAvatar name={member.name} size={32} />
                 <div>
                   <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)' }}>{member.name}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{member.role}</div>

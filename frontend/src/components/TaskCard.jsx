@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import AddFieldModal from './AddFieldModal'
 import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusLabel, getGithubPRStatusColor } from '../utils/customFields';
+import UserAvatar from './UserAvatar';
 
 let globalLastDragY = 0;
 
@@ -558,9 +559,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
               <div key={cf.id} style={{ position: 'relative' }}>
                 <div onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!isReadOnly) setOpenFieldMenuId(openFieldMenuId === cf.id ? null : cf.id); }} style={{ display: 'flex', gap: '2px', cursor: !isReadOnly ? 'pointer' : 'default' }}>
                   {selectedPeople.length > 0 ? selectedPeople.slice(0, 3).map((uid, i) => (
-                    <span key={uid} style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 'bold', marginLeft: i > 0 ? '-4px' : '0', border: '1px solid var(--bg-primary)' }}>
-                      {projectMembers?.find(m => m.user?.id === uid)?.user?.name?.charAt(0).toUpperCase() || '?'}
-                    </span>
+                    <UserAvatar key={uid} name={projectMembers?.find(m => m.user?.id === uid)?.user?.name} size={18} style={{ marginLeft: i > 0 ? '-4px' : '0', border: '1px solid var(--bg-primary)' }} />
                   )) : (
                     <span style={{ ...styles.staticCustomBadge, opacity: 0.7, border: '1px dashed var(--border-color)' }}>Set {cf.title}</span>
                   )}
@@ -585,9 +584,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
                           <div style={{ width: 12, height: 12, borderRadius: '3px', border: isSelected ? 'none' : '1px solid #D1D5DB', backgroundColor: isSelected ? '#4F46E5' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '8px', color: '#fff' }}>
                             {isSelected && '✓'}
                           </div>
-                          <span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: '#4F46E5', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 'bold', flexShrink: 0 }}>
-                            {m.user?.name?.charAt(0).toUpperCase() || '?'}
-                          </span>
+                          <UserAvatar name={m.user?.name} size={14} style={{ marginRight: '4px' }} />
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.user?.name || m.user?.email}</span>
                         </button>
                       );
@@ -789,7 +786,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
       <div style={{ ...styles.bottomActionBar, borderTop: 'none', paddingTop: '0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           <div onClick={handleOpenAssignee} style={{ cursor: isReadOnly ? 'default' : 'pointer' }}>
-            {task.assignee ? <div style={styles.avatarCircleFilled}>{getInitials(task.assignee.name)}</div> : <div style={styles.avatarCircleEmpty}>👤</div>}
+            {task.assignee ? <UserAvatar name={task.assignee.name} size={24} /> : <div style={styles.avatarCircleEmpty}>👤</div>}
           </div>
           <div onClick={handleOpenDatePicker} style={{ ...styles.dateBadgeTrigger, backgroundColor: (task.startDate || task.dueDate) ? ((task.dueDate && new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0) && !task.isCompleted) ? 'var(--accent-danger)' : 'var(--bg-tertiary)') : 'transparent', color: (task.startDate || task.dueDate) ? ((task.dueDate && new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0) && !task.isCompleted) ? '#FFF' : 'var(--accent-primary)') : 'var(--text-secondary)', border: '1px dashed var(--border-color)', cursor: isReadOnly ? 'default' : 'pointer' }}>
             {formatFriendlyDateRange(task.startDate, task.dueDate)}

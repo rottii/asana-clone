@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import UserAvatar from './UserAvatar';
 
 export default function Portfolios({
   portfolios = [],
@@ -267,7 +268,7 @@ export default function Portfolios({
                   <div style={styles.folderShape}>
                     <div style={styles.folderTab}></div>
                     <div style={styles.folderBody}></div>
-                    <div style={styles.memberBadge}>{portfolio.owner?.name?.[0]?.toUpperCase() || 'U'}</div>
+                    <div style={styles.memberBadge}><UserAvatar name={portfolio.owner?.name} size={32} /></div>
                   </div>
                   <div style={styles.portfolioName}>{portfolio.name}</div>
                   <div style={styles.portfolioSub}>{portfolio.projectsCount || 0} projects</div>
@@ -300,7 +301,7 @@ export default function Portfolios({
                     </div>
                   </div>
                   <div style={{ ...styles.listCell, flex: 1 }}>
-                    <div style={styles.memberBadgeSmall}>{portfolio.owner?.name?.[0]?.toUpperCase() || 'U'}</div>
+                    <div style={styles.memberBadgeSmall}><UserAvatar name={portfolio.owner?.name} size={24} /></div>
                   </div>
                   <div style={{ ...styles.listCell, flex: 2 }}>
                   </div>

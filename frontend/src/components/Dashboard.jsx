@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts'
+import UserAvatar from './UserAvatar'
 import './Dashboard.css'
 
 // ========================
@@ -107,18 +108,25 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
   else if (hour < 18) greeting = 'Good afternoon'
 
   const safeProjects = Array.isArray(projects) ? projects : []
-  const activeProjects = safeProjects.filter(p => !p.isArchived)
+  const activeProjects = safeProjects.filter(p => !p.isArchived && p.status !== 'MY_TASKS')
 
   const allTasks = useMemo(() => {
-    const tasks = []
+    const tasksMap = new Map()
     safeProjects.forEach(p => {
+      if (p.isTemplate) return;
+      
       p.sections?.forEach(s => {
         s.tasks?.forEach(t => {
-          tasks.push({ ...t, projectName: p.name, projectColor: p.color || '#4F46E5' })
+          if (t.section?.project?.isTemplate) return;
+          if (t.secondaryProjects?.some(sp => sp.project?.isTemplate)) return;
+          
+          if (!tasksMap.has(t.id)) {
+             tasksMap.set(t.id, { ...t, projectName: p.name, projectColor: p.color || '#4F46E5' })
+          }
         })
       })
     })
-    return tasks
+    return Array.from(tasksMap.values())
   }, [safeProjects])
 
   const now = useMemo(() => {
@@ -388,7 +396,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
     <>
       <div className="widget-header">
         <div className="widget-header-left">
-          <div className="widget-user-avatar">{user?.name ? user.name.substring(0,2).toUpperCase() : 'AK'}</div>
+          <UserAvatar name={user?.name} size={48} />
           <h2 className="widget-title">My tasks <span style={{fontSize:'1rem', color:'var(--text-tertiary)'}}>🔒</span></h2>
         </div>
         {renderWidgetMenuBtn(widget)}
@@ -486,9 +494,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
                 <span style={{fontSize:'0.8rem', color: t.isCompleted ? 'var(--text-tertiary)' : status.color}}>
                   {t.isCompleted ? 'Completed' : status.text}
                 </span>
-                <div className="widget-mini-avatar">
-                  {t.assignee?.name ? t.assignee.name.substring(0,2).toUpperCase() : '👤'}
-                </div>
+                <UserAvatar name={t.assignee?.name} size={24} />
               </div>
             </div>
           )
@@ -516,7 +522,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
           return (
             <div key={p.id} className="widget-people-row">
               <div style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
-                <div className="widget-mini-avatar">{p.user?.name ? p.user.name.substring(0,2).toUpperCase() : '👤'}</div>
+                <UserAvatar name={p.user?.name} size={24} />
                 <div className="widget-people-bar">
                   <div className="widget-people-bar-inner">
                     {p.overdue > 0 && <div style={{width: `${(p.overdue/total)*100}%`, backgroundColor:'var(--accent-danger)'}} />}

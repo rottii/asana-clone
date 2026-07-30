@@ -35,6 +35,31 @@ router.post('/register', async (req, res) => {
       },
     });
 
+    // Otomatik olarak "My Tasks" projesi oluşturma
+    await prisma.project.create({
+      data: {
+        name: 'My Tasks',
+        status: 'MY_TASKS',
+        ownerId: newUser.id,
+        color: '#4F46E5',
+        icon: '👤',
+        sections: {
+          create: [
+            { name: 'Recently assigned', order: 1000 },
+            { name: 'Do today', order: 2000 },
+            { name: 'Do next week', order: 3000 },
+            { name: 'Do later', order: 4000 }
+          ]
+        },
+        members: {
+          create: {
+            userId: newUser.id,
+            role: 'ADMIN'
+          }
+        }
+      }
+    });
+
     res.status(201).json({ message: 'Kullanıcı başarıyla oluşturuldu.', userId: newUser.id });
   } catch (error) {
     res.status(500).json({ error: 'Kayıt esnasında bir hata oluştu.', details: error.message });

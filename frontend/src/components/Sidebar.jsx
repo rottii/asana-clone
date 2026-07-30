@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './Sidebar.css';
+import UserAvatar from './UserAvatar';
 
 export default function Sidebar({ 
   projects, 
@@ -100,7 +101,7 @@ export default function Sidebar({
   }, [token, activeView]); // Re-fetch when activeView changes (e.g. they visit inbox)
 
   const safeProjects = Array.isArray(projects) ? projects : [];
-  const activeProjects = safeProjects.filter(p => !p.isArchived && !p.isTemplate);
+  const activeProjects = safeProjects.filter(p => !p.isArchived && !p.isTemplate && p.status !== 'MY_TASKS');
 
   const toggleSection = (section) => {
     setCollapsed(prev => ({ ...prev, [section]: !prev[section] }));
@@ -159,13 +160,7 @@ export default function Sidebar({
         </div>
 
         <div className="sidebar-narrow-bottom" style={{ position: 'relative' }} ref={profileRef}>
-          <div 
-            className="sidebar-user-avatar"
-            onClick={() => setShowProfileMenu(!showProfileMenu)}
-            style={{ cursor: 'pointer', backgroundColor: '#FBCFE8', color: '#BE185D', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}
-          >
-            {user?.name?.[0]?.toUpperCase() || 'A'}
-          </div>
+          <UserAvatar name={user?.name} size={32} onClick={() => setShowProfileMenu(!showProfileMenu)} style={{ cursor: 'pointer' }} />
           
           {showProfileMenu && (
             <div className="profile-dropdown" style={{ 
@@ -193,9 +188,7 @@ export default function Sidebar({
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = activeWorkspaceId === ws.id ? 'var(--hover-bg)' : 'transparent'}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: ws.id % 2 === 0 ? '#BFDBFE' : '#FBCFE8', color: ws.id % 2 === 0 ? '#1D4ED8' : '#BE185D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                          {ws.name?.[0]?.toUpperCase()}{ws.name?.[1]?.toLowerCase()}
-                        </div>
+                        <UserAvatar name={ws.name} size={28} />
                         <span style={{ fontSize: '0.85rem' }}>{ws.name}</span>
                       </div>
                       {activeWorkspaceId === ws.id && <span style={{ color: 'var(--text-secondary)' }}>✓</span>}
@@ -223,9 +216,7 @@ export default function Sidebar({
                 {/* Profile info */}
                 <div style={{ padding: '16px 16px 12px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: '#FBCFE8', color: '#BE185D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', fontWeight: 'bold', flexShrink: 0 }}>
-                      {user?.name?.[0]?.toUpperCase() || 'A'}
-                    </div>
+                    <UserAvatar name={user?.name} size={42} />
                     <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {user?.name || 'User'}
                     </div>
@@ -406,9 +397,7 @@ export default function Sidebar({
               
               <nav className="sidebar-nav" style={{ marginTop: '8px' }}>
                 <button className="sidebar-nav-item active" style={{ padding: '6px 12px', borderRadius: '8px' }} onClick={() => { handleSelectProject(null); setActiveView('profile'); }}>
-                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#FBCFE8', color: '#BE185D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.85rem', marginRight: '12px' }}>
-                    {user?.name?.[0]?.toUpperCase() || 'A'}
-                  </div>
+                  <UserAvatar name={user?.name} size={24} style={{ marginRight: '12px' }} />
                   <span style={{ fontWeight: '500' }}>Profile</span>
                 </button>
               </nav>
