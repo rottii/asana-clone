@@ -87,3 +87,19 @@ body {
 .tippy-box[data-theme~='mention-popup'] > .tippy-content {
   padding: 0 !important;
 }
+
+/* List View Task Hover Styles */
+.list-view-task-row {
+  background-color: var(--bg-primary);
+  border-left: 3px solid transparent;
+  transition: background-color 0.1s, opacity 0.15s ease;
+}
+
+.list-view-task-row:hover {
+  background-color: var(--bg-secondary) !important;
+}
+
+.list-view-task-row.selected {
+  background-color: var(--bg-secondary);
+  border-left: 3px solid var(--accent-primary);
+}

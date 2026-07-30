@@ -219,6 +219,26 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
         e.dataTransfer.setData('drag-type', 'task')
         e.dataTransfer.setData('task-id', task.id)
         if (setDraggingTaskId) setDraggingTaskId(task.id);
+
+        if (selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(task.id)) {
+          const clone = e.currentTarget.cloneNode(true);
+          const titleEl = clone.querySelector('.task-card-title');
+          if (titleEl) {
+            titleEl.textContent = `${selectedTaskIds.size} tasks`;
+          }
+          clone.style.width = `${e.currentTarget.offsetWidth}px`;
+          clone.style.position = 'absolute';
+          clone.style.top = '-9999px';
+          clone.style.left = '-9999px';
+          document.body.appendChild(clone);
+          e.dataTransfer.setDragImage(clone, 20, 15);
+          
+          setTimeout(() => {
+            if (clone.parentNode) {
+              clone.parentNode.removeChild(clone);
+            }
+          }, 10);
+        }
       }}
       onDragEnd={isEditingMode ? undefined : (e) => {
         e.stopPropagation();
@@ -227,7 +247,14 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
       onDragOver={isEditingMode ? undefined : (e) => {
         e.preventDefault();
         if (draggingTaskId && draggingTaskId !== task.id && !isVirtualGrouping) {
-          const draggedEl = document.querySelector(`[data-task-id="${draggingTaskId}"]`);
+          let queryId = draggingTaskId;
+          if (selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(draggingTaskId)) {
+            const placeholderExists = document.querySelector(`[data-task-id="multi-drag-placeholder"]`);
+            if (placeholderExists) {
+              queryId = 'multi-drag-placeholder';
+            }
+          }
+          const draggedEl = document.querySelector(`[data-task-id="${queryId}"]`);
           if (!draggedEl) return;
 
           const draggedRect = draggedEl.getBoundingClientRect();
@@ -357,7 +384,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
                 }}
               />
             ) : (
-              <h4 style={{ ...styles.lightTitle, textDecoration: task.isCompleted ? 'line-through' : 'none' }}>{task.title}</h4>
+              <h4 className="task-card-title" style={{ ...styles.lightTitle, textDecoration: task.isCompleted ? 'line-through' : 'none' }}>{task.title}</h4>
             )}
           </div>
         </div>

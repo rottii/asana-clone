@@ -232,7 +232,7 @@ const fullProjectInclude = {
     starredBy: true,
     portfolios: {
         include: {
-            portfolio: { select: { id: true, name: true } }
+            portfolio: { select: { id: true, name: true, ownerId: true, privacy: true } }
         }
     }
 };
@@ -304,7 +304,7 @@ const fullTaskInclude = {
 router.get('/templates', authenticateToken, async (req, res) => {
     try {
         const { workspaceId } = req.query;
-        if (!workspaceId) {
+        if (!workspaceId || workspaceId === 'null' || workspaceId === 'undefined') {
             return res.status(400).json({ error: 'Çalışma alanı (workspaceId) gereklidir.' });
         }
 
@@ -1228,45 +1228,49 @@ router.post('/tasks', authenticateToken, async (req, res) => {
 // PATCH /api/projects/tasks/move — Move & reorder a task (MUST be before /tasks/:taskId)
 router.patch('/tasks/move', authenticateToken, async (req, res) => {
     try {
-        const { taskId, targetSectionId, orderedTaskIds, projectId } = req.body;
-        if (!taskId || !targetSectionId) {
-            return res.status(400).json({ error: 'taskId ve targetSectionId zorunludur.' });
+        const { taskId, taskIds, targetSectionId, orderedTaskIds, projectId } = req.body;
+        
+        const tasksToMove = taskIds || (taskId ? [taskId] : []);
+        
+        if (tasksToMove.length === 0 || !targetSectionId) {
+            return res.status(400).json({ error: 'taskId(s) ve targetSectionId zorunludur.' });
         }
 
-        // Use projectId if available, else get from taskId
+        // Use projectId if available, else get from the first taskId
         let role = null;
         if (projectId) {
             role = await getProjectRole(req.user.userId, projectId);
         } else {
-            role = await getProjectRoleFromTask(req.user.userId, taskId);
+            role = await getProjectRoleFromTask(req.user.userId, tasksToMove[0]);
         }
         if (!hasRole(role, 'EDITOR')) {
             return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
 
-        // Check if the moved task is primary or secondary
         const targetSection = await prisma.section.findUnique({ where: { id: targetSectionId } });
         const safeProjectId = projectId || (targetSection ? targetSection.projectId : null);
 
-        const primaryTask = await prisma.task.findFirst({
-            where: { id: taskId, section: { projectId: safeProjectId } }
-        });
-
-        if (primaryTask) {
-            await prisma.task.update({
-                where: { id: taskId },
-                data: { 
-                    sectionId: targetSectionId,
-                    activities: { create: { action: `moved this task`, userId: req.user.userId } }
-                }
+        // Move all selected tasks
+        await Promise.all(tasksToMove.map(async (id) => {
+            const primaryTask = await prisma.task.findFirst({
+                where: { id: id, section: { projectId: safeProjectId } }
             });
-        } else if (safeProjectId) {
-            // Secondary
-            await prisma.taskProject.updateMany({
-                where: { taskId, projectId: safeProjectId },
-                data: { sectionId: targetSectionId }
-            });
-        }
+            if (primaryTask) {
+                await prisma.task.update({
+                    where: { id: id },
+                    data: { 
+                        sectionId: targetSectionId,
+                        activities: { create: { action: `moved this task`, userId: req.user.userId } }
+                    }
+                });
+            } else if (safeProjectId) {
+                // Secondary
+                await prisma.taskProject.updateMany({
+                    where: { taskId: id, projectId: safeProjectId },
+                    data: { sectionId: targetSectionId }
+                });
+            }
+        }));
 
         // Reorder all tasks in the target section
         if (orderedTaskIds && orderedTaskIds.length > 0) {
@@ -1290,43 +1294,45 @@ router.patch('/tasks/move', authenticateToken, async (req, res) => {
             );
         }
 
-        // Trigger rule engine for task_moved
-        if (projectId) {
-            try {
-                await evaluateRules(projectId, taskId, {
-                    type: 'task_moved',
-                    targetSectionId
-                });
-                await evaluateRules(projectId, taskId, { type: 'task_moved_general' });
-            } catch (ruleErr) {
-                console.error('Rule engine error:', ruleErr);
-            }
-        }
-
+        // Trigger rule engine and socket events for ALL moved tasks
         const io = req.app.get('io');
-        if (io) {
-            if (projectId) io.to(projectId).emit('task_moved', { taskId, targetSectionId });
-            
-            try {
-                const updatedTask = await prisma.task.findUnique({
-                    where: { id: taskId },
-                    include: fullTaskInclude
-                });
-                if (updatedTask) {
-                    const primaryProjId = updatedTask.section?.projectId;
-                    if (primaryProjId) io.to(primaryProjId).emit('task_updated', updatedTask);
-                    if (updatedTask.secondaryProjects) {
-                        updatedTask.secondaryProjects.forEach(sp => {
-                            io.to(sp.projectId).emit('task_updated', updatedTask);
+
+        if (safeProjectId) {
+            for (const id of tasksToMove) {
+                try {
+                    await evaluateRules(safeProjectId, id, {
+                        type: 'task_moved',
+                        targetSectionId
+                    });
+                    await evaluateRules(safeProjectId, id, { type: 'task_moved_general' });
+                } catch (e) {
+                    console.error("Rule engine error during bulk move:", e);
+                }
+
+                if (io) {
+                    io.to(safeProjectId).emit('task_moved', { taskId: id, targetSectionId });
+                    try {
+                        const updatedTask = await prisma.task.findUnique({
+                            where: { id: id },
+                            include: fullTaskInclude
                         });
+                        if (updatedTask) {
+                            const primaryProjId = updatedTask.section?.projectId;
+                            if (primaryProjId) io.to(primaryProjId).emit('task_updated', updatedTask);
+                            if (updatedTask.secondaryProjects) {
+                                updatedTask.secondaryProjects.forEach(sp => {
+                                    io.to(sp.projectId).emit('task_updated', updatedTask);
+                                });
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Error emitting task_updated after move:', err);
                     }
                 }
-            } catch (err) {
-                console.error('Error emitting task_updated after move:', err);
             }
         }
 
-        res.json({ message: 'Görev başarıyla taşındı.' });
+        res.json({ success: true, message: 'Görev(ler) başarıyla taşındı.' });
     } catch (error) {
         console.error('Error moving task:', error);
         res.status(500).json({ error: 'Görev taşınırken hata oluştu.', details: error.message });

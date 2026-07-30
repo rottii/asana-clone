@@ -51,6 +51,7 @@ export default function ProjectListView({
   const [openApprovalMenuTaskId, setOpenApprovalMenuTaskId] = useState(null)
   const [menuPosition, setMenuPosition] = useState('bottom')
   const [editingFieldOptions, setEditingFieldOptions] = useState(false)
+  const [dragTargetTaskId, setDragTargetTaskId] = useState(null)
 
   const handleOpenCellMenu = (e, menuId) => {
     document.body.click();
@@ -444,22 +445,32 @@ export default function ProjectListView({
           if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
         }}
         data-task-id={task.id}
+        className={`list-view-task-row ${(selectedTaskIds?.has(task.id) || activeTaskPaneId === task.id) ? 'selected' : ''}`}
         style={{
           ...styles.taskDataTableRow,
           position: 'relative',
           zIndex: (openApprovalMenuTaskId === task.id || (openCellMenuId && openCellMenuId.startsWith(`${task.id}-`))) ? 9999 : 0,
-          backgroundColor: (selectedTaskIds?.has(task.id) || activeTaskPaneId === task.id) ? 'var(--bg-secondary)' : 'var(--bg-primary)',
           opacity: draggingTaskId === task.id ? 0.4 : 1,
-          borderLeft: (selectedTaskIds?.has(task.id) || activeTaskPaneId === task.id) ? '3px solid #4F46E5' : '3px solid transparent'
+          borderTop: dragTargetTaskId === task.id ? '2px solid var(--accent-primary)' : 'none'
         }}
         onContextMenu={(e) => { e.preventDefault(); onTaskContextMenu(e, task.id); }}
         onDragOver={(e) => {
           e.preventDefault();
           if (draggingTaskId && draggingTaskId !== task.id && !isVirtualGrouping) {
-            if (handleLiveTaskSwap) handleLiveTaskSwap(draggingTaskId, task.id);
+            const isMultiDrag = selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(draggingTaskId);
+            if (isMultiDrag) {
+              setDragTargetTaskId(task.id);
+            } else {
+              if (handleLiveTaskSwap) handleLiveTaskSwap(draggingTaskId, task.id);
+            }
           }
         }}
-        onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, sectionId, task.id); }}
+        onDragLeave={() => setDragTargetTaskId(null)}
+        onDrop={(e) => { 
+          e.stopPropagation();
+          setDragTargetTaskId(null);
+          if (!isVirtualGrouping) handleGeneralDrop(e, sectionId, task.id); 
+        }}
       >
         <div
           draggable={!isReadOnly && !isVirtualGrouping}
@@ -471,11 +482,19 @@ export default function ProjectListView({
 
             const ghostEl = document.getElementById('asana-drag-ghost-preview-card');
             if (ghostEl) {
-              ghostEl.textContent = task.title;
+              if (selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(task.id)) {
+                ghostEl.textContent = `${selectedTaskIds.size} tasks`;
+              } else {
+                ghostEl.textContent = task.title;
+              }
               e.dataTransfer.setDragImage(ghostEl, 20, 15);
             }
           }}
-          onDragEnd={() => setDraggingTaskId(null)}
+          onDragEnd={() => {
+            setDraggingTaskId(null);
+            setDragTargetTaskId(null);
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
           style={styles.drag6DotHandleCellTask}
         >
           ⋮⋮
@@ -1099,7 +1118,7 @@ export default function ProjectListView({
                 }}
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
               >
-                {/* BÖLÜM (SECTION) BAÅLIK SATIRI */}
+                {/* BÖLÜM (SECTION) BAÅžLIK SATIRI */}
                 <div className="list-section-header" style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
                   <div
                     className="drag6DotHandleCell"

@@ -751,34 +751,88 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   }
 
   const handleLiveTaskSwap = (dragId, hoverId) => {
-    if (dragId === hoverId) return;
+    const isMultiDrag = selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(dragId);
+    
+    // For single drag, hovering over itself is a no-op.
+    if (!isMultiDrag && dragId === hoverId) return;
 
     const currentSections = latestSectionsRef.current || selectedProject.sections || [];
+    const draggedIds = isMultiDrag ? Array.from(selectedTaskIds) : [dragId];
+
     let dragSecIdx = -1, dragTaskIdx = -1;
     let hoverSecIdx = -1, hoverTaskIdx = -1;
 
+    // Find hover target
     for (let i = 0; i < currentSections.length; i++) {
       const ts = currentSections[i].tasks || [];
       for (let j = 0; j < ts.length; j++) {
-        if (ts[j].id === dragId) { dragSecIdx = i; dragTaskIdx = j; }
         if (ts[j].id === hoverId) { hoverSecIdx = i; hoverTaskIdx = j; }
       }
     }
 
+    // Find the item that is moving
+    let isMovingPlaceholder = false;
+    if (isMultiDrag) {
+      for (let i = 0; i < currentSections.length; i++) {
+        const ts = currentSections[i].tasks || [];
+        for (let j = 0; j < ts.length; j++) {
+          if (ts[j].id === 'multi-drag-placeholder') {
+            dragSecIdx = i; dragTaskIdx = j;
+            isMovingPlaceholder = true;
+          }
+        }
+      }
+    }
+
+    // If no placeholder found or single drag, find original task
+    if (dragSecIdx < 0) {
+      for (let i = 0; i < currentSections.length; i++) {
+        const ts = currentSections[i].tasks || [];
+        for (let j = 0; j < ts.length; j++) {
+          if (ts[j].id === dragId) { dragSecIdx = i; dragTaskIdx = j; }
+        }
+      }
+    }
+
     if (dragSecIdx < 0 || hoverSecIdx < 0) return;
+    if (isMovingPlaceholder && hoverId === 'multi-drag-placeholder') return;
 
-    const newSections = [...currentSections];
-    const dragSec = { ...newSections[dragSecIdx], tasks: [...newSections[dragSecIdx].tasks] };
-    const [draggedTask] = dragSec.tasks.splice(dragTaskIdx, 1);
+    const newSections = currentSections.map(s => ({ ...s, tasks: [...(s.tasks || [])] }));
+    const dragSec = newSections[dragSecIdx];
 
-    if (dragSecIdx === hoverSecIdx) {
-      dragSec.tasks.splice(hoverTaskIdx, 0, draggedTask);
-      newSections[dragSecIdx] = dragSec;
+    let placeholderTask;
+    if (isMultiDrag) {
+      newSections.forEach(sec => {
+        sec.tasks = sec.tasks.map(t => {
+          if (draggedIds.includes(t.id)) {
+            return { ...t, isHiddenForMultiDrag: true };
+          }
+          return t;
+        });
+      });
+      
+      if (isMovingPlaceholder) {
+        const [removed] = dragSec.tasks.splice(dragTaskIdx, 1);
+        placeholderTask = removed;
+      } else {
+        placeholderTask = { 
+          ...currentSections[dragSecIdx].tasks[dragTaskIdx], 
+          id: 'multi-drag-placeholder', 
+          title: `${draggedIds.length} tasks`,
+          isMultiDragPlaceholder: true 
+        };
+      }
     } else {
-      const hoverSec = { ...newSections[hoverSecIdx], tasks: [...newSections[hoverSecIdx].tasks] };
-      hoverSec.tasks.splice(hoverTaskIdx, 0, { ...draggedTask, sectionId: newSections[hoverSecIdx].id });
-      newSections[dragSecIdx] = dragSec;
-      newSections[hoverSecIdx] = hoverSec;
+      const [removed] = dragSec.tasks.splice(dragTaskIdx, 1);
+      placeholderTask = removed;
+    }
+
+    // Insert at hover position using pre-splice index
+    const hoverSec = newSections[hoverSecIdx];
+    if (hoverTaskIdx >= 0) {
+      hoverSec.tasks.splice(hoverTaskIdx, 0, { ...placeholderTask, sectionId: hoverSec.id });
+    } else {
+      hoverSec.tasks.push({ ...placeholderTask, sectionId: hoverSec.id });
     }
 
     latestSectionsRef.current = newSections;
@@ -1457,34 +1511,74 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       setLastInteractedTaskId(explicitTargetTaskId);
 
       let currentSections = latestSectionsRef.current || selectedProject.sections;
-      let draggedTaskObj = null;
-      let isAlreadyInTarget = false;
+      
+      const isMultiDrag = selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(taskId);
+      const draggedIds = isMultiDrag ? Array.from(selectedTaskIds) : [taskId];
 
+      let draggedTasks = [];
+      let placeholderIdx = -1;
+
+      // Extract all real dragged tasks and find placeholder position
       currentSections.forEach(sec => {
-        const found = (sec.tasks || []).find(t => t.id === taskId);
-        if (found) {
-          draggedTaskObj = found;
-          if (sec.id === targetSectionId) {
-            isAlreadyInTarget = true;
+        (sec.tasks || []).forEach((t, idx) => {
+          if (draggedIds.includes(t.id) && !t.isMultiDragPlaceholder) {
+            // Found a real task, clean up its flags
+            const cleanTask = { ...t };
+            delete cleanTask.isHiddenForMultiDrag;
+            draggedTasks.push(cleanTask);
           }
-        }
+          if ((t.isMultiDragPlaceholder || (!isMultiDrag && t.id === taskId)) && sec.id === targetSectionId) {
+            placeholderIdx = idx;
+          }
+        });
       });
 
-      if (!draggedTaskObj) return;
+      if (draggedTasks.length === 0) return;
 
-      let reorderedSections = currentSections;
-
-      if (!isAlreadyInTarget) {
-        reorderedSections = currentSections.map(sec => {
-          if (sec.id === draggedTaskObj.sectionId) {
-            return { ...sec, tasks: (sec.tasks || []).filter(t => t.id !== taskId) };
+      // Build new sections
+      let reorderedSections = currentSections.map(sec => {
+        // Remove all dragged tasks and placeholder
+        let newTasks = (sec.tasks || []).filter(t => !draggedIds.includes(t.id) && !t.isMultiDragPlaceholder);
+        
+        if (sec.id === targetSectionId) {
+          const tasksToAdd = draggedTasks.map(t => ({ ...t, sectionId: targetSectionId }));
+          
+          if (explicitTargetTaskId) {
+            // List View drop
+            const originalTasks = sec.tasks || [];
+            const originalTargetIdx = originalTasks.findIndex(t => t.id === explicitTargetTaskId);
+            if (originalTargetIdx !== -1) {
+              let insertIdx = 0;
+              for (let i = 0; i < originalTargetIdx; i++) {
+                const t = originalTasks[i];
+                if (!draggedIds.includes(t.id) && !t.isMultiDragPlaceholder) {
+                  insertIdx++;
+                }
+              }
+              newTasks.splice(insertIdx, 0, ...tasksToAdd);
+            } else {
+              newTasks.push(...tasksToAdd);
+            }
+          } else if (placeholderIdx !== -1) {
+            // Kanban View drop where placeholder was
+            const originalTasks = currentSections.find(s => s.id === targetSectionId)?.tasks || [];
+            let insertIdx = 0;
+            for (let i = 0; i < placeholderIdx; i++) {
+              const t = originalTasks[i];
+              if (!draggedIds.includes(t.id) && !t.isMultiDragPlaceholder) {
+                insertIdx++;
+              }
+            }
+            newTasks.splice(insertIdx, 0, ...tasksToAdd);
+          } else {
+            // Fallback (e.g. dropped on empty column)
+            newTasks.push(...tasksToAdd);
           }
-          if (sec.id === targetSectionId) {
-            return { ...sec, tasks: [...(sec.tasks || []), { ...draggedTaskObj, sectionId: targetSectionId }] };
-          }
-          return sec;
-        });
-      }
+        }
+        // Ensure local optimistic state has correct order fields
+        newTasks = newTasks.map((t, idx) => ({ ...t, order: idx }));
+        return { ...sec, tasks: newTasks };
+      });
 
       const targetSecObj = reorderedSections.find(s => s.id === targetSectionId);
       const orderedTaskIds = targetSecObj ? targetSecObj.tasks.map(t => t.id) : [];
@@ -1495,7 +1589,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         const response = await fetch('http://localhost:5001/api/projects/tasks/move', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ taskId, targetSectionId, orderedTaskIds, projectId: selectedProject.id })
+          body: JSON.stringify({ taskIds: draggedIds, targetSectionId, orderedTaskIds, projectId: selectedProject.id })
         })
         const result = await response.json()
         if (!response.ok) { alert(result.error || "Hata."); window.location.reload(); }

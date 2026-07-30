@@ -35,7 +35,7 @@ router.get('/', authenticateToken, async (req, res) => {
         select: { id: true, name: true, email: true }
       }),
       prisma.portfolio.findMany({
-        where: { name: searchQuery },
+        where: { name: searchQuery, ownerId: req.user.userId },
         take: 5,
         select: { id: true, name: true }
       }),

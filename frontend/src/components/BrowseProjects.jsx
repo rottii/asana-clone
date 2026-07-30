@@ -184,7 +184,7 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
               <div className="bp-col-portfolios">
                 {project.portfolios && project.portfolios.length > 0 ? (
                   project.portfolios
-                    .filter(pItem => pItem.portfolio?.ownerId === (user?.userId || user?.id))
+                    .filter(pItem => pItem.portfolio?.ownerId === (user?.userId || user?.id) || pItem.portfolio?.privacy === 'Public to My workspace')
                     .map(pItem => (
                       <span key={pItem.portfolio?.id} className="bp-portfolio-pill">📁 {pItem.portfolio?.name}</span>
                     ))

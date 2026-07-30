@@ -98,7 +98,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
         {section.tasks?.map(task => (
           <div
             key={task.id}
-            style={{ width: '248px', flexShrink: 0 }}
+            style={{ width: '248px', flexShrink: 0, display: task.isHiddenForMultiDrag ? 'none' : 'block' }}
             onClickCapture={() => {
               if (setLastInteractedSectionId) setLastInteractedSectionId(section.id);
               if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);

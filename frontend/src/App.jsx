@@ -26,14 +26,81 @@ export default function App() {
   const [selectedPortfolio, setSelectedPortfolio] = useState(null)
   const [portfolioCreationParent, setPortfolioCreationParent] = useState(null)
   const [workspaces, setWorkspaces] = useState([])
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState(localStorage.getItem('activeWorkspaceId') || null)
+  const storedWorkspaceId = localStorage.getItem('activeWorkspaceId');
+  const initialWorkspaceId = (storedWorkspaceId === 'null' || storedWorkspaceId === 'undefined') ? null : storedWorkspaceId;
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(initialWorkspaceId)
 
-  const [activeView, setActiveView] = useState(() => localStorage.getItem('activeView') || 'home') // 'home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'project', 'projects'
+  const [activeView, setActiveView] = useState(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/project/')) {
+      localStorage.setItem('selectedProjectId', path.split('/')[2]);
+      return 'project';
+    }
+    if (path.startsWith('/portfolio/')) {
+      localStorage.setItem('selectedPortfolioId', path.split('/')[2]);
+      return 'portfolio_detail';
+    }
+    if (path.length > 1) {
+      const view = path.substring(1);
+      // Validate view to prevent random paths from crashing the app
+      const validViews = ['home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'projects', 'profile', 'create_project'];
+      if (validViews.includes(view)) return view;
+    }
+    return localStorage.getItem('activeView') || 'home';
+  }) 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const previousViewRef = useRef((() => {
     const stored = localStorage.getItem('activeView') || 'home'
     return stored === 'create_project' ? 'home' : stored
   })())
+
+  // --- HTML5 History API Routing ---
+  
+  // URL to State Sync (Back/Forward Buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path.startsWith('/project/')) {
+        const id = path.split('/')[2];
+        const proj = projects.find(p => p.id === id);
+        if (proj) {
+          setSelectedProject(proj);
+          setActiveView('project');
+        }
+      } else if (path.startsWith('/portfolio/')) {
+        const id = path.split('/')[2];
+        const port = portfolios.find(p => p.id === id);
+        if (port) {
+          setSelectedPortfolio(port);
+          setActiveView('portfolio_detail');
+        }
+      } else {
+        const view = path.length > 1 ? path.substring(1) : 'home';
+        const validViews = ['home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'projects', 'profile', 'create_project'];
+        setActiveView(validViews.includes(view) ? view : 'home');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [projects, portfolios]);
+
+  // State to URL Sync
+  useEffect(() => {
+    let newPath = '/';
+    if (activeView === 'project' && selectedProject) {
+      newPath = `/project/${selectedProject.id}`;
+    } else if (activeView === 'portfolio_detail' && selectedPortfolio) {
+      newPath = `/portfolio/${selectedPortfolio.id}`;
+    } else if (activeView !== 'home') {
+      newPath = `/${activeView}`;
+    }
+
+    if (window.location.pathname !== newPath) {
+      window.history.pushState({}, '', newPath);
+    }
+  }, [activeView, selectedProject, selectedPortfolio]);
+  
+  // ---------------------------------
 
   useEffect(() => {
     if (activeView !== 'create_project') {
@@ -59,8 +126,8 @@ export default function App() {
   // Projeleri çek ve yenileme sonrası aktif projeyi geri yükle
   useEffect(() => {
     if (token) {
-      // Projeleri çek
-      fetch('http://localhost:5001/api/projects', { headers: { 'Authorization': `Bearer ${token}` } })
+      // Projeleri çek (Bypass cache with timestamp)
+      fetch(`http://localhost:5001/api/projects?t=${Date.now()}`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -97,6 +164,14 @@ export default function App() {
         .then(data => {
           if (Array.isArray(data)) {
             setPortfolios(data)
+            const savedPortfolioId = localStorage.getItem('selectedPortfolioId')
+            if (savedPortfolioId) {
+              const found = data.find(p => p.id === savedPortfolioId)
+              if (found) {
+                setSelectedPortfolio(found)
+                setActiveView('portfolio_detail')
+              }
+            }
           } else {
             setPortfolios([])
           }
@@ -109,8 +184,11 @@ export default function App() {
         .then(data => {
           if (Array.isArray(data)) {
             setWorkspaces(data)
-            if (data.length > 0 && !activeWorkspaceId) {
-              setActiveWorkspaceId(data[0].id)
+            if (data.length > 0) {
+              const currentIsValid = data.find(w => w.id === activeWorkspaceId);
+              if (!currentIsValid || !activeWorkspaceId || activeWorkspaceId === 'null') {
+                setActiveWorkspaceId(data[0].id)
+              }
             }
           } else {
             setWorkspaces([])
@@ -262,6 +340,7 @@ export default function App() {
               setActiveView={setActiveView}
               handleSelectProject={handleSelectProject}
               token={token}
+              user={user}
               activeWorkspaceId={activeWorkspaceId}
             />
           ) : activeView === 'portfolios' ? (
