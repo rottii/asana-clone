@@ -50,9 +50,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [isGroupInnerDropdownOpen, setIsGroupInnerDropdownOpen] = useState(false)
   const [isGroupMoreMenuOpen, setIsGroupMoreMenuOpen] = useState(false)
   const [isGroupOrderMenuOpen, setIsGroupOrderMenuOpen] = useState(false)
-  const [groupOrder, setGroupOrder] = useState('Custom order')
   const [showEmptyGroups, setShowEmptyGroups] = useState(true)
-  const [activeGroup, setActiveGroup] = useState(null)
+  const [activeGroups, setActiveGroups] = useState([{ field: 'Sections', order: 'Custom order' }])
   const [showAddFieldMenu, setShowAddFieldMenu] = useState(false)
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set())
 
@@ -78,6 +77,35 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [currentTab, setCurrentTab] = useState(() => {
     return localStorage.getItem(`currentProjectTab_${selectedProject.id}`) || selectedProject.defaultView || 'List';
   })
+
+  const currentSettingsKey = useRef(null);
+
+  useEffect(() => {
+    const newKey = `${selectedProject.id}_${currentTab}`;
+    if (currentSettingsKey.current !== newKey) {
+      currentSettingsKey.current = newKey;
+      const saved = localStorage.getItem(`viewSettings_${newKey}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setActiveGroups(parsed.activeGroups || [{ field: 'Sections', order: 'Custom order' }]);
+          setActiveFilters(parsed.activeFilters || []);
+          setActiveSorts(parsed.activeSorts || []);
+        } catch (e) { }
+      } else {
+        setActiveGroups([{ field: 'Sections', order: 'Custom order' }]);
+        setActiveFilters([]);
+        setActiveSorts([]);
+      }
+    }
+  }, [selectedProject.id, currentTab]);
+
+  useEffect(() => {
+    if (currentSettingsKey.current === `${selectedProject.id}_${currentTab}`) {
+      const key = `viewSettings_${selectedProject.id}_${currentTab}`;
+      localStorage.setItem(key, JSON.stringify({ activeGroups, activeFilters, activeSorts }));
+    }
+  }, [activeGroups, activeFilters, activeSorts, selectedProject.id, currentTab]);
   const [tabContextMenu, setTabContextMenu] = useState({ visible: false, x: 0, y: 0, view: null })
 
   useEffect(() => {
@@ -121,7 +149,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         const isTempPrim = t.section?.project?.isTemplate;
         const isTempSec = t.secondaryProjects?.some(sp => sp.project?.isTemplate);
         if (isTempPrim || isTempSec) {
-           return false;
+          return false;
         }
         return true;
       });
@@ -282,7 +310,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         setSelectedTaskIds(new Set())
       }
     }
-    
+
     const preventClickAfterDrag = (e) => {
       if (wasDraggingMarqueeRef.current) {
         e.stopPropagation();
@@ -767,11 +795,17 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     setSelectedProject(prev => ({ ...prev, sections: updatedSections }));
   }
 
-  const handleLiveTaskSwap = (dragId, hoverId) => {
+  const lastSwapTimeRef = useRef(0);
+
+  const handleLiveTaskSwap = (dragId, hoverId, clientY = null, hoverRect = null) => {
     const isMultiDrag = selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(dragId);
-    
+
     // For single drag, hovering over itself is a no-op.
     if (!isMultiDrag && dragId === hoverId) return;
+
+    // Throttle swaps to prevent infinite flicker loop when moving between groups of varying heights
+    const now = Date.now();
+    if (now - lastSwapTimeRef.current < 200) return;
 
     const currentSections = latestSectionsRef.current || parsedSections || [];
     const draggedIds = isMultiDrag ? Array.from(selectedTaskIds) : [dragId];
@@ -814,8 +848,42 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     if (dragSecIdx < 0 || hoverSecIdx < 0) return;
     if (isMovingPlaceholder && hoverId === 'multi-drag-placeholder') return;
 
+    // Vertical threshold check (only trigger swap if crossing the midpoint)
+    if (clientY !== null && hoverRect !== null && !isMultiDrag) {
+      const hoverMiddleY = hoverRect.top + (hoverRect.bottom - hoverRect.top) / 2;
+      let isDraggingDown = false;
+
+      const dragEl = document.querySelector(`[data-task-id="${dragId}"]`);
+      if (dragEl) {
+        const dragRect = dragEl.getBoundingClientRect();
+        isDraggingDown = dragRect.top < hoverRect.top;
+      } else {
+        if (dragSecIdx < hoverSecIdx) isDraggingDown = true;
+        else if (dragSecIdx === hoverSecIdx && dragTaskIdx < hoverTaskIdx) isDraggingDown = true;
+      }
+
+      if (isDraggingDown && clientY < hoverMiddleY) return;
+      if (!isDraggingDown && clientY > hoverMiddleY) return;
+    }
+
+    // If we passed the threshold check, register the swap time
+    lastSwapTimeRef.current = now;
+
     const newSections = currentSections.map(s => ({ ...s, tasks: [...(s.tasks || [])] }));
     const dragSec = newSections[dragSecIdx];
+
+    const isVirtualGroupingActive = activeGroups && (activeGroups.length > 1 || (activeGroups.length > 0 && activeGroups[0].field !== 'Sections'));
+    let groupingPropsToCopy = null;
+    if (isVirtualGroupingActive && hoverTaskIdx >= 0) {
+      const originalHoverTask = currentSections[hoverSecIdx].tasks[hoverTaskIdx];
+      if (originalHoverTask && !originalHoverTask.isMultiDragPlaceholder) {
+        groupingPropsToCopy = {
+          assigneeId: originalHoverTask.assigneeId,
+          assignee: originalHoverTask.assignee,
+          customFields: originalHoverTask.customFields
+        };
+      }
+    }
 
     let placeholderTask;
     if (isMultiDrag) {
@@ -827,16 +895,16 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           return t;
         });
       });
-      
+
       if (isMovingPlaceholder) {
         const [removed] = dragSec.tasks.splice(dragTaskIdx, 1);
         placeholderTask = removed;
       } else {
-        placeholderTask = { 
-          ...currentSections[dragSecIdx].tasks[dragTaskIdx], 
-          id: 'multi-drag-placeholder', 
+        placeholderTask = {
+          ...currentSections[dragSecIdx].tasks[dragTaskIdx],
+          id: 'multi-drag-placeholder',
           title: `${draggedIds.length} tasks`,
-          isMultiDragPlaceholder: true 
+          isMultiDragPlaceholder: true
         };
       }
     } else {
@@ -844,10 +912,22 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       placeholderTask = removed;
     }
 
+    // Apply copied grouping attributes
+    if (groupingPropsToCopy) {
+      placeholderTask.assigneeId = groupingPropsToCopy.assigneeId;
+      placeholderTask.assignee = groupingPropsToCopy.assignee;
+      placeholderTask.customFields = groupingPropsToCopy.customFields;
+    }
+
     // Insert at hover position using pre-splice index
     const hoverSec = newSections[hoverSecIdx];
-    if (hoverTaskIdx >= 0) {
-      hoverSec.tasks.splice(hoverTaskIdx, 0, { ...placeholderTask, sectionId: hoverSec.id });
+
+    // We insert exactly at hoverTaskIdx, which effectively places the dragged item 
+    // where the hovered item was before the splice, pushing it (and subsequent items) down.
+    const adjustedHoverTaskIdx = hoverTaskIdx;
+
+    if (adjustedHoverTaskIdx >= 0) {
+      hoverSec.tasks.splice(adjustedHoverTaskIdx, 0, { ...placeholderTask, sectionId: hoverSec.id });
     } else {
       hoverSec.tasks.push({ ...placeholderTask, sectionId: hoverSec.id });
     }
@@ -986,7 +1066,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     if (isReadOnly) return;
     const sectionToDelete = selectedProject.sections.find(s => s.id === sectionId);
     if (!sectionToDelete) return;
-    
+
     // Optimistic UI
     syncProjectStates({ ...selectedProject, sections: selectedProject.sections.filter(s => s.id !== sectionId) });
     setOptimisticDeletedSectionIds(prev => new Set(prev).add(sectionId));
@@ -1172,7 +1252,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       const data = await response.json();
       if (response.ok) {
         handleTaskUpdate(task.id, data);
-        
+
         showUndo({
           message: !previousState ? "Task marked complete" : "Task marked incomplete",
           onUndo: async () => {
@@ -1272,7 +1352,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           return sec;
         });
         syncProjectStates({ ...selectedProject, sections: revertedSections });
-        
+
         setOptimisticDeletedTaskIds(prev => {
           const next = new Set(prev);
           next.delete(taskIdToDelete);
@@ -1330,7 +1410,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       if (selectedTaskIds.size > 0) {
         setSelectedTaskIds(new Set());
       }
-      return false; 
+      return false;
     }
   };
 
@@ -1431,7 +1511,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         tasks: (sec.tasks || []).filter(t => !selectedTaskIds.has(t.id))
       }));
       syncProjectStates({ ...selectedProject, sections: updatedSections });
-      
+
       const idsSet = new Set(taskIds);
       setOptimisticDeletedTaskIds(prev => new Set([...prev, ...idsSet]));
       setSelectedTaskIds(new Set());
@@ -1595,7 +1675,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     } catch (err) { console.error(err) }
   }
 
-  const handleGeneralDrop = async (e, targetSectionId, explicitTargetTaskId = null) => {
+  const handleGeneralDrop = async (e, targetSectionId, explicitTargetTaskId = null, targetSubgroup = null, dropEdge = 'top') => {
     e.preventDefault()
     setDraggingTaskId(null)
 
@@ -1608,7 +1688,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       setLastInteractedTaskId(explicitTargetTaskId);
 
       let currentSections = latestSectionsRef.current || parsedSections;
-      
+
       const isMultiDrag = selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(taskId);
       const draggedIds = isMultiDrag ? Array.from(selectedTaskIds) : [taskId];
 
@@ -1632,14 +1712,53 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
       if (draggedTasks.length === 0) return;
 
+      // Determine updates for subgroup
+      let taskPayloads = {};
+      draggedTasks.forEach(t => { taskPayloads[t.id] = {}; });
+
+      if (targetSubgroup) {
+        const secondaryGroupRule = activeGroups && activeGroups.length > 1 ? activeGroups[1] : null;
+        if (secondaryGroupRule) {
+          const field = secondaryGroupRule.field;
+          if (field === 'Assignee') {
+            const newAssigneeId = targetSubgroup.key === 'unassigned' ? null : targetSubgroup.key;
+            draggedTasks = draggedTasks.map(t => {
+              taskPayloads[t.id].assigneeId = newAssigneeId;
+              const newAssignee = newAssigneeId ? { id: newAssigneeId, name: targetSubgroup.name } : null;
+              return { ...t, assigneeId: newAssigneeId, assignee: newAssignee };
+            });
+          } else if (field === 'Start date' || field === 'Due date' || field === 'Created on' || field === 'Last modified on' || field === 'Completed on') {
+            // Not supporting date group drops for now as it's complex
+          } else if (field !== 'Project' && field !== 'Sections' && field !== 'Created by') {
+            const customFieldsList = getParsedCustomFields(selectedProject);
+            const cf = customFieldsList.find(f => f.title === field);
+            if (cf) {
+              if (cf.type !== 'github_pr') {
+                // For all dragged tasks, update this custom field
+                draggedTasks = draggedTasks.map(t => {
+                  let cfs = {};
+                  if (typeof t.customFields === 'string') { try { cfs = JSON.parse(t.customFields); } catch (e) { } } else if (t.customFields) cfs = { ...t.customFields };
+                  if (targetSubgroup.key === 'empty') delete cfs[cf.id];
+                  else cfs[cf.id] = targetSubgroup.key;
+
+                  taskPayloads[t.id].customFields = JSON.stringify(cfs);
+
+                  return { ...t, customFields: cfs };
+                });
+              }
+            }
+          }
+        }
+      }
+
       // Build new sections
       let reorderedSections = currentSections.map(sec => {
         // Remove all dragged tasks and placeholder
         let newTasks = (sec.tasks || []).filter(t => !draggedIds.includes(t.id) && !t.isMultiDragPlaceholder);
-        
+
         if (sec.id === targetSectionId) {
           const tasksToAdd = draggedTasks.map(t => ({ ...t, sectionId: targetSectionId }));
-          
+
           if (explicitTargetTaskId) {
             // List View drop
             const originalTasks = sec.tasks || [];
@@ -1651,6 +1770,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 if (!draggedIds.includes(t.id) && !t.isMultiDragPlaceholder) {
                   insertIdx++;
                 }
+              }
+              if (dropEdge === 'bottom') {
+                insertIdx++;
               }
               newTasks.splice(insertIdx, 0, ...tasksToAdd);
             } else {
@@ -1686,7 +1808,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         const response = await fetch('http://localhost:5001/api/projects/tasks/move', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ taskIds: draggedIds, targetSectionId, orderedTaskIds, projectId: selectedProject.id })
+          body: JSON.stringify({ taskIds: draggedIds, targetSectionId, orderedTaskIds, projectId: selectedProject.id, taskPayloads })
         })
         const result = await response.json()
         if (!response.ok) { alert(result.error || "Hata."); window.location.reload(); }
@@ -1721,178 +1843,151 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     const formattedStart = start.toLocaleDateString('en-US', startOptions);
     return `${formattedStart} - ${formattedDue}`;
   }
-  const getGroupedSections = () => {
-    let rawSections = parsedSections || [];
-    if (!activeGroup || activeGroup === 'Sections') return null;
-
-    let allTasks = [];
-    rawSections.forEach(sec => {
-      allTasks = [...allTasks, ...(sec.tasks || [])];
-    });
-
-    const groupsMap = {};
-
-    if (activeGroup === 'Assignee') {
-      groupsMap['unassigned'] = { id: `group-unassigned`, name: 'Unassigned', tasks: [] };
-      if (selectedProject.owner) {
-        groupsMap[selectedProject.owner.id] = { id: `group-${selectedProject.owner.id}`, name: selectedProject.owner.name, tasks: [] };
-      }
-      if (selectedProject.members) {
-        selectedProject.members.forEach(m => {
-          const u = m.user || m;
-          if (u && u.id && u.name) {
-            groupsMap[u.id] = { id: `group-${u.id}`, name: u.name, tasks: [] };
-          }
-        });
-      }
-    } else if (['Start date', 'Due date', 'Created on', 'Last modified on', 'Completed on'].includes(activeGroup)) {
-      const buckets = [
-        { key: 'today', name: 'Today', sortValue: 0 },
-        { key: 'yesterday', name: 'Yesterday', sortValue: -1 },
-        { key: 'tomorrow', name: 'Tomorrow', sortValue: 1 },
-        { key: 'last-7', name: 'Last 7 days', sortValue: -7 },
-        { key: 'next-7', name: 'Next 7 days', sortValue: 7 },
-        { key: 'no-date', name: `No ${activeGroup.toLowerCase()}`, sortValue: 999999 }
-      ];
-      buckets.forEach(b => {
-        groupsMap[b.key] = { id: `group-${b.key}`, name: b.name, tasks: [], sortValue: b.sortValue };
-      });
-    } else {
-      const customFieldsList = getParsedCustomFields(selectedProject);
-      const cf = customFieldsList.find(f => f.title === activeGroup);
-      if (cf && cf.type === 'github_pr') {
-        const statuses = GITHUB_PR_STATUSES.map(s => ({ key: s, sortValue: GITHUB_PR_SORT_MAP[s] || 8 }));
-        statuses.forEach(s => {
-          groupsMap[s.key] = { id: `group-${s.key}`, name: s.key, tasks: [], sortValue: s.sortValue };
-        });
-        groupsMap['empty'] = { id: 'group-empty', name: 'Empty', tasks: [], sortValue: 99 };
-      } else if (cf && Array.isArray(cf.options)) {
-        cf.options.forEach(opt => {
-          const optName = opt.value || opt.label;
-          if (optName) {
-            groupsMap[optName] = { id: `group-${optName}`, name: optName, tasks: [] };
-          }
-        });
-        groupsMap['empty'] = { id: 'group-empty', name: 'Empty', tasks: [] };
-      }
-    }
-
+  const getGroupKeyAndName = (task, groupField) => {
     const getDateGroup = (dateString, typeName) => {
       if (!dateString) return { key: 'no-date', name: `No ${typeName.toLowerCase()}`, sortValue: 999999 };
-
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      const d = new Date(dateString);
-      d.setHours(0, 0, 0, 0);
-
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const d = new Date(dateString); d.setHours(0, 0, 0, 0);
       const diffTime = d - now;
       const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
       if (diffDays === 0) return { key: 'today', name: 'Today', sortValue: 0 };
       if (diffDays === -1) return { key: 'yesterday', name: 'Yesterday', sortValue: -1 };
       if (diffDays === 1) return { key: 'tomorrow', name: 'Tomorrow', sortValue: 1 };
-
       if (diffDays < -1 && diffDays >= -7) return { key: 'last-7', name: 'Last 7 days', sortValue: -7 };
       if (diffDays > 1 && diffDays <= 7) return { key: 'next-7', name: 'Next 7 days', sortValue: 7 };
-
       if (diffDays < -7 && diffDays >= -30) return { key: 'last-30', name: 'Last 30 days', sortValue: -30 };
       if (diffDays > 7 && diffDays <= 30) return { key: 'next-30', name: 'Next 30 days', sortValue: 30 };
-
       const monthYear = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
       const monthSortValue = d.getFullYear() * 12 + d.getMonth();
       const finalSortValue = diffDays < 0 ? -100000 + monthSortValue : 100000 + monthSortValue;
-
       return { key: monthYear.toLowerCase().replace(' ', '-'), name: monthYear, sortValue: finalSortValue };
     };
 
-    const getGroupKeyAndName = (task) => {
-      switch (activeGroup) {
-        case 'Assignee':
-          return task.assignee ? { key: task.assigneeId, name: task.assignee.name } : { key: 'unassigned', name: 'Unassigned' };
-        case 'Created by':
-          return task.creator ? { key: task.creatorId, name: task.creator.name } : { key: 'unknown', name: 'Unknown' };
-        case 'Start date':
-          return getDateGroup(task.startDate, 'start date');
-        case 'Due date':
-          return getDateGroup(task.dueDate, 'due date');
-        case 'Created on':
-          return getDateGroup(task.createdAt, 'created on');
-        case 'Last modified on':
-          return getDateGroup(task.updatedAt, 'last modified on');
-        case 'Completed on':
-          if (!task.completedAt && !task.isCompleted) return { key: 'no-date', name: 'No completed on date', sortValue: 999999 };
-          if (!task.completedAt && task.isCompleted) return { key: 'completed-no-date', name: 'Completed (No date)', sortValue: 999998 };
-          return getDateGroup(task.completedAt, 'completed on');
-        case 'Project':
-          return { key: selectedProject.id, name: selectedProject.name };
-        default:
-          const customFieldsList = getParsedCustomFields(selectedProject);
-          const cf = customFieldsList.find(f => f.title === activeGroup);
-          if (cf) {
-            if (cf.type === 'github_pr') {
-              let prs = getParsedGithubPRs(task.githubPRs);
-              if (!prs || prs.length === 0) return { key: 'empty', name: 'Empty' };
-
-              const label = getGithubPRStatusLabel(prs[0]);
-              const sortVal = GITHUB_PR_SORT_MAP[label] || 8;
-
-              return { key: label, name: label, sortValue: sortVal };
-            }
-
-            let taskFields = {};
-            if (typeof task.customFields === 'string') { try { taskFields = JSON.parse(task.customFields); } catch (e) { } } else if (task.customFields) taskFields = task.customFields;
-            const val = taskFields[cf.id];
-
-            if (Array.isArray(cf.options) && cf.options.length > 0) {
-              const opt = cf.options.find(o => (o.value || o.label) === val);
-              const optName = opt ? (opt.value || opt.label) : val;
-              return val ? { key: val, name: optName } : { key: 'empty', name: 'Empty' };
-            }
-            return val ? { key: val, name: val } : { key: 'empty', name: 'Empty' };
+    switch (groupField) {
+      case 'Assignee': return task.assignee ? { key: task.assigneeId, name: task.assignee.name } : { key: 'unassigned', name: 'Unassigned' };
+      case 'Created by': return task.creator ? { key: task.creatorId, name: task.creator.name } : { key: 'unknown', name: 'Unknown' };
+      case 'Start date': return getDateGroup(task.startDate, 'start date');
+      case 'Due date': return getDateGroup(task.dueDate, 'due date');
+      case 'Created on': return getDateGroup(task.createdAt, 'created on');
+      case 'Last modified on': return getDateGroup(task.updatedAt, 'last modified on');
+      case 'Completed on':
+        if (!task.completedAt && !task.isCompleted) return { key: 'no-date', name: 'No completed on date', sortValue: 999999 };
+        if (!task.completedAt && task.isCompleted) return { key: 'completed-no-date', name: 'Completed (No date)', sortValue: 999998 };
+        return getDateGroup(task.completedAt, 'completed on');
+      case 'Project': return { key: selectedProject.id, name: selectedProject.name };
+      default:
+        const customFieldsList = getParsedCustomFields(selectedProject);
+        const cf = customFieldsList.find(f => f.title === groupField);
+        if (cf) {
+          if (cf.type === 'github_pr') {
+            let prs = getParsedGithubPRs(task.githubPRs);
+            if (!prs || prs.length === 0) return { key: 'empty', name: 'No value' };
+            const label = getGithubPRStatusLabel(prs[0]);
+            return { key: label, name: label, sortValue: GITHUB_PR_SORT_MAP[label] || 8 };
           }
-          return { key: 'other', name: 'Other' };
-      }
-    };
-
-    allTasks.forEach(task => {
-      const { key, name, sortValue } = getGroupKeyAndName(task);
-      if (!groupsMap[key]) {
-        groupsMap[key] = { id: `group-${key}`, name: name, tasks: [], sortValue: sortValue };
-      }
-      groupsMap[key].tasks.push(task);
-    });
-
-    let groupedSections = Object.values(groupsMap).map(g => ({
-      ...g,
-      tasks: applyTaskSort ? applyTaskSort(applyTaskFilter(g.tasks)) : applyTaskFilter(g.tasks)
-    }));
-
-    if (!showEmptyGroups) {
-      groupedSections = groupedSections.filter(g => g.tasks.length > 0);
+          let taskFields = {};
+          if (typeof task.customFields === 'string') { try { taskFields = JSON.parse(task.customFields); } catch (e) { } } else if (task.customFields) taskFields = task.customFields;
+          const val = taskFields[cf.id];
+          if (Array.isArray(cf.options) && cf.options.length > 0) {
+            const opt = cf.options.find(o => (o.value || o.label) === val);
+            const optName = opt ? (opt.value || opt.label) : val;
+            return val ? { key: val, name: optName } : { key: 'empty', name: 'No value' };
+          }
+          return val ? { key: val, name: val } : { key: 'empty', name: 'No value' };
+        }
+        return { key: 'other', name: 'Other' };
     }
-
-    groupedSections.sort((a, b) => {
-      if (a.key === 'unassigned' || a.key === 'no-date' || a.key === 'empty') return 1;
-      if (b.key === 'unassigned' || b.key === 'no-date' || b.key === 'empty') return -1;
-
-      if (a.sortValue !== undefined && b.sortValue !== undefined) {
-        if (a.sortValue < b.sortValue) return groupOrder === 'Ascending' ? -1 : 1;
-        if (a.sortValue > b.sortValue) return groupOrder === 'Ascending' ? 1 : -1;
-        return 0;
-      }
-
-      const valA = a.name.toLowerCase();
-      const valB = b.name.toLowerCase();
-      if (valA < valB) return groupOrder === 'Ascending' ? -1 : 1;
-      if (valA > valB) return groupOrder === 'Ascending' ? 1 : -1;
-      return 0;
-    });
-
-    return groupedSections;
   };
 
-  const virtualGroupedSections = getGroupedSections();
-  const isVirtualGrouping = activeGroup && activeGroup !== 'Sections';
+  const getGroupedSections = () => {
+    let rawSections = parsedSections || [];
+    const primaryGroup = (activeGroups && activeGroups.length > 0) ? activeGroups[0] : { field: 'Sections', order: 'Custom order' };
+    const secondaryGroup = (activeGroups && activeGroups.length > 1) ? activeGroups[1] : null;
+
+    if (primaryGroup.field === 'Sections' && !secondaryGroup) return null;
+
+    let allTasks = [];
+    rawSections.forEach(sec => { allTasks = [...allTasks, ...(sec.tasks || [])]; });
+
+    const initGroupsMap = (groupField) => {
+      const groupsMap = {};
+      if (groupField === 'Assignee') {
+        groupsMap['unassigned'] = { id: `group-unassigned`, name: 'Unassigned', tasks: [] };
+        if (selectedProject.owner) groupsMap[selectedProject.owner.id] = { id: `group-${selectedProject.owner.id}`, name: selectedProject.owner.name, tasks: [] };
+        if (selectedProject.members) selectedProject.members.forEach(m => { const u = m.user || m; if (u && u.id && u.name) groupsMap[u.id] = { id: `group-${u.id}`, name: u.name, tasks: [] }; });
+      } else if (['Start date', 'Due date', 'Created on', 'Last modified on', 'Completed on'].includes(groupField)) {
+        [{ key: 'today', name: 'Today', sortValue: 0 }, { key: 'yesterday', name: 'Yesterday', sortValue: -1 }, { key: 'tomorrow', name: 'Tomorrow', sortValue: 1 }, { key: 'last-7', name: 'Last 7 days', sortValue: -7 }, { key: 'next-7', name: 'Next 7 days', sortValue: 7 }, { key: 'no-date', name: `No ${groupField.toLowerCase()}`, sortValue: 999999 }].forEach(b => { groupsMap[b.key] = { id: `group-${b.key}`, name: b.name, tasks: [], sortValue: b.sortValue }; });
+      } else if (groupField === 'Sections') {
+        rawSections.forEach(sec => { groupsMap[sec.id] = { id: sec.id, name: sec.name, tasks: [], isOriginalSection: true }; });
+      } else {
+        const customFieldsList = getParsedCustomFields(selectedProject);
+        const cf = customFieldsList.find(f => f.title === groupField);
+        if (cf && cf.type === 'github_pr') {
+          GITHUB_PR_STATUSES.forEach(s => { groupsMap[s] = { id: `group-${s}`, name: s, tasks: [], sortValue: GITHUB_PR_SORT_MAP[s] || 8 }; });
+          groupsMap['empty'] = { id: 'group-empty', name: 'No value', tasks: [], sortValue: 99 };
+        } else if (cf && Array.isArray(cf.options)) {
+          cf.options.forEach(opt => { const optName = opt.value || opt.label; if (optName) groupsMap[optName] = { id: `group-${optName}`, name: optName, tasks: [] }; });
+          groupsMap['empty'] = { id: 'group-empty', name: 'No value', tasks: [] };
+        }
+      }
+      return groupsMap;
+    };
+
+    const groupTasks = (tasksToGroup, groupRule) => {
+      const gMap = initGroupsMap(groupRule.field);
+      Object.keys(gMap).forEach(k => {
+        gMap[k].key = k;
+      });
+      tasksToGroup.forEach(task => {
+        let key, name, sortValue;
+        if (groupRule.field === 'Sections') {
+          key = task.sectionId; const sec = rawSections.find(s => s.id === task.sectionId); name = sec ? sec.name : 'Unknown Section';
+        } else {
+          const info = getGroupKeyAndName(task, groupRule.field); key = info.key; name = info.name; sortValue = info.sortValue;
+        }
+        if (!gMap[key]) gMap[key] = { key: key, id: `group-${key}`, name: name, tasks: [], sortValue: sortValue };
+        gMap[key].tasks.push(task);
+      });
+
+      let groupedList = Object.values(gMap).map(g => ({ ...g, tasks: applyTaskSort ? applyTaskSort(applyTaskFilter(g.tasks)) : applyTaskFilter(g.tasks) }));
+      if (!showEmptyGroups) groupedList = groupedList.filter(g => g.tasks.length > 0);
+
+      groupedList.sort((a, b) => {
+        if (groupRule.field === 'Sections') return 0;
+        if (a.key === 'unassigned' || a.key === 'no-date' || a.key === 'empty') return 1;
+        if (b.key === 'unassigned' || b.key === 'no-date' || b.key === 'empty') return -1;
+        if (a.sortValue !== undefined && b.sortValue !== undefined) {
+          if (a.sortValue < b.sortValue) return groupRule.order === 'Ascending' ? -1 : 1;
+          if (a.sortValue > b.sortValue) return groupRule.order === 'Ascending' ? 1 : -1;
+          return 0;
+        }
+        const valA = a.name.toLowerCase(); const valB = b.name.toLowerCase();
+        if (valA < valB) return groupRule.order === 'Ascending' ? -1 : 1;
+        if (valA > valB) return groupRule.order === 'Ascending' ? 1 : -1;
+        return 0;
+      });
+      return groupedList;
+    };
+
+    let groupedSections = groupTasks(allTasks, primaryGroup);
+    if (primaryGroup.field === 'Sections') {
+      const secOrder = rawSections.map(s => s.id);
+      groupedSections.sort((a, b) => secOrder.indexOf(a.id) - secOrder.indexOf(b.id));
+    }
+
+    let globalSecondaryGroups = null;
+    if (secondaryGroup) {
+      groupedSections = groupedSections.map(primarySec => ({ ...primarySec, subgroups: groupTasks(primarySec.tasks, secondaryGroup) }));
+      globalSecondaryGroups = groupTasks(allTasks, secondaryGroup);
+    }
+
+    return { groupedSections, globalSecondaryGroups };
+  };
+
+  const groupedData = getGroupedSections();
+  const virtualGroupedSections = groupedData?.groupedSections || null;
+  const globalSecondaryGroups = groupedData?.globalSecondaryGroups || null;
+  const isVirtualGrouping = activeGroups && activeGroups.length > 0 && activeGroups[0].field !== 'Sections' || (activeGroups && activeGroups.length > 1);
 
   const renderActiveFiltersList = (isOptionsPane = false) => {
     return (
@@ -2179,9 +2274,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
         <div style={styles.headerRightBlock}>
           <div style={styles.avatarListWrapper}>
-            <UserAvatar 
-              name={selectedProject.owner?.name} 
-              size={28} 
+            <UserAvatar
+              name={selectedProject.owner?.name}
+              size={28}
               onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }}
               style={{ cursor: 'pointer', border: '1px solid #FFF' }}
             />
@@ -2264,10 +2359,10 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
               {['Overview', 'List', 'Board', 'Timeline', 'Gantt', 'Dashboard', 'Calendar', 'Workload', 'Note', 'Files', 'Messages']
                 .filter(type => !(isMyTasks && type === 'Overview'))
                 .map(type => (
-                <div key={type} style={styles.addWidgetDropdownItem} onClick={() => handleAddView(type)}>
-                  {type}
-                </div>
-              ))}
+                  <div key={type} style={styles.addWidgetDropdownItem} onClick={() => handleAddView(type)}>
+                    {type}
+                  </div>
+                ))}
             </div>
           )}
         </div>
@@ -2535,11 +2630,11 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                             <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>Sorts</span>
                             <button onClick={() => { setActiveSorts([]); setIsSortDropdownOpen(false); }} style={{ background: 'none', border: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}>Clear</button>
                           </div>
-                          
+
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             {activeSorts.map((sortObj, sIdx) => (
-                              <div 
-                                key={sIdx} 
+                              <div
+                                key={sIdx}
                                 draggable
                                 onDragStart={(e) => {
                                   setDraggingSortIdx(sIdx);
@@ -2548,7 +2643,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                                 onDragOver={(e) => {
                                   e.preventDefault();
                                   if (draggingSortIdx === null || draggingSortIdx === sIdx) return;
-                                  
+
                                   const newSorts = [...activeSorts];
                                   const [removed] = newSorts.splice(draggingSortIdx, 1);
                                   newSorts.splice(sIdx, 0, removed);
@@ -2676,13 +2771,13 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                 <div style={{ position: 'relative' }}>
                   <div
                     className="option-sub-item"
-                    style={{ ...styles.optionSubItem, backgroundColor: isGroupDropdownOpen || (activeGroup && activeGroup !== 'Sections') ? '#EEF2F6' : 'transparent', fontWeight: '500' }}
+                    style={{ ...styles.optionSubItem, backgroundColor: isGroupDropdownOpen || (activeGroups && activeGroups.length > 0 && activeGroups[0].field !== 'Sections' || activeGroups.length > 1) ? '#EEF2F6' : 'transparent', fontWeight: '500' }}
                     onClick={(e) => { document.body.click(); e.stopPropagation(); setIsGroupDropdownOpen(!isGroupDropdownOpen); }}
                   >
                     <span style={styles.optionIcon}>⊞</span> Group
-                    {activeGroup && activeGroup !== 'Sections' && (
+                    {(activeGroups && activeGroups.length > 0 && activeGroups[0].field !== 'Sections' || activeGroups.length > 1) && (
                       <span
-                        onClick={(e) => { e.stopPropagation(); setActiveGroup('Sections'); }}
+                        onClick={(e) => { e.stopPropagation(); setActiveGroups([{ field: 'Sections', order: 'Custom order' }]); }}
                         style={{ marginLeft: '4px', padding: '0 4px', color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                         onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
                         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
@@ -2691,29 +2786,135 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                   </div>
 
                   {isGroupDropdownOpen && (
-                    <div style={styles.groupDropdownPanel} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '12px 16px', borderBottom: '1px solid #E5E7EB' }}>
+                    <div style={{ ...styles.groupDropdownPanel, padding: 0, minWidth: '320px' }} onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #E5E7EB' }}>
                         <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.9rem' }}>Groups</span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={() => setActiveGroups([{ field: 'Sections', order: 'Custom order' }])}>Clear</span>
                       </div>
 
                       <div style={{ padding: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ color: '#9CA3AF', cursor: 'grab', userSelect: 'none' }}>⋮⋮</span>
-                          <div style={{ position: 'relative', flex: 1 }}>
-                            <div
-                              style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }}
-                              onClick={(e) => { e.stopPropagation(); setIsGroupInnerDropdownOpen(!isGroupInnerDropdownOpen); setIsGroupMoreMenuOpen(false); setIsGroupOrderMenuOpen(false); }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>≡</span> {activeGroup || 'Sections'}
+                        {activeGroups.map((groupObj, gIdx) => (
+                          <div key={gIdx} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                            <span style={{ color: '#9CA3AF', cursor: 'grab', userSelect: 'none' }}>⋮⋮</span>
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <div
+                                style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }}
+                                onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === `groupField-${gIdx}` ? null : { index: `groupField-${gIdx}`, type: 'groupField' }); }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>{groupObj.field === 'Sections' ? '≡' : 'A'}</span> {groupObj.field}
+                                </div>
+                                <span style={{ color: '#9CA3AF' }}>⌄</span>
                               </div>
-                              <span style={{ color: '#9CA3AF' }}>⌄</span>
+
+                              {openFilterDropdown?.index === `groupField-${gIdx}` && openFilterDropdown?.type === 'groupField' && (
+                                <div style={{ position: 'absolute', top: '100%', left: 0, width: '220px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '4px', maxHeight: '250px', overflowY: 'auto' }}>
+                                  {[
+                                    { icon: '≡', label: 'Sections' },
+                                    { icon: '📅', label: 'Start date' },
+                                    { icon: '📅', label: 'Due date' },
+                                    { icon: '👤', label: 'Assignee' },
+                                    { icon: '👤', label: 'Created by' },
+                                    { icon: '🕒', label: 'Created on' },
+                                    { icon: '🕒', label: 'Last modified on' },
+                                    { icon: '🕒', label: 'Completed on' },
+                                    { icon: '📋', label: 'Project' },
+                                    ...getParsedCustomFields(selectedProject).map(cf => ({ icon: 'A', label: cf.title }))
+                                  ].map((item, idx) => (
+                                    <div
+                                      key={idx}
+                                      style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                      onClick={() => {
+                                        const newGroups = [...activeGroups];
+                                        newGroups[gIdx] = { ...newGroups[gIdx], field: item.label, order: item.label === 'Sections' ? 'Custom order' : (newGroups[gIdx].order === 'Custom order' ? 'Ascending' : newGroups[gIdx].order) };
+                                        setActiveGroups(newGroups);
+                                        setOpenFilterDropdown(null);
+                                      }}
+                                    >
+                                      <span style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>{item.icon}</span>
+                                      {item.label}
+                                    </div>
+                                  ))}
+                                  <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
+                                  <div
+                                    style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#4F46E5', fontWeight: '500' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    onClick={() => { setShowAddFieldMenu(true); setIsGroupDropdownOpen(false); setOpenFilterDropdown(null); }}
+                                  >
+                                    + Add Custom Field
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
-                            {isGroupInnerDropdownOpen && (
-                              <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '4px', maxHeight: '250px', overflowY: 'auto' }}>
+                            <div style={{ position: 'relative' }}>
+                              <div
+                                style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: groupObj.field === 'Sections' ? 'not-allowed' : 'pointer', fontSize: '0.9rem', color: groupObj.field === 'Sections' ? '#9CA3AF' : 'var(--text-primary)', width: '130px', backgroundColor: groupObj.field === 'Sections' ? '#F9FAFB' : '#FFF' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (groupObj.field === 'Sections') return;
+                                  setOpenFilterDropdown(prev => prev?.index === `groupOrder-${gIdx}` ? null : { index: `groupOrder-${gIdx}`, type: 'groupOrder' });
+                                }}
+                              >
+                                {groupObj.field === 'Sections' ? 'Custom order' : groupObj.order} <span style={{ color: '#9CA3AF' }}>⌄</span>
+                              </div>
+                              {openFilterDropdown?.index === `groupOrder-${gIdx}` && openFilterDropdown?.type === 'groupOrder' && (
+                                <div style={{ position: 'absolute', top: '100%', right: 0, width: '150px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
+                                  {['Ascending', 'Descending'].map((opt) => (
+                                    <div
+                                      key={opt}
+                                      style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                      onClick={() => {
+                                        const newGroups = [...activeGroups];
+                                        newGroups[gIdx] = { ...newGroups[gIdx], order: opt };
+                                        setActiveGroups(newGroups);
+                                        setOpenFilterDropdown(null);
+                                      }}
+                                    >
+                                      <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
+                                        {groupObj.order === opt && <span style={{ color: '#4F46E5' }}>✓</span>}
+                                      </div>
+                                      {opt}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <span
+                              style={{ cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 4px', fontSize: '1.2rem', visibility: gIdx === 0 && activeGroups.length === 1 && groupObj.field === 'Sections' ? 'hidden' : 'visible' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (activeGroups.length === 1) {
+                                  setActiveGroups([{ field: 'Sections', order: 'Custom order' }]);
+                                } else {
+                                  setActiveGroups(activeGroups.filter((_, i) => i !== gIdx));
+                                }
+                              }}
+                            >×</span>
+                          </div>
+                        ))}
+
+                        {activeGroups.length < 2 && (
+                          <div style={{ position: 'relative' }}>
+                            <div
+                              style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem', cursor: 'pointer', fontWeight: '500' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenFilterDropdown(prev => prev?.index === 'add-subgroup' ? null : { index: 'add-subgroup', type: 'addSubgroup' });
+                              }}
+                            >
+                              <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>+</span> Add subgroup <span style={{ fontSize: '0.8rem' }}>⌄</span>
+                            </div>
+
+                            {openFilterDropdown?.index === 'add-subgroup' && openFilterDropdown?.type === 'addSubgroup' && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, width: '220px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '4px', maxHeight: '250px', overflowY: 'auto' }}>
                                 {[
-                                  { icon: '≡', label: 'Sections' },
                                   { icon: '📅', label: 'Start date' },
                                   { icon: '📅', label: 'Due date' },
                                   { icon: '👤', label: 'Assignee' },
@@ -2730,13 +2931,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
                                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                     onClick={() => {
-                                      setActiveGroup(item.label);
-                                      setIsGroupInnerDropdownOpen(false);
-                                      if (item.label === 'Sections') {
-                                        setGroupOrder('Custom order');
-                                      } else if (groupOrder === 'Custom order') {
-                                        setGroupOrder('Ascending');
-                                      }
+                                      setActiveGroups([...activeGroups, { field: item.label, order: 'Ascending' }]);
+                                      setOpenFilterDropdown(null);
                                     }}
                                   >
                                     <span style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>{item.icon}</span>
@@ -2745,88 +2941,29 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                                 ))}
                                 <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
                                 <div
-                                  style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#4F46E5', fontWeight: '500' }}
+                                  style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: '500' }}
                                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
                                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                  onClick={() => { setShowAddFieldMenu(true); setIsGroupDropdownOpen(false); setIsGroupInnerDropdownOpen(false); }}
+                                  onClick={() => { setShowAddFieldMenu(true); setIsGroupDropdownOpen(false); setOpenFilterDropdown(null); }}
                                 >
-                                  + Add Custom Field
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', width: '20px', textAlign: 'center' }}>+</span> Add custom field
                                 </div>
                               </div>
                             )}
                           </div>
+                        )}
 
-                          <div style={{ position: 'relative' }}>
-                            <div
-                              style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: (!activeGroup || activeGroup === 'Sections') ? 'not-allowed' : 'pointer', fontSize: '0.9rem', color: (!activeGroup || activeGroup === 'Sections') ? '#9CA3AF' : 'var(--text-primary)', width: '130px', backgroundColor: (!activeGroup || activeGroup === 'Sections') ? '#F9FAFB' : '#FFF' }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!activeGroup || activeGroup === 'Sections') return;
-                                setIsGroupOrderMenuOpen(!isGroupOrderMenuOpen);
-                                setIsGroupInnerDropdownOpen(false);
-                                setIsGroupMoreMenuOpen(false);
-                              }}
-                            >
-                              {(!activeGroup || activeGroup === 'Sections') ? 'Custom order' : groupOrder} <span style={{ color: '#9CA3AF' }}>⌄</span>
-                            </div>
-                            {isGroupOrderMenuOpen && (
-                              <div style={{ position: 'absolute', top: '100%', right: 0, width: '150px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
-                                {['Ascending', 'Descending'].map((opt) => (
-                                  <div
-                                    key={opt}
-                                    style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                    onClick={() => { setGroupOrder(opt); setIsGroupOrderMenuOpen(false); }}
-                                  >
-                                    <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                                      {groupOrder === opt && <span style={{ color: '#4F46E5' }}>✓</span>}
-                                    </div>
-                                    {opt}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div style={{ position: 'relative' }}>
-                            <span
-                              style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 4px', fontWeight: 'bold' }}
-                              onClick={(e) => { e.stopPropagation(); setIsGroupMoreMenuOpen(!isGroupMoreMenuOpen); setIsGroupInnerDropdownOpen(false); setIsGroupOrderMenuOpen(false); }}
-                            >
-                              ...
-                            </span>
-                            {isGroupMoreMenuOpen && (
-                              <div style={{ position: 'absolute', top: '100%', right: 0, width: '200px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
-                                <div
-                                  style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                  onClick={() => { setShowEmptyGroups(false); setIsGroupMoreMenuOpen(false); }}
-                                >
-                                  <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                                    {!showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
-                                  </div>
-                                  Hide empty groups
-                                </div>
-                                <div
-                                  style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                  onClick={() => { setShowEmptyGroups(true); setIsGroupMoreMenuOpen(false); }}
-                                >
-                                  <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                                    {showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
-                                  </div>
-                                  Show empty groups
-                                </div>
-                              </div>
-                            )}
+                        <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '16px 0' }}></div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>Show empty groups</span>
+                          <div
+                            style={{ width: '36px', height: '20px', backgroundColor: showEmptyGroups ? '#4F46E5' : '#D1D5DB', borderRadius: '10px', position: 'relative', cursor: 'pointer', transition: 'background-color 0.2s' }}
+                            onClick={() => setShowEmptyGroups(!showEmptyGroups)}
+                          >
+                            <div style={{ position: 'absolute', top: '2px', left: showEmptyGroups ? '18px' : '2px', width: '16px', height: '16px', backgroundColor: 'white', borderRadius: '50%', transition: 'left 0.2s' }}></div>
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '16px', color: 'var(--text-secondary)', fontSize: '0.9rem', cursor: 'pointer', fontWeight: '500' }}>
-                          + Add subgroup <span style={{ fontSize: '0.8rem' }}>⌄</span>
-                        </div>
                       </div>
                     </div>
                   )}
@@ -2867,35 +3004,81 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         <ProjectOverviewView selectedProject={selectedProject} projectRole={projectRole} isReadOnly={isReadOnly} token={token} currentUser={user} onUpdate={syncProjectStates} onOpenShareModal={() => setIsShareModalOpen(true)} />
       ) : activeViewObj.type === 'Board' ? (
         /* ================= BOARD (KART) GÖRÜNÜMÜ ================= */
-        <div style={{...styles.columnsWrapper, position: 'relative'}} onMouseDown={handleMarqueeMouseDown}>
-          {(virtualGroupedSections || selectedProject.sections?.sort((a, b) => a.order - b.order))?.map(section => {
-            const filteredTasks = virtualGroupedSections ? section.tasks : applyTaskSort(applyTaskFilter(section.tasks))
-            return (
-              <div
-                key={section.id}
-                onClickCapture={() => setLastInteractedSectionId(section.id)}
-                className="kanban-column-wrapper"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  if (draggingSectionId && draggingSectionId !== section.id && !isVirtualGrouping) {
-                    handleLiveSectionSwap(draggingSectionId, section.id);
-                  }
-                }}
-                onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
-                style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
-              >
-                <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra = {}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} selectedTaskIds={selectedTaskIds} setSelectedTaskIds={setSelectedTaskIds} onTaskSelect={handleTaskSelect} />
+        <div style={{ ...styles.columnsWrapper, gap: globalSecondaryGroups ? '0' : '1.5rem', position: 'relative', flexDirection: globalSecondaryGroups ? 'column' : 'row', paddingTop: globalSecondaryGroups ? '0' : '1.5rem' }} onMouseDown={handleMarqueeMouseDown}>
+          {globalSecondaryGroups ? (
+            <>
+              {/* MATRIX HEADERS */}
+              <div style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--bg-secondary)', display: 'flex', gap: '1rem', paddingBottom: '0.5rem', paddingLeft: '1rem', paddingTop: '1.5rem' }}>
+                {virtualGroupedSections.map(section => (
+                  <div key={section.id} style={{ flexShrink: 0, width: '280px' }}>
+                    <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', cursor: 'default' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                        <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{section.name}</h3>
+                        <span style={styles.taskCountBadge}>{section.tasks?.length || 0}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )
-          })}
-          {!isReadOnly && !isVirtualGrouping && (
-            <div style={styles.addSectionColumn}>
-              <form onSubmit={handleCreateSection} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                <input type="text" placeholder="+ Add section..." value={newSectionName} onChange={e => setNewSectionName(e.target.value)} style={styles.input} required />
-                {newSectionName.trim() && <button type="submit" style={styles.button}>Add Section</button>}
-              </form>
-            </div>
+
+              {/* MATRIX ROWS */}
+              {globalSecondaryGroups.map(sg => (
+                <div key={sg.id} style={{ display: 'flex', flexDirection: 'column', paddingLeft: '1rem', marginBottom: '1.5rem' }}>
+                  <div style={{ position: 'sticky', top: '77px', zIndex: 5, display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', paddingBottom: '0.5rem', paddingTop: '0.5rem', backgroundColor: 'var(--bg-secondary)', marginLeft: '-1rem', paddingLeft: '1rem', marginRight: '-1.5rem', paddingRight: '1.5rem' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>▼</span>
+                    <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{sg.name}</span>
+                    <span style={styles.taskCountBadge}>{sg.tasks?.length || 0}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
+                    {virtualGroupedSections.map(pg => {
+                      // Find tasks in this intersection
+                      const cellTasks = pg.tasks.filter(t => {
+                        const sgInfo = getGroupKeyAndName(t, activeGroups[1].field);
+                        return sgInfo.key === sg.key;
+                      });
+                      const cellSection = { ...pg, tasks: cellTasks, subgroups: undefined };
+                      return (
+                        <div key={pg.id} onClickCapture={() => setLastInteractedSectionId(pg.id)} style={{ width: '280px', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+                          <KanbanColumn section={cellSection} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra = {}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={false} onDragStartSection={() => { }} onDragEndSection={() => { }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} selectedTaskIds={selectedTaskIds} setSelectedTaskIds={setSelectedTaskIds} onTaskSelect={handleTaskSelect} isMatrixCell={true} subgroup={sg} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
+              {(virtualGroupedSections || selectedProject.sections?.sort((a, b) => a.order - b.order))?.map(section => {
+                const filteredTasks = virtualGroupedSections ? section.tasks : applyTaskSort(applyTaskFilter(section.tasks))
+                return (
+                  <div
+                    key={section.id}
+                    onClickCapture={() => setLastInteractedSectionId(section.id)}
+                    className="kanban-column-wrapper"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (draggingSectionId && draggingSectionId !== section.id && !isVirtualGrouping) {
+                        handleLiveSectionSwap(draggingSectionId, section.id);
+                      }
+                    }}
+                    onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
+                    style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', opacity: draggingSectionId === section.id ? 0.4 : 1 }}
+                  >
+                    <KanbanColumn section={{ ...section, tasks: filteredTasks }} token={token} isVirtualGrouping={isVirtualGrouping} customFieldSettings={selectedProject?.customFieldSettings || []} projectMembers={selectedProject?.members || []} onTaskUpdate={handleTaskUpdate} onDeleteSection={handleDeleteSection} onRenameSection={handleRenameSection} onGeneralDrop={handleGeneralDrop} onTaskContextMenu={(e, id) => { if (!isReadOnly) setContextMenu({ visible: true, x: e.clientX, y: e.clientY, taskId: id }) }} onOpenApprovalMenu={handleOpenApprovalMenu} onOpenPopover={(type, task, coords, extra = {}) => setActivePopover({ type, task, coords, ...extra })} onOpenTaskPane={setActiveTaskPaneId} projectRole={projectRole} handleLiveTaskSwap={handleLiveTaskSwap} draggingTaskId={draggingTaskId} setDraggingTaskId={setDraggingTaskId} draggableSection={!isReadOnly && !isVirtualGrouping} onDragStartSection={(e) => { setDraggingSectionId(section.id); e.dataTransfer.setData('drag-type', 'section'); e.dataTransfer.setData('section-id', section.id); const ghostEl = document.getElementById('asana-drag-ghost-preview-card'); if (ghostEl) { ghostEl.textContent = section.name; e.dataTransfer.setDragImage(ghostEl, 20, 15); } }} onDragEndSection={() => { handleFinalSectionMove(); setDraggingSectionId(null); }} setLastInteractedSectionId={setLastInteractedSectionId} setLastInteractedTaskId={setLastInteractedTaskId} selectedTaskIds={selectedTaskIds} setSelectedTaskIds={setSelectedTaskIds} onTaskSelect={handleTaskSelect} />
+                  </div>
+                )
+              })}
+              {!isReadOnly && !isVirtualGrouping && (
+                <div style={styles.addSectionColumn}>
+                  <form onSubmit={handleCreateSection} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    <input type="text" placeholder="+ Add section..." value={newSectionName} onChange={e => setNewSectionName(e.target.value)} style={styles.input} required />
+                    {newSectionName.trim() && <button type="submit" style={styles.button}>Add Section</button>}
+                  </form>
+                </div>
+              )}
+            </>
           )}
         </div>
       ) : activeViewObj.type === 'List' ? (
@@ -3081,9 +3264,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           token={token}
         />
       )}
-      {activePopover && (activePopover.type === 'date' || activePopover.type === 'custom-date') && <DatePickerPopover task={activePopover.task} token={token} coords={activePopover.coords} customFieldId={activePopover.customFieldId} onDatesUpdated={(id, updated) => { 
-        handleTaskUpdate(id, updated); 
-        setActivePopover(null); 
+      {activePopover && (activePopover.type === 'date' || activePopover.type === 'custom-date') && <DatePickerPopover task={activePopover.task} token={token} coords={activePopover.coords} customFieldId={activePopover.customFieldId} onDatesUpdated={(id, updated) => {
+        handleTaskUpdate(id, updated);
+        setActivePopover(null);
         const prevTask = activePopover.task;
         showUndo({
           message: "Date updated",
@@ -3101,9 +3284,9 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           }
         });
       }} />}
-      {activePopover && activePopover.type === 'assignee' && <AssigneePopover task={activePopover.task} token={token} coords={activePopover.coords} project={selectedProject} onAssigneeUpdated={(id, updated) => { 
-        handleTaskUpdate(id, updated); 
-        setActivePopover(null); 
+      {activePopover && activePopover.type === 'assignee' && <AssigneePopover task={activePopover.task} token={token} coords={activePopover.coords} project={selectedProject} onAssigneeUpdated={(id, updated) => {
+        handleTaskUpdate(id, updated);
+        setActivePopover(null);
         const prevTask = activePopover.task;
         showUndo({
           message: "Assignee updated",
@@ -3611,8 +3794,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     {activeSorts.map((sortObj, sIdx) => (
-                      <div 
-                        key={sIdx} 
+                      <div
+                        key={sIdx}
                         draggable
                         onDragStart={(e) => {
                           setDraggingSortIdx(sIdx);
@@ -3621,7 +3804,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                         onDragOver={(e) => {
                           e.preventDefault();
                           if (draggingSortIdx === null || draggingSortIdx === sIdx) return;
-                          
+
                           const newSorts = [...activeSorts];
                           const [removed] = newSorts.splice(draggingSortIdx, 1);
                           newSorts.splice(sIdx, 0, removed);
@@ -3734,23 +3917,165 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Manage groups on this view</span>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ color: '#9CA3AF', cursor: 'grab', userSelect: 'none' }}>⋮⋮</span>
-                    <div style={{ position: 'relative', flex: 1 }}>
-                      <div
-                        style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }}
-                        onClick={(e) => { e.stopPropagation(); setIsGroupInnerDropdownOpen(!isGroupInnerDropdownOpen); setIsGroupMoreMenuOpen(false); setIsGroupOrderMenuOpen(false); }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>≡</span> {activeGroup || 'Sections'}
+                  {activeGroups.map((groupObj, gIdx) => (
+                    <div key={gIdx} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                      <span style={{ color: '#9CA3AF', cursor: 'grab', userSelect: 'none' }}>⋮⋮</span>
+                      <div style={{ position: 'relative', flex: 1 }}>
+                        <div
+                          style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)' }}
+                          onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === `groupField-opt-${gIdx}` ? null : { index: `groupField-opt-${gIdx}`, type: 'groupField' }); }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>{groupObj.field === 'Sections' ? '≡' : 'A'}</span> {groupObj.field}
+                          </div>
+                          <span style={{ color: '#9CA3AF' }}>⌄</span>
                         </div>
-                        <span style={{ color: '#9CA3AF' }}>⌄</span>
+
+                        {openFilterDropdown?.index === `groupField-opt-${gIdx}` && openFilterDropdown?.type === 'groupField' && (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, width: '220px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '4px', maxHeight: '250px', overflowY: 'auto' }}>
+                            {[
+                              { icon: '≡', label: 'Sections' },
+                              { icon: '📅', label: 'Start date' },
+                              { icon: '📅', label: 'Due date' },
+                              { icon: '👤', label: 'Assignee' },
+                              { icon: '👤', label: 'Created by' },
+                              { icon: '🕒', label: 'Created on' },
+                              { icon: '🕒', label: 'Last modified on' },
+                              { icon: '🕒', label: 'Completed on' },
+                              { icon: '📋', label: 'Project' },
+                              ...getParsedCustomFields(selectedProject).map(cf => ({ icon: 'A', label: cf.title }))
+                            ].map((item, idx) => (
+                              <div
+                                key={idx}
+                                style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                onClick={() => {
+                                  const newGroups = [...activeGroups];
+                                  newGroups[gIdx] = { ...newGroups[gIdx], field: item.label, order: item.label === 'Sections' ? 'Custom order' : (newGroups[gIdx].order === 'Custom order' ? 'Ascending' : newGroups[gIdx].order) };
+                                  setActiveGroups(newGroups);
+                                  setOpenFilterDropdown(null);
+                                }}
+                              >
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>{item.icon}</span>
+                                {item.label}
+                              </div>
+                            ))}
+                            <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
+                            <div
+                              style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#4F46E5', fontWeight: '500' }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onClick={() => { setShowAddFieldMenu(true); setIsOptionsPaneOpen(false); setOpenFilterDropdown(null); }}
+                            >
+                              + Add Custom Field
+                            </div>
+                          </div>
+                        )}
                       </div>
 
-                      {isGroupInnerDropdownOpen && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '4px', maxHeight: '250px', overflowY: 'auto' }}>
+                      <div style={{ position: 'relative' }}>
+                        <div
+                          style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: groupObj.field === 'Sections' ? 'not-allowed' : 'pointer', fontSize: '0.9rem', color: groupObj.field === 'Sections' ? '#9CA3AF' : 'var(--text-primary)', width: '130px', backgroundColor: groupObj.field === 'Sections' ? '#F9FAFB' : '#FFF' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (groupObj.field === 'Sections') return;
+                            setOpenFilterDropdown(prev => prev?.index === `groupOrder-opt-${gIdx}` ? null : { index: `groupOrder-opt-${gIdx}`, type: 'groupOrder' });
+                          }}
+                        >
+                          {groupObj.field === 'Sections' ? 'Custom order' : groupObj.order} <span style={{ color: '#9CA3AF' }}>⌄</span>
+                        </div>
+                        {openFilterDropdown?.index === `groupOrder-opt-${gIdx}` && openFilterDropdown?.type === 'groupOrder' && (
+                          <div style={{ position: 'absolute', top: '100%', right: 0, width: '150px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
+                            {['Ascending', 'Descending'].map((opt) => (
+                              <div
+                                key={opt}
+                                style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                onClick={() => {
+                                  const newGroups = [...activeGroups];
+                                  newGroups[gIdx] = { ...newGroups[gIdx], order: opt };
+                                  setActiveGroups(newGroups);
+                                  setOpenFilterDropdown(null);
+                                }}
+                              >
+                                <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
+                                  {groupObj.order === opt && <span style={{ color: '#4F46E5' }}>✓</span>}
+                                </div>
+                                {opt}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <span
+                        style={{ cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 4px', fontSize: '1.2rem', visibility: gIdx === 0 && activeGroups.length === 1 && groupObj.field === 'Sections' ? 'hidden' : 'visible' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (activeGroups.length === 1) {
+                            setActiveGroups([{ field: 'Sections', order: 'Custom order' }]);
+                          } else {
+                            setActiveGroups(activeGroups.filter((_, i) => i !== gIdx));
+                          }
+                        }}
+                      >×</span>
+
+                      {gIdx === 0 && (
+                        <div style={{ position: 'relative' }}>
+                          <span
+                            style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 4px', fontWeight: 'bold' }}
+                            onClick={(e) => { e.stopPropagation(); setOpenFilterDropdown(prev => prev?.index === 'groupMore-opt' ? null : { index: 'groupMore-opt', type: 'groupMore' }); }}
+                          >
+                            ...
+                          </span>
+                          {openFilterDropdown?.index === 'groupMore-opt' && openFilterDropdown?.type === 'groupMore' && (
+                            <div style={{ position: 'absolute', top: '100%', right: 0, width: '200px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
+                              <div
+                                style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                onClick={() => { setShowEmptyGroups(false); setOpenFilterDropdown(null); }}
+                              >
+                                <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
+                                  {!showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
+                                </div>
+                                Hide empty groups
+                              </div>
+                              <div
+                                style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                onClick={() => { setShowEmptyGroups(true); setOpenFilterDropdown(null); }}
+                              >
+                                <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
+                                  {showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
+                                </div>
+                                Show empty groups
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {activeGroups.length < 2 && (
+                    <div style={{ position: 'relative' }}>
+                      <div
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '12px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenFilterDropdown(prev => prev?.index === 'add-subgroup-opt' ? null : { index: 'add-subgroup-opt', type: 'addSubgroup' });
+                        }}
+                      >
+                        <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>+</span> Add subgroup <span style={{ fontSize: '0.8rem' }}>⌄</span>
+                      </div>
+
+                      {openFilterDropdown?.index === 'add-subgroup-opt' && openFilterDropdown?.type === 'addSubgroup' && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, width: '220px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 100, marginTop: '4px', maxHeight: '250px', overflowY: 'auto' }}>
                           {[
-                            { icon: '≡', label: 'Sections' },
                             { icon: '📅', label: 'Start date' },
                             { icon: '📅', label: 'Due date' },
                             { icon: '👤', label: 'Assignee' },
@@ -3767,13 +4092,8 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
                               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               onClick={() => {
-                                setActiveGroup(item.label);
-                                setIsGroupInnerDropdownOpen(false);
-                                if (item.label === 'Sections') {
-                                  setGroupOrder('Custom order');
-                                } else if (groupOrder === 'Custom order') {
-                                  setGroupOrder('Ascending');
-                                }
+                                setActiveGroups([...activeGroups, { field: item.label, order: 'Ascending' }]);
+                                setOpenFilterDropdown(null);
                               }}
                             >
                               <span style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>{item.icon}</span>
@@ -3782,90 +4102,17 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
                           ))}
                           <div style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }}></div>
                           <div
-                            style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#4F46E5', fontWeight: '500' }}
+                            style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: '500' }}
                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                            onClick={() => { setShowAddFieldMenu(true); setIsOptionsPaneOpen(false); setIsGroupInnerDropdownOpen(false); }}
+                            onClick={() => { setShowAddFieldMenu(true); setIsOptionsPaneOpen(false); setOpenFilterDropdown(null); }}
                           >
-                            + Add Custom Field
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', width: '20px', textAlign: 'center' }}>+</span> Add custom field
                           </div>
                         </div>
                       )}
                     </div>
-
-                    <div style={{ position: 'relative' }}>
-                      <div
-                        style={{ border: '1px solid #D1D5DB', borderRadius: '6px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: (!activeGroup || activeGroup === 'Sections') ? 'not-allowed' : 'pointer', fontSize: '0.9rem', color: (!activeGroup || activeGroup === 'Sections') ? '#9CA3AF' : 'var(--text-primary)', width: '130px', backgroundColor: (!activeGroup || activeGroup === 'Sections') ? '#F9FAFB' : '#FFF' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!activeGroup || activeGroup === 'Sections') return;
-                          setIsGroupOrderMenuOpen(!isGroupOrderMenuOpen);
-                          setIsGroupInnerDropdownOpen(false);
-                          setIsGroupMoreMenuOpen(false);
-                        }}
-                      >
-                        {(!activeGroup || activeGroup === 'Sections') ? 'Custom order' : groupOrder} <span style={{ color: '#9CA3AF' }}>⌄</span>
-                      </div>
-                      {isGroupOrderMenuOpen && (
-                        <div style={{ position: 'absolute', top: '100%', right: 0, width: '150px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
-                          {['Ascending', 'Descending'].map((opt) => (
-                            <div
-                              key={opt}
-                              style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                              onClick={() => { setGroupOrder(opt); setIsGroupOrderMenuOpen(false); }}
-                            >
-                              <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                                {groupOrder === opt && <span style={{ color: '#4F46E5' }}>✓</span>}
-                              </div>
-                              {opt}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ position: 'relative' }}>
-                      <span
-                        style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 4px', fontWeight: 'bold' }}
-                        onClick={(e) => { e.stopPropagation(); setIsGroupMoreMenuOpen(!isGroupMoreMenuOpen); setIsGroupInnerDropdownOpen(false); setIsGroupOrderMenuOpen(false); }}
-                      >
-                        ...
-                      </span>
-                      {isGroupMoreMenuOpen && (
-                        <div style={{ position: 'absolute', top: '100%', right: 0, width: '200px', backgroundColor: 'var(--bg-primary)', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)', zIndex: 110, marginTop: '4px', padding: '6px 0' }} onClick={(e) => e.stopPropagation()}>
-                          <div
-                            style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                            onClick={() => { setShowEmptyGroups(false); setIsGroupMoreMenuOpen(false); }}
-                          >
-                            <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                              {!showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
-                            </div>
-                            Hide empty groups
-                          </div>
-                          <div
-                            style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                            onClick={() => { setShowEmptyGroups(true); setIsGroupMoreMenuOpen(false); }}
-                          >
-                            <div style={{ width: '16px', display: 'flex', justifyContent: 'center' }}>
-                              {showEmptyGroups && <span style={{ color: '#4F46E5' }}>✓</span>}
-                            </div>
-                            Show empty groups
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '12px' }}
-                  >
-                    <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>+</span> Add subgroup
-                  </div>
+                  )}
 
                   <div style={{ marginTop: 'auto', borderTop: '1px solid #E5E7EB', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
                     <button style={{ padding: '6px 12px', border: '1px solid #D1D5DB', borderRadius: '6px', backgroundColor: '#FFF', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import TaskCard from './TaskCard'
 
-export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId, fieldConfig, selectedTaskIds, onTaskSelect }) {
+export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId, fieldConfig, selectedTaskIds, onTaskSelect, isMatrixCell, subgroup }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [isEditingName, setIsEditingName] = useState(false)
@@ -41,22 +41,25 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
     }
   };
 
+  const isSubgrouped = !!section.subgroups;
+
   return (
     <div
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.stopPropagation();
-        if (!isVirtualGrouping) onGeneralDrop(e, section.id);
+        if (!isVirtualGrouping || isMatrixCell) onGeneralDrop(e, section.id, null, subgroup);
       }}
-      style={styles.kanbanColumn}
+      style={isMatrixCell ? { ...styles.kanbanColumn, backgroundColor: 'transparent', boxShadow: 'none', padding: '0', minHeight: '100px' } : { ...styles.kanbanColumn, backgroundColor: 'transparent', boxShadow: 'none', padding: '0' }}
     >
       {/* Sütun Başlığı */}
+      {!isMatrixCell && (
       <div
         className="section-header"
         draggable={draggableSection}
         onDragStart={onDragStartSection}
         onDragEnd={onDragEndSection}
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', position: 'relative', cursor: isReadOnly || isEditingName || isVirtualGrouping ? 'default' : 'pointer', flexShrink: 0 }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', padding: '0.75rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', position: 'relative', cursor: isReadOnly || isEditingName || isVirtualGrouping ? 'default' : 'pointer', flexShrink: 0 }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
           {isEditingName ? (
@@ -92,39 +95,88 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
           </div>
         )}
       </div>
+      )}
 
-      {/* SADECE GÖREV KARTLARININ KAYDIRILDIĞI SCROLL ALANI */}
-      <div className="kanban-task-list" style={styles.taskListContainer}>
-        {section.tasks?.map(task => (
-          <div
-            key={task.id}
-            style={{ width: '248px', flexShrink: 0, display: task.isHiddenForMultiDrag ? 'none' : 'block' }}
-            onClickCapture={() => {
-              if (setLastInteractedSectionId) setLastInteractedSectionId(section.id);
-              if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
-            }}
-          >
-            <TaskCard
-              task={task}
-              token={token}
-              onTaskUpdate={onTaskUpdate}
-              onTaskContextMenu={onTaskContextMenu}
-              onOpenApprovalMenu={onOpenApprovalMenu}
-              onOpenPopover={onOpenPopover}
-              onOpenTaskPane={onOpenTaskPane}
-              isVirtualGrouping={isVirtualGrouping}
-              customFieldSettings={customFieldSettings}
-              projectMembers={projectMembers}
-              projectRole={projectRole} // Karta kadar yetki delegasyonu
-              handleLiveTaskSwap={handleLiveTaskSwap}
-              draggingTaskId={draggingTaskId}
-              setDraggingTaskId={setDraggingTaskId}
-              fieldConfig={fieldConfig}
-              selectedTaskIds={selectedTaskIds}
-              onTaskSelect={onTaskSelect}
-            />
-          </div>
-        ))}
+      {/* SADECE GÖREV KARTLARININ KAYDIRILDIĞI SCROLL ALANI - TEK BÜYÜK KUTU */}
+      <div className="kanban-task-list" style={{...styles.taskListContainer, gap: isSubgrouped ? '1rem' : '0.75rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', padding: '0.75rem 1rem', marginRight: isMatrixCell ? 0 : styles.taskListContainer.marginRight, boxShadow: '0 1px 3px rgba(0,0,0,0.1)'}}>
+        {section.subgroups ? (
+          section.subgroups.map((subgroup, index) => (
+            <div key={subgroup.id} style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+              <div style={{ position: 'sticky', top: '-0.75rem', zIndex: 5, backgroundColor: 'var(--bg-tertiary)', paddingBottom: '0.5rem', paddingTop: '0.75rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>▼</span>
+                <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {subgroup.name}
+                </span>
+                <span style={styles.taskCountBadge}>{subgroup.tasks?.length || 0}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {subgroup.tasks?.map(task => (
+                  <div
+                    key={task.id}
+                    style={{ width: '100%', flexShrink: 0, display: task.isHiddenForMultiDrag ? 'none' : 'block' }}
+                    onClickCapture={() => {
+                      if (setLastInteractedSectionId) setLastInteractedSectionId(section.id);
+                      if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
+                    }}
+                  >
+                    <TaskCard
+                      task={task}
+                      token={token}
+                      onTaskUpdate={onTaskUpdate}
+                      onTaskContextMenu={onTaskContextMenu}
+                      onOpenApprovalMenu={onOpenApprovalMenu}
+                      onOpenPopover={onOpenPopover}
+                      onOpenTaskPane={onOpenTaskPane}
+                      isVirtualGrouping={isVirtualGrouping}
+                      customFieldSettings={customFieldSettings}
+                      projectMembers={projectMembers}
+                      projectRole={projectRole}
+                      handleLiveTaskSwap={handleLiveTaskSwap}
+                      draggingTaskId={draggingTaskId}
+                      setDraggingTaskId={setDraggingTaskId}
+                      fieldConfig={fieldConfig}
+                      selectedTaskIds={selectedTaskIds}
+                      onTaskSelect={onTaskSelect}
+                      isMatrixCell={isMatrixCell}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          section.tasks?.map(task => (
+            <div
+              key={task.id}
+              style={{ width: '248px', flexShrink: 0, display: task.isHiddenForMultiDrag ? 'none' : 'block' }}
+              onClickCapture={() => {
+                if (setLastInteractedSectionId) setLastInteractedSectionId(section.id);
+                if (setLastInteractedTaskId) setLastInteractedTaskId(task.id);
+              }}
+            >
+              <TaskCard
+                task={task}
+                token={token}
+                onTaskUpdate={onTaskUpdate}
+                onTaskContextMenu={onTaskContextMenu}
+                onOpenApprovalMenu={onOpenApprovalMenu}
+                onOpenPopover={onOpenPopover}
+                onOpenTaskPane={onOpenTaskPane}
+                isVirtualGrouping={isVirtualGrouping}
+                customFieldSettings={customFieldSettings}
+                projectMembers={projectMembers}
+                projectRole={projectRole}
+                handleLiveTaskSwap={handleLiveTaskSwap}
+                draggingTaskId={draggingTaskId}
+                setDraggingTaskId={setDraggingTaskId}
+                fieldConfig={fieldConfig}
+                selectedTaskIds={selectedTaskIds}
+                onTaskSelect={onTaskSelect}
+                isMatrixCell={isMatrixCell}
+              />
+            </div>
+          ))
+        )}
       </div>
 
       {/* Sadece yetkili kullanıcılar hızlı görev ekleme alanını görür */}

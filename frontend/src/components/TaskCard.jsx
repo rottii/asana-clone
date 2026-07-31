@@ -5,7 +5,7 @@ import UserAvatar from './UserAvatar';
 
 let globalLastDragY = 0;
 
-export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, fieldConfig, selectedTaskIds, onTaskSelect }) {
+export default function TaskCard({ task, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, fieldConfig, selectedTaskIds, onTaskSelect, isMatrixCell }) {
   const [openFieldMenuId, setOpenFieldMenuId] = useState(null)
   const [isHovered, setIsHovered] = useState(false)
   const [isEditingMode, setIsEditingMode] = useState(false)
@@ -212,7 +212,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
     <div
       ref={cardRef}
       data-task-id={task.id}
-      draggable={!isReadOnly && !isVirtualGrouping && !isEditingMode}
+      draggable={!isReadOnly && (!isVirtualGrouping || isMatrixCell) && !isEditingMode}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onDragStart={isEditingMode ? undefined : (e) => {
@@ -247,7 +247,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
       }}
       onDragOver={isEditingMode ? undefined : (e) => {
         e.preventDefault();
-        if (draggingTaskId && draggingTaskId !== task.id && !isVirtualGrouping) {
+        if (draggingTaskId && draggingTaskId !== task.id && (!isVirtualGrouping || isMatrixCell)) {
           let queryId = draggingTaskId;
           if (selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(draggingTaskId)) {
             const placeholderExists = document.querySelector(`[data-task-id="multi-drag-placeholder"]`);

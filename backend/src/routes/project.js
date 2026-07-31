@@ -1365,7 +1365,7 @@ router.post('/tasks', authenticateToken, async (req, res) => {
 // PATCH /api/projects/tasks/move — Move & reorder a task (MUST be before /tasks/:taskId)
 router.patch('/tasks/move', authenticateToken, async (req, res) => {
     try {
-        const { taskId, taskIds, targetSectionId, orderedTaskIds, projectId } = req.body;
+        const { taskId, taskIds, targetSectionId, orderedTaskIds, projectId, taskPayloads } = req.body;
         
         const tasksToMove = taskIds || (taskId ? [taskId] : []);
         
@@ -1389,16 +1389,20 @@ router.patch('/tasks/move', authenticateToken, async (req, res) => {
 
         // Move all selected tasks
         await Promise.all(tasksToMove.map(async (id) => {
+            const extraData = taskPayloads && taskPayloads[id] ? taskPayloads[id] : {};
+            const updatePayload = {
+                sectionId: targetSectionId,
+                ...extraData,
+                activities: { create: { action: `moved this task`, userId: req.user.userId } }
+            };
+            
             const primaryTask = await prisma.task.findFirst({
                 where: { id: id, section: { projectId: safeProjectId } }
             });
             if (primaryTask) {
                 await prisma.task.update({
                     where: { id: id },
-                    data: { 
-                        sectionId: targetSectionId,
-                        activities: { create: { action: `moved this task`, userId: req.user.userId } }
-                    }
+                    data: updatePayload
                 });
             } else if (safeProjectId) {
                 // Secondary
@@ -1406,6 +1410,12 @@ router.patch('/tasks/move', authenticateToken, async (req, res) => {
                     where: { taskId: id, projectId: safeProjectId },
                     data: { sectionId: targetSectionId }
                 });
+                if (Object.keys(extraData).length > 0) {
+                    await prisma.task.update({
+                        where: { id: id },
+                        data: extraData
+                    });
+                }
             }
         }));
 

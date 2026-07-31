@@ -430,7 +430,7 @@ export default function ProjectListView({
     setFieldOptionsList(fieldOptionsList.map(o => o.id === id ? { ...o, label: newLabel } : o));
   };
 
-  const renderTaskRow = (task, sectionId) => {
+  const renderTaskRow = (task, sectionId, subgroup = null) => {
     return (
       <div
         key={task.id}
@@ -454,29 +454,37 @@ export default function ProjectListView({
           position: 'relative',
           zIndex: (openApprovalMenuTaskId === task.id || (openCellMenuId && openCellMenuId.startsWith(`${task.id}-`))) ? 9999 : 0,
           opacity: draggingTaskId === task.id ? 0.4 : 1,
-          borderTop: dragTargetTaskId === task.id ? '2px solid var(--accent-primary)' : 'none'
+          borderTop: dragTargetTaskId?.id === task.id && dragTargetTaskId?.edge === 'top' ? '2px solid var(--accent-primary)' : 'none',
+          borderBottom: dragTargetTaskId?.id === task.id && dragTargetTaskId?.edge === 'bottom' ? '2px solid var(--accent-primary)' : 'none'
         }}
         onContextMenu={(e) => { e.preventDefault(); onTaskContextMenu(e, task.id); }}
         onDragOver={(e) => {
           e.preventDefault();
-          if (draggingTaskId && draggingTaskId !== task.id && !isVirtualGrouping) {
+          if (draggingTaskId && draggingTaskId !== task.id) {
             const isMultiDrag = selectedTaskIds && selectedTaskIds.size > 1 && selectedTaskIds.has(draggingTaskId);
             if (isMultiDrag) {
-              setDragTargetTaskId(task.id);
+              const rect = e.currentTarget.getBoundingClientRect();
+              const hoverMiddleY = rect.top + (rect.bottom - rect.top) / 2;
+              const dropEdge = e.clientY < hoverMiddleY ? 'top' : 'bottom';
+              setDragTargetTaskId({ id: task.id, edge: dropEdge });
             } else {
-              if (handleLiveTaskSwap) handleLiveTaskSwap(draggingTaskId, task.id);
+              if (handleLiveTaskSwap) {
+                 const rect = e.currentTarget.getBoundingClientRect();
+                 handleLiveTaskSwap(draggingTaskId, task.id, e.clientY, rect);
+              }
             }
           }
         }}
         onDragLeave={() => setDragTargetTaskId(null)}
         onDrop={(e) => { 
           e.stopPropagation();
+          const edge = dragTargetTaskId?.edge || 'top';
           setDragTargetTaskId(null);
-          if (!isVirtualGrouping) handleGeneralDrop(e, sectionId, task.id); 
+          handleGeneralDrop(e, sectionId, task.id, subgroup, edge); 
         }}
       >
         <div
-          draggable={!isReadOnly && !isVirtualGrouping}
+          draggable={!isReadOnly}
           onDragStart={(e) => {
             e.stopPropagation();
             setDraggingTaskId(task.id);
@@ -1141,8 +1149,32 @@ export default function ProjectListView({
                 }}
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
               >
-                {/* BÖLÜM (SECTION) BAÅžLIK SATIRI */}
-                <div className="list-section-header" style={{ ...styles.sectionAccordionRow, position: 'relative', zIndex: openSectionMenuId === section.id ? 50 : 1 }}>
+                {/* BÖLÜM (SECTION) BAŞLIK SATIRI */}
+                <div 
+                  className="list-section-header" 
+                  style={{ 
+                    ...styles.sectionAccordionRow, 
+                    position: 'relative', 
+                    zIndex: openSectionMenuId === section.id ? 50 : 1,
+                    borderBottom: dragTargetTaskId?.id === `section_${section.id}` ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)'
+                  }}
+                  onDragOver={(e) => {
+                    if (draggingTaskId) {
+                       e.preventDefault();
+                       setDragTargetTaskId({ id: `section_${section.id}`, edge: 'bottom' });
+                    }
+                  }}
+                  onDragLeave={() => {
+                    if (draggingTaskId) setDragTargetTaskId(null);
+                  }}
+                  onDrop={(e) => {
+                    if (draggingTaskId && !isVirtualGrouping) {
+                       e.stopPropagation();
+                       setDragTargetTaskId(null);
+                       handleGeneralDrop(e, section.id);
+                    }
+                  }}
+                >
                   <div
                     className="drag6DotHandleCell"
                     draggable={!isReadOnly && !isEditing && !isVirtualGrouping}
@@ -1213,12 +1245,29 @@ export default function ProjectListView({
                       {section.subgroups ? (
                         section.subgroups.map(subgroup => (
                           <div key={subgroup.id}>
-                            <div style={{ display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            <div 
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                if (draggingTaskId) setDragTargetTaskId({ id: `subgroup_${section.id}_${subgroup.id}`, edge: 'bottom' });
+                              }}
+                              onDragLeave={() => setDragTargetTaskId(null)}
+                              onDrop={(e) => { 
+                                e.stopPropagation();
+                                setDragTargetTaskId(null);
+                                handleGeneralDrop(e, section.id, null, subgroup, 'top'); 
+                              }}
+                              style={{ 
+                                display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', 
+                                backgroundColor: 'var(--bg-tertiary)', 
+                                borderBottom: dragTargetTaskId?.id === `subgroup_${section.id}_${subgroup.id}` ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', 
+                                userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' 
+                              }}
+                            >
                               <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>↳</span>
                               <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>{subgroup.name}</span>
                               <span style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' }}>{subgroup.tasks.length}</span>
                             </div>
-                            {subgroup.tasks.map(t => renderTaskRow(t, section.id))}
+                            {subgroup.tasks.map(t => renderTaskRow(t, section.id, subgroup))}
                           </div>
                         ))
                       ) : (
