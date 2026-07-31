@@ -137,8 +137,8 @@
 }
 
 .proj-dash-bg-column {
-  background-color: var(--bg-tertiary);
-  opacity: 0.2;
+  background-color: var(--border-color);
+  opacity: 0.5;
   border-radius: 4px;
 }
 
@@ -642,6 +642,10 @@
   background: var(--bg-primary);
 }
 
+.custom-dropdown-item:hover {
+  background: #f3f4f6 !important;
+}
+
 .add-chart-section {
   margin-bottom: 20px;
   padding-bottom: 20px;
@@ -708,6 +712,7 @@
 }
 
 .add-chart-select {
+  box-sizing: border-box;
   width: 100%;
   padding: 7px 10px;
   border: 1px solid var(--border-color);

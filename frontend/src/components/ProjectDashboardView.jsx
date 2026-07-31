@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend,
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area
@@ -7,8 +8,21 @@ import GridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import './ProjectDashboardView.css';
+import { getParsedCustomFields } from '../utils/customFields';
 
 const ReactGridLayout = WidthProvider(GridLayout);
+
+const CustomLollipopBar = (props) => {
+  const { fill, x, y, width, height, value } = props;
+  if (value === 0 || height === 0) return null;
+  const centerX = x + width / 2;
+  return (
+    <g>
+      <line x1={centerX} y1={y + height} x2={centerX} y2={y} stroke={fill} strokeWidth={2} />
+      <circle cx={centerX} cy={y} r={5} fill={fill} />
+    </g>
+  );
+};
 
 // ========================
 // CHART REGISTRY — all available chart types
@@ -23,6 +37,7 @@ const CHART_REGISTRY = [
   { type: 'tasks-by-section', label: 'Tasks by section', icon: '📊', color: '#BFDBFE', category: 'recommended', description: 'Stacked bar chart of tasks per section' },
   { type: 'tasks-by-assignee', label: 'Tasks by assignee', icon: '👥', color: '#D1FAE5', category: 'recommended', description: 'Donut chart of task distribution by assignee' },
   { type: 'tasks-by-completion', label: 'Task completion', icon: '✅', color: '#BBF7D0', category: 'recommended', description: 'Completed vs incomplete overview' },
+  { type: 'burnup-chart', label: 'Burnup chart', icon: '🔥', color: '#FBCFE8', category: 'recommended', description: 'Cumulative completed tasks vs total tasks over time' },
   // Status & progress
   { type: 'tasks-by-status', label: 'Tasks by status', icon: '🔵', color: '#E9D5FF', category: 'status', description: 'Pie chart of task completion status' },
   { type: 'overdue-tasks', label: 'Overdue tasks', icon: '⚠️', color: '#FECACA', category: 'status', description: 'Bar chart of overdue tasks per section' },
@@ -42,6 +57,122 @@ const DEFAULT_CHARTS = [
 ];
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#06B6D4', '#84CC16'];
+
+const XAxisCustomDropdown = ({ value, onChange, disabled, axisOptions, customFieldOptions }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hoveredSubmenu, setHoveredSubmenu] = useState(null);
+  const [submenuRect, setSubmenuRect] = useState(null);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target) && !e.target.closest('.custom-dropdown-submenu')) {
+        setIsOpen(false);
+        setHoveredSubmenu(null);
+      }
+    };
+    if (isOpen) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen]);
+
+  const selectedLabel = axisOptions.find(o => o.value === value)?.label ||
+    customFieldOptions.find(c => c.value === value)?.label ||
+    value;
+
+  if (disabled) {
+    return (
+      <div className="add-chart-select-wrap">
+        <select className="add-chart-select" disabled value={value}>
+          <option>{selectedLabel}</option>
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div className="custom-dropdown-container" ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
+      <div
+        className="add-chart-select"
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <span>{selectedLabel}</span>
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>▼</span>
+      </div>
+
+      {isOpen && (
+        <div className="custom-dropdown-menu" style={{ position: 'absolute', top: '100%', left: 0, minWidth: '200px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, marginTop: '4px', padding: '8px 0' }}>
+          {axisOptions.map((opt, idx) => {
+            const hasSubmenu = opt.hasSubmenu;
+            const isCustomFieldSelected = value && value.startsWith('cf_') && opt.value === 'custom_field';
+            const isSelected = value === opt.value || isCustomFieldSelected;
+
+            return (
+              <div
+                key={opt.value}
+                className="custom-dropdown-item"
+                style={{ position: 'relative', padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'transparent', color: 'var(--text-primary)' }}
+                onMouseEnter={(e) => {
+                  setHoveredSubmenu(hasSubmenu ? opt.value : null);
+                  if (hasSubmenu) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setSubmenuRect({ top: rect.top, left: rect.left, right: rect.right, width: rect.width });
+                  }
+                }}
+                onMouseDown={(e) => {
+                  if (!hasSubmenu) {
+                    e.preventDefault();
+                    onChange(opt.value);
+                    setIsOpen(false);
+                    setHoveredSubmenu(null);
+                  }
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span style={{ width: '20px', display: 'inline-block' }}>{isSelected ? '✓' : ''}</span>
+                  <span>{opt.label}</span>
+                </div>
+                {hasSubmenu && <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>▶</span>}
+
+                {/* Flyout Submenu */}
+                {hasSubmenu && hoveredSubmenu === opt.value && opt.value === 'custom_field' && submenuRect && document.body ? createPortal(
+                  <div
+                    className="custom-dropdown-submenu"
+                    style={{ position: 'fixed', left: submenuRect.right + 'px', top: (submenuRect.top - 8) + 'px', zIndex: 999999, minWidth: '180px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: '8px 0', color: 'var(--text-primary)' }}
+                  >
+                    {customFieldOptions.length === 0 ? (
+                      <div style={{ padding: '8px 16px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>No custom fields</div>
+                    ) : (
+                      customFieldOptions.map(cf => (
+                        <div
+                          key={cf.value}
+                          className="custom-dropdown-item custom-submenu-item"
+                          style={{ padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', background: 'transparent', color: 'var(--text-primary)' }}
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // Prevent focus loss on inputs if any
+                            onChange(cf.value);
+                            setIsOpen(false);
+                            setHoveredSubmenu(null);
+                          }}
+                        >
+                          <span style={{ width: '20px', display: 'inline-block' }}>{value === cf.value ? '✓' : ''}</span>
+                          <span style={{ marginRight: '8px', color: 'var(--text-secondary)' }}>{cf.icon}</span>
+                          <span>{cf.label}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>,
+                  document.body
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 export default function ProjectDashboardView({ selectedProject, showPicker, setShowPicker }) {
   // --- Chart layout state (localStorage per project) ---
@@ -71,22 +202,75 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     try { localStorage.setItem(storageKey, JSON.stringify(chartLayout)); } catch { }
   }, [chartLayout, storageKey]);
 
+  const axisOptions = useMemo(() => {
+    return [
+      { value: 'assignee', label: 'Assignee' },
+      { value: 'creator', label: 'Creator' },
+      { value: 'section', label: 'Section' },
+      { value: 'task_type', label: 'Task type' },
+      { value: 'status', label: 'Completion status' },
+      { value: 'due_date', label: 'Due date status' },
+      { value: 'time', label: 'Date' },
+      { value: 'custom_field', label: 'Custom field', hasSubmenu: true },
+    ];
+  }, []);
+
+  const customFieldOptions = useMemo(() => {
+    const opts = [];
+    const fields = getParsedCustomFields(selectedProject);
+    if (!fields || fields.length === 0) return opts;
+    
+    const getCustomFieldIcon = (fieldType) => {
+      switch(fieldType) {
+        case 'DATE':
+        case 'DATE_TIME':
+          return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
+        case 'PEOPLE':
+          return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path></svg>;
+        case 'CHECKBOX':
+          return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><polyline points="9 11 12 14 22 4"></polyline></svg>;
+        case 'NUMBER':
+        case 'TIME':
+          return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
+        default:
+          return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="8 10 12 14 16 10"></polyline></svg>;
+      }
+    };
+
+    fields.forEach(cf => {
+      opts.push({
+        value: `cf_${cf.id}`,
+        label: cf.name || cf.fieldName || cf.title,
+        icon: getCustomFieldIcon(cf.fieldType)
+      });
+    });
+    return opts;
+  }, [selectedProject]);
+
   // ========================
   // DATA COMPUTATION
   // ========================
   const {
     totalTasks, completedTasks, incompleteTasks,
     tasksBySection, tasksByAssignee, tasksByStatus,
+    tasksByCreator, tasksByType,
     overdueTasks, completionOverTime,
-    upcomingDeadlines, unassignedBySection, allTasks
+    upcomingDeadlines, unassignedBySection, customFieldData, burnupOverTime, allTasks
   } = useMemo(() => {
     let total = 0, completed = 0, incomplete = 0;
     const bySection = [];
     const assigneeMap = {};
+    const creatorMap = {};
+    const typeMap = {};
     const now = new Date(); now.setHours(0, 0, 0, 0);
     const overdueBySection = [];
     const unassignedMap = [];
     const tasks = [];
+    const customFieldCounts = {};
+
+    selectedProject?.customFields?.forEach(cf => {
+      customFieldCounts[cf.id] = {};
+    });
 
     selectedProject?.sections?.forEach(sec => {
       let secTotal = 0, secCompleted = 0, secOverdue = 0, secUnassigned = 0;
@@ -106,7 +290,49 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
 
         // Assignee
         const name = task.assignee?.name || 'Unassigned';
-        assigneeMap[name] = (assigneeMap[name] || 0) + 1;
+        if (!assigneeMap[name]) assigneeMap[name] = { Total: 0, Completed: 0 };
+        assigneeMap[name].Total++;
+        if (task.isCompleted) assigneeMap[name].Completed++;
+
+        // Creator
+        const creatorName = task.creator?.name || 'Unknown';
+        if (!creatorMap[creatorName]) creatorMap[creatorName] = { Total: 0, Completed: 0 };
+        creatorMap[creatorName].Total++;
+        if (task.isCompleted) creatorMap[creatorName].Completed++;
+
+        // Task Type
+        const taskType = task.type || 'Task';
+        if (!typeMap[taskType]) typeMap[taskType] = { Total: 0, Completed: 0 };
+        typeMap[taskType].Total++;
+        if (task.isCompleted) typeMap[taskType].Completed++;
+
+        // Custom Fields
+        let parsedCF = {};
+        if (typeof task.customFields === 'string') {
+          try { parsedCF = JSON.parse(task.customFields); } catch (e) { }
+        } else if (task.customFields && typeof task.customFields === 'object') {
+          parsedCF = task.customFields;
+        }
+
+        if (Array.isArray(parsedCF)) {
+          parsedCF.forEach(cfVal => {
+            if (customFieldCounts[cfVal.fieldId]) {
+              const valName = cfVal.value || 'None';
+              if (!customFieldCounts[cfVal.fieldId][valName]) customFieldCounts[cfVal.fieldId][valName] = { Total: 0, Completed: 0 };
+              customFieldCounts[cfVal.fieldId][valName].Total++;
+              if (task.isCompleted) customFieldCounts[cfVal.fieldId][valName].Completed++;
+            }
+          });
+        } else {
+          Object.entries(parsedCF).forEach(([fieldId, value]) => {
+            if (customFieldCounts[fieldId]) {
+              const valName = value || 'None';
+              if (!customFieldCounts[fieldId][valName]) customFieldCounts[fieldId][valName] = { Total: 0, Completed: 0 };
+              customFieldCounts[fieldId][valName].Total++;
+              if (task.isCompleted) customFieldCounts[fieldId][valName].Completed++;
+            }
+          });
+        }
 
       });
 
@@ -115,7 +341,40 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
       unassignedMap.push({ name: sec.name, Unassigned: secUnassigned });
     });
 
-    const byAssignee = Object.entries(assigneeMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    const overdueTasks = overdueBySection;
+    const unassignedTasks = unassignedMap;
+    const allTasks = tasks;
+
+    // Burnup over time (last 14 days)
+    const burnupOverTime = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i); d.setHours(23, 59, 59, 999);
+      const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      const totalToDate = tasks.filter(t => {
+        const createDate = t.createdAt ? new Date(t.createdAt) : new Date(0);
+        return createDate.getTime() <= d.getTime();
+      }).length;
+
+      const completedToDate = tasks.filter(t => {
+        if (!t.isCompleted || !t.completedAt) return false;
+        const compDate = new Date(t.completedAt);
+        return compDate.getTime() <= d.getTime();
+      }).length;
+
+      burnupOverTime.push({ name: label, Total: totalToDate, Completed: completedToDate });
+    }
+
+    const customFieldData = {};
+    Object.keys(customFieldCounts).forEach(cfId => {
+      customFieldData[cfId] = Object.entries(customFieldCounts[cfId])
+        .map(([name, data]) => ({ name, value: data.Total, Total: data.Total, Completed: data.Completed }))
+        .sort((a, b) => b.value - a.value);
+    });
+
+    const byAssignee = Object.entries(assigneeMap).map(([name, data]) => ({ name, value: data.Total, Total: data.Total, Completed: data.Completed })).sort((a, b) => b.value - a.value);
+    const byCreator = Object.entries(creatorMap).map(([name, data]) => ({ name, value: data.Total, Total: data.Total, Completed: data.Completed })).sort((a, b) => b.value - a.value);
+    const byType = Object.entries(typeMap).map(([name, data]) => ({ name, value: data.Total, Total: data.Total, Completed: data.Completed })).sort((a, b) => b.value - a.value);
 
     // Status pie
     const byStatus = [
@@ -152,9 +411,10 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     return {
       totalTasks: total, completedTasks: completed, incompleteTasks: incomplete,
       tasksBySection: bySection, tasksByAssignee: byAssignee, tasksByStatus: byStatus,
-      overdueTasks: overdueBySection, completionOverTime: completionDays,
+      tasksByCreator: byCreator, tasksByType: byType,
+      overdueTasks, completionOverTime: completionDays,
       upcomingDeadlines: upcoming,
-      unassignedBySection: unassignedMap, allTasks: tasks
+      unassignedBySection: unassignedTasks, customFieldData, burnupOverTime, allTasks
     };
   }, [selectedProject]);
 
@@ -183,21 +443,43 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     let emptyMsg = 'No data';
     let emptyIcon = '📊';
 
-    if (xAxis === 'section') { data = tasksBySection; emptyMsg = 'No sections to display'; }
+    let normalizedData = [];
+
+    if (xAxis === 'time') { data = burnupOverTime; emptyMsg = 'No time data'; emptyIcon = '🕒'; }
+    else if (xAxis === 'section') { data = tasksBySection; emptyMsg = 'No sections to display'; }
     else if (xAxis === 'assignee') { data = tasksByAssignee; emptyMsg = 'No assignee data'; emptyIcon = '👥'; }
     else if (xAxis === 'status') { data = tasksByStatus; emptyMsg = 'No task data'; emptyIcon = '🔵'; }
     else if (xAxis === 'due_date') { data = upcomingDeadlines; emptyMsg = 'No deadlines'; emptyIcon = '📅'; }
-    
-    let normalizedData = data.map(item => {
-      let val = item.value;
-      if (val === undefined) {
-         if (xAxis === 'section') val = item.Completed + item.Incomplete;
-         else if (xAxis === 'due_date') val = item.Due;
-         else if (xAxis === 'unassigned') val = item.Unassigned;
-         else val = 0;
-      }
-      return { name: item.name, value: val, color: item.color };
-    });
+    else if (xAxis === 'creator') { data = tasksByCreator; emptyMsg = 'No creator data'; emptyIcon = '👤'; }
+    else if (xAxis === 'task_type') { data = tasksByType; emptyMsg = 'No task type data'; emptyIcon = '📝'; }
+    else if (xAxis.startsWith('cf_')) {
+      const cfId = xAxis.replace('cf_', '');
+      data = customFieldData[cfId] || [];
+      emptyMsg = 'No custom field data';
+    }
+
+    if (chartStyle === 'burnup') {
+      normalizedData = data.map(item => {
+        let tot = item.Total;
+        let comp = item.Completed;
+        if (tot === undefined) {
+          if (xAxis === 'section') { tot = item.Completed + item.Incomplete; comp = item.Completed; }
+          else { tot = item.value || 0; comp = item.Completed || 0; }
+        }
+        return { name: item.name, Total: tot, Completed: comp };
+      });
+    } else {
+      normalizedData = data.map(item => {
+        let val = item.value;
+        if (val === undefined) {
+          if (xAxis === 'section') val = item.Completed + item.Incomplete;
+          else if (xAxis === 'due_date') val = item.Due;
+          else if (xAxis === 'unassigned') val = item.Unassigned;
+          else val = 0;
+        }
+        return { name: item.name, value: val, color: item.color };
+      });
+    }
 
     if (normalizedData.length === 0) {
       return <div className="proj-dash-empty"><span className="proj-dash-empty-icon">{emptyIcon}</span>{emptyMsg}</div>;
@@ -217,7 +499,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie data={normalizedData} cx="50%" cy="50%" innerRadius={chartStyle === 'donut' ? "38%" : 0} outerRadius="65%" paddingAngle={chartStyle === 'donut' ? 4 : 0} dataKey="value"
-                 label={dataLabels ? ({ name, value }) => `${name}: ${value}` : false} labelLine={false}>
+              label={dataLabels ? ({ name, value }) => `${name}: ${value}` : false} labelLine={false}>
               {normalizedData.map((entry, i) => <Cell key={i} fill={entry.color || COLORS[i % COLORS.length]} />)}
             </Pie>
             <RechartsTooltip contentStyle={tooltipStyle} />
@@ -229,19 +511,19 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
 
     if (chartStyle === 'bar' || chartStyle === 'stacked-bar') {
       if (xAxis === 'section' && chartStyle === 'stacked-bar') {
-          return (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={tasksBySection} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
-                <RechartsTooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} contentStyle={tooltipStyle} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '0.78rem' }} />
-                <Bar dataKey="Completed" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
-                <Bar dataKey="Incomplete" stackId="a" fill="#E5E7EB" radius={[4, 4, 0, 0]} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
-              </BarChart>
-            </ResponsiveContainer>
-          );
+        return (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={tasksBySection} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
+              <RechartsTooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} contentStyle={tooltipStyle} />
+              <Legend iconType="circle" wrapperStyle={{ fontSize: '0.78rem' }} />
+              <Bar dataKey="Completed" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
+              <Bar dataKey="Incomplete" stackId="a" fill="#E5E7EB" radius={[4, 4, 0, 0]} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
+            </BarChart>
+          </ResponsiveContainer>
+        );
       }
       return (
         <ResponsiveContainer width="100%" height="100%">
@@ -251,7 +533,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
             <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
             <RechartsTooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} contentStyle={tooltipStyle} />
             <Bar dataKey="value" fill="#6366F1" radius={[4, 4, 0, 0]} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} >
-               {normalizedData.map((entry, i) => <Cell key={i} fill={entry.color || COLORS[i % COLORS.length]} />)}
+              {normalizedData.map((entry, i) => <Cell key={i} fill={entry.color || COLORS[i % COLORS.length]} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -260,33 +542,65 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
 
     if (chartStyle === 'line' || chartStyle === 'area') {
       return (
-          <ResponsiveContainer width="100%" height="100%">
-            {chartStyle === 'line' ? (
-              <LineChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
-                <RechartsTooltip contentStyle={tooltipStyle} />
-                <Line type="monotone" dataKey="value" stroke="#06B6D4" strokeWidth={3} dot={{ r: 4, fill: '#06B6D4', strokeWidth: 0 }} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
-              </LineChart>
-            ) : (
-              <AreaChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="completionGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06B6D4" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#06B6D4" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
-                <RechartsTooltip contentStyle={tooltipStyle} />
-                <Area type="monotone" dataKey="value" stroke="#06B6D4" strokeWidth={3} fillOpacity={1} fill="url(#completionGrad)" label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
-              </AreaChart>
-            )}
-          </ResponsiveContainer>
+        <ResponsiveContainer width="100%" height="100%">
+          {chartStyle === 'line' ? (
+            <LineChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
+              <RechartsTooltip contentStyle={tooltipStyle} />
+              <Line type="monotone" dataKey="value" stroke="#06B6D4" strokeWidth={3} dot={{ r: 4, fill: '#06B6D4', strokeWidth: 0 }} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
+            </LineChart>
+          ) : (
+            <AreaChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+              <defs>
+                <linearGradient id="completionGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#06B6D4" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#06B6D4" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
+              <RechartsTooltip contentStyle={tooltipStyle} />
+              <Area type="monotone" dataKey="value" stroke="#06B6D4" strokeWidth={3} fillOpacity={1} fill="url(#completionGrad)" label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
+            </AreaChart>
+          )}
+        </ResponsiveContainer>
       );
     }
+
+    if (chartStyle === 'burnup') {
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={normalizedData} margin={{ top: 20, right: 10, left: -10, bottom: 25 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} angle={-45} textAnchor="end" />
+            <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
+            <RechartsTooltip contentStyle={tooltipStyle} />
+            <Area type="monotone" dataKey="Total" stroke="none" fill="#EDE9FE" fillOpacity={1} label={dataLabels ? { position: 'top', fill: 'var(--text-primary)', fontSize: 11, fontWeight: 'bold' } : false} />
+            <Area type="monotone" dataKey="Completed" stroke="none" fill="#8B5CF6" fillOpacity={1} label={dataLabels ? { position: 'center', fill: '#fff', fontSize: 11, fontWeight: 'bold' } : false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      );
+    }
+
+    if (chartStyle === 'lollipop') {
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
+            <RechartsTooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} contentStyle={tooltipStyle} />
+            <Bar dataKey="value" shape={<CustomLollipopBar />} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} >
+              {normalizedData.map((entry, i) => <Cell key={i} fill={entry.color || COLORS[i % COLORS.length]} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      );
+    }
+
     return <div className="proj-dash-empty">Unsupported chart style</div>;
   };
 
@@ -454,22 +768,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
   // ========================
   const [addChartModal, setAddChartModal] = useState(null); // null or { chartStyle, xAxis, yAxis, yMetric, dataLabels, filters }
 
-  // Available axis options derived from project data
-  const axisOptions = useMemo(() => {
-    const opts = [
-      { value: 'section', label: 'Section' },
-      { value: 'assignee', label: 'Assignee' },
-      { value: 'status', label: 'Completion status' },
-      { value: 'due_date', label: 'Due date' },
-    ];
-    // Add custom fields from the project
-    selectedProject?.customFields?.forEach(cf => {
-      if (cf.fieldType === 'SINGLE_SELECT' || cf.fieldType === 'MULTI_SELECT') {
-        opts.push({ value: `cf_${cf.id}`, label: cf.fieldName });
-      }
-    });
-    return opts;
-  }, [selectedProject]);
+
 
   const CHART_STYLES = [
     { value: 'bar', label: 'Bar', icon: '📊' },
@@ -478,6 +777,8 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     { value: 'area', label: 'Area', icon: '📉' },
     { value: 'donut', label: 'Donut', icon: '🍩' },
     { value: 'number', label: 'Number', icon: '#️⃣' },
+    { value: 'burnup', label: 'Burnup', icon: '🔥' },
+    { value: 'lollipop', label: 'Lollipop', icon: '🍭' },
   ];
 
   const Y_METRICS = [
@@ -589,8 +890,8 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
   const getChartDesc = (chart) => {
     if (chart.type === 'text-widget') return 'A text block for notes and descriptions';
     if (chart.type === 'dynamic') {
-        const xLabel = axisOptions.find(o => o.value === chart.config?.xAxis)?.label || chart.config?.xAxis;
-        return `Total tasks by ${xLabel.toLowerCase()}`;
+      const xLabel = axisOptions.find(o => o.value === chart.config?.xAxis)?.label || chart.config?.xAxis;
+      return `Total tasks by ${xLabel.toLowerCase()}`;
     }
     return CHART_REGISTRY.find(r => r.type === chart.type)?.description || '';
   };
@@ -662,9 +963,9 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
               <div className="proj-dash-chart-area">
                 {chart.type === 'text-widget' ? (
                   <div className="proj-dash-text-widget">
-                    <textarea 
-                      className="proj-dash-text-widget-editor" 
-                      placeholder="Type your notes or description here..." 
+                    <textarea
+                      className="proj-dash-text-widget-editor"
+                      placeholder="Type your notes or description here..."
                     />
                   </div>
                 ) : (
@@ -732,7 +1033,14 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
                     <select
                       className="add-chart-select"
                       value={addChartModal.chartStyle}
-                      onChange={(e) => setAddChartModal(prev => ({ ...prev, chartStyle: e.target.value }))}
+                      onChange={(e) => {
+                        const newStyle = e.target.value;
+                        setAddChartModal(prev => ({
+                          ...prev,
+                          chartStyle: newStyle,
+                          xAxis: newStyle === 'burnup' ? 'time' : (prev.xAxis === 'time' ? 'section' : prev.xAxis)
+                        }));
+                      }}
                     >
                       {CHART_STYLES.map(s => (
                         <option key={s.value} value={s.value}>{s.icon} {s.label}</option>
@@ -746,16 +1054,14 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
                   <h4 className="add-chart-section-title">Chart data</h4>
 
                   <label className="add-chart-label">X-axis</label>
-                  <div className="add-chart-select-wrap">
-                    <select
-                      className="add-chart-select"
-                      value={addChartModal.xAxis}
-                      onChange={(e) => setAddChartModal(prev => ({ ...prev, xAxis: e.target.value }))}
-                    >
-                      {axisOptions.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
+                  <div className="add-chart-select-wrap" style={{ border: 'none', padding: 0 }}>
+                    <XAxisCustomDropdown
+                      value={addChartModal.chartStyle === 'burnup' ? 'time' : addChartModal.xAxis}
+                      onChange={(val) => setAddChartModal(prev => ({ ...prev, xAxis: val }))}
+                      disabled={addChartModal.chartStyle === 'burnup'}
+                      axisOptions={axisOptions}
+                      customFieldOptions={customFieldOptions}
+                    />
                   </div>
 
                   <label className="add-chart-label">Y-axis</label>
