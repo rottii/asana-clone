@@ -32,7 +32,7 @@ export default function ProfileView({ user, projects, activeWorkspace, setActive
   const incompleteTasks = allTasks.filter(t => !t.isCompleted).slice(0, 5);
 
   // Extract recent projects
-  const recentProjects = (projects || []).filter(p => !p.isArchived).slice(0, 3);
+  const recentProjects = (projects || []).filter(p => !p.isArchived && p.status !== 'MY_TASKS').slice(0, 3);
 
   // Extract frequent collaborators
   const collaborators = [];

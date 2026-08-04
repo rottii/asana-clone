@@ -86,6 +86,22 @@ router.post('/auto-code/:taskId', authenticateToken, async (req, res) => {
             if (repoPath.endsWith('.git')) repoPath = repoPath.slice(0, -4);
         }
 
+        if (!project.allowAutoCodeOnPR) {
+            try {
+                const repoRes = await fetch(`https://api.github.com/repos/${repoPath}/pulls?state=open`, {
+                    headers: { 'Authorization': `token ${githubToken}`, 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'Asana-Clone-AI' }
+                });
+                if (repoRes.ok) {
+                    const pulls = await repoRes.json();
+                    if (pulls.length > 0) {
+                        return res.status(403).json({ error: 'Auto-Code is disabled because there are open pull requests waiting. You can enable it in the project overview.' });
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to check open PRs", err);
+            }
+        }
+
         const cloneUrl = `https://${githubToken}@github.com/${repoPath}.git`;
         const tempDir = path.join(os.tmpdir(), `asana-autocode-${taskId}-${Date.now()}`);
 

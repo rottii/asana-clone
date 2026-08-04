@@ -7,10 +7,24 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum WorkspaceRole {
+  GUEST
+  MEMBER
+  ADMIN
+}
+
+enum ProjectRole {
+  VIEWER
+  COMMENTER
+  EDITOR
+  ADMIN
+}
+
 model User {
   id          String              @id @default(uuid())
   email       String              @unique
-  password    String
+  password    String?
+  googleId    String?             @unique
   name        String
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
@@ -53,7 +67,7 @@ model Workspace {
 
 model WorkspaceMember {
   id          String   @id @default(uuid())
-  role        String   @default("MEMBER")
+  role        WorkspaceRole @default(MEMBER)
   createdAt   DateTime @default(now())
 
   workspaceId String
@@ -79,7 +93,7 @@ model Team {
 
 model TeamMember {
   id          String   @id @default(uuid())
-  role        String   @default("MEMBER")
+  role        WorkspaceRole @default(MEMBER)
   createdAt   DateTime @default(now())
 
   teamId      String
@@ -114,6 +128,7 @@ model Project {
   team        Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   githubRepo  String?             // e.g. "koala73/worldmonitor" or full URL
+  allowAutoCodeOnPR Boolean       @default(false)
 
   sections    Section[]
   secondaryTasks TaskProject[]
@@ -136,7 +151,7 @@ model Project {
 // --- YENİ MODEL: ROL DESTEKLİ ÜYELİK TABLOSU ---
 model ProjectMembership {
   id        String   @id @default(uuid())
-  role      String   @default("EDITOR") // "EDITOR", "COMMENTER", "VIEWER"
+  role      ProjectRole @default(EDITOR)
   createdAt DateTime @default(now())
 
   projectId String

@@ -2273,15 +2273,19 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         </div>
 
         <div style={styles.headerRightBlock}>
-          <div style={styles.avatarListWrapper}>
-            <UserAvatar
-              name={selectedProject.owner?.name}
-              size={28}
-              onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }}
-              style={{ cursor: 'pointer', border: '1px solid #FFF' }}
-            />
-          </div>
-          <button onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }} style={{ ...styles.asanaShareButtonLight, fontWeight: 'normal' }}>👥 Share</button>
+          {!isMyTasks && (
+            <>
+              <div style={styles.avatarListWrapper}>
+                <UserAvatar
+                  name={selectedProject.owner?.name}
+                  size={28}
+                  onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }}
+                  style={{ cursor: 'pointer', border: '1px solid #FFF' }}
+                />
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }} style={{ ...styles.asanaShareButtonLight, fontWeight: 'normal' }}>👥 Share</button>
+            </>
+          )}
           <button id="customize-pane-toggle-btn" onClick={(e) => { e.stopPropagation(); setIsCustomizePanelOpen(prev => !prev); setIsOptionsPaneOpen(false); }} style={styles.asanaCustomizeBtn}>🎛️ Customize</button>
         </div>
       </div>

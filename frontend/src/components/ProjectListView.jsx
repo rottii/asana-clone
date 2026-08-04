@@ -655,12 +655,12 @@ export default function ProjectListView({
             );
           } else if (colId === 'projects') {
             const taskProjectNames = [];
-            if (task.section?.project && task.section.project.status !== 'MY_TASKS') {
+            if (task.section?.project && task.section.project.status !== 'MY_TASKS' && task.section.project.name !== 'My Tasks') {
               taskProjectNames.push(task.section.project.name);
             }
             if (task.secondaryProjects) {
               task.secondaryProjects.forEach(sp => {
-                if (sp.project && sp.project.status !== 'MY_TASKS' && sp.project.id !== selectedProject?.id) {
+                if (sp.project && sp.project.status !== 'MY_TASKS' && sp.project.name !== 'My Tasks' && sp.project.id !== selectedProject?.id) {
                   taskProjectNames.push(sp.project.name);
                 }
               });

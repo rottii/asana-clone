@@ -101,12 +101,13 @@ async function getProjectRoleFromSection(userId, sectionId) {
         select: { projectId: true }
     });
     if (!section) return null;
+    return getProjectRole(userId, section.projectId);
 }
 
-// Ensure the user has a "My Tasks" project, create if not
-async function ensureMyTasksProject(userId) {
+// Ensure the user has a "My Tasks" project for a specific workspace, create if not
+async function ensureMyTasksProject(userId, workspaceId) {
     let myTasksProject = await prisma.project.findFirst({
-        where: { status: 'MY_TASKS', ownerId: userId },
+        where: { status: 'MY_TASKS', ownerId: userId, workspaceId: workspaceId },
         include: { sections: true }
     });
     if (!myTasksProject) {
@@ -115,6 +116,7 @@ async function ensureMyTasksProject(userId) {
                 name: 'My Tasks',
                 status: 'MY_TASKS',
                 ownerId: userId,
+                workspaceId: workspaceId,
                 color: '#4F46E5',
                 icon: '👤',
                 sections: {
@@ -138,7 +140,13 @@ async function ensureMyTasksProject(userId) {
         const recentlyAssignedSection = myTasksProject.sections.find(s => s.name === 'Recently assigned') || myTasksProject.sections[0];
         if (recentlyAssignedSection) {
             const assignedTasks = await prisma.task.findMany({
-                where: { assigneeId: userId },
+                where: { 
+                    assigneeId: userId,
+                    OR: [
+                        { section: { project: { workspaceId: workspaceId } } },
+                        { secondaryProjects: { some: { project: { workspaceId: workspaceId } } } }
+                    ]
+                },
                 include: { secondaryProjects: true }
             });
             for (const task of assignedTasks) {
@@ -235,7 +243,7 @@ const fullProjectInclude = {
                     },
                     secondaryProjects: {
                         include: {
-                            project: { select: { id: true, name: true, color: true, icon: true, isTemplate: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } },
+                            project: { select: { id: true, name: true, color: true, icon: true, isTemplate: true, customFieldSettings: true, workspaceId: true, status: true, sections: { select: { id: true, name: true } } } },
                             section: { select: { id: true, name: true } }
                         }
                     }
@@ -247,7 +255,7 @@ const fullProjectInclude = {
                         include: {
                             section: {
                                 include: {
-                                    project: { select: { id: true, name: true, color: true, icon: true, isTemplate: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } }
+                                    project: { select: { id: true, name: true, color: true, icon: true, isTemplate: true, customFieldSettings: true, workspaceId: true, status: true, sections: { select: { id: true, name: true } } } }
                                 }
                             },
                             assignee: { select: { id: true, name: true, email: true } },
@@ -283,7 +291,7 @@ const fullProjectInclude = {
                             },
                             secondaryProjects: {
                                 include: {
-                                    project: { select: { id: true, name: true, color: true, icon: true, customFieldSettings: true, sections: { select: { id: true, name: true } } } },
+                                    project: { select: { id: true, name: true, color: true, icon: true, isTemplate: true, customFieldSettings: true, workspaceId: true, status: true, sections: { select: { id: true, name: true } } } },
                                     section: { select: { id: true, name: true } }
                                 }
                             }
@@ -507,17 +515,35 @@ router.get('/', authenticateToken, async (req, res) => {
             }
         });
 
-        // Ensure user has a MY_TASKS project and it's migrated
-        await ensureMyTasksProject(req.user.userId);
+        // 1. Get all workspaces the user belongs to
+        const userWorkspaces = await prisma.workspaceMember.findMany({
+            where: { userId: req.user.userId },
+            select: { workspaceId: true }
+        });
         
-        // Remove any outdated MY_TASKS project that might have been fetched before migration
+        // 2. Assign orphaned MY_TASKS projects to the first workspace
+        if (userWorkspaces.length > 0) {
+            await prisma.project.updateMany({
+                where: { status: 'MY_TASKS', ownerId: req.user.userId, workspaceId: null },
+                data: { workspaceId: userWorkspaces[0].workspaceId }
+            });
+        }
+
+        // 3. Ensure user has a MY_TASKS project for each workspace
+        for (const wm of userWorkspaces) {
+            await ensureMyTasksProject(req.user.userId, wm.workspaceId);
+        }
+        
+        // 4. Remove any outdated MY_TASKS project that might have been fetched before migration
         const filteredProjects = projects.filter(p => !(p.status === 'MY_TASKS' && p.ownerId === req.user.userId));
         
-        let myTasksProject = await prisma.project.findFirst({
+        // 5. Fetch all MY_TASKS projects for the user
+        let myTasksProjects = await prisma.project.findMany({
             where: { status: 'MY_TASKS', ownerId: req.user.userId },
             include: fullProjectInclude
         });
             
+        for (let myTasksProject of myTasksProjects) {
             if (myTasksProject && myTasksProject.sections) {
                 myTasksProject.sections.forEach(section => {
                     const primaryTasks = section.tasks || [];
@@ -540,10 +566,8 @@ router.get('/', authenticateToken, async (req, res) => {
                     delete section.secondaryTasks;
                 });
             }
-            
-            if (myTasksProject) {
-                filteredProjects.push(myTasksProject);
-            }
+            filteredProjects.push(myTasksProject);
+        }
 
         res.json(filteredProjects);
     } catch (error) {
@@ -815,7 +839,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
 
-        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, formSettings, startDate, dueDate, color, icon, workspaceId, teamId, githubRepo } = req.body;
+        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, formSettings, startDate, dueDate, color, icon, workspaceId, teamId, githubRepo, allowAutoCodeOnPR } = req.body;
 
         const updateData = {};
         if (name !== undefined) updateData.name = name;
@@ -825,6 +849,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
         if (defaultView !== undefined) updateData.defaultView = defaultView;
         if (activeViews !== undefined) updateData.activeViews = activeViews;
         if (githubRepo !== undefined) updateData.githubRepo = githubRepo;
+        if (allowAutoCodeOnPR !== undefined) updateData.allowAutoCodeOnPR = allowAutoCodeOnPR;
         if (customFieldSettings !== undefined) {
             updateData.customFieldSettings = customFieldSettings;
 

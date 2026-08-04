@@ -25,7 +25,7 @@ const DEFAULT_LAYOUT = [
   { id: 'people', type: 'people', colSpan: 1, rowSpan: 1 },
 ]
 
-export default function Dashboard({ user, projects, setProjects, setSelectedProject, token, handleLogout, setActiveView }) {
+export default function Dashboard({ user, projects, setProjects, setSelectedProject, token, handleLogout, setActiveView, activeWorkspace }) {
   // --- Layout State ---
   const [widgetLayout, setWidgetLayout] = useState(DEFAULT_LAYOUT)
   const [notepadContent, setNotepadContent] = useState('')
@@ -109,6 +109,8 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
 
   const safeProjects = Array.isArray(projects) ? projects : []
   const activeProjects = safeProjects.filter(p => !p.isArchived && p.status !== 'MY_TASKS')
+  
+  const isGuest = activeWorkspace?.members?.find(m => m.userId === user?.id)?.role === 'GUEST';
 
   const allTasks = useMemo(() => {
     const tasksMap = new Map()
@@ -449,10 +451,12 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
         {renderWidgetMenuBtn(widget)}
       </div>
       <div className="widget-projects-grid">
-        <div className="widget-create-project-card" onClick={handleCreateProject}>
-          <div className="widget-dashed-square">+</div>
-          <span style={{fontSize:'0.9rem', color:'var(--text-primary)'}}>Create project</span>
-        </div>
+        {!isGuest && (
+          <div className="widget-create-project-card" onClick={handleCreateProject}>
+            <div className="widget-dashed-square">+</div>
+            <span style={{fontSize:'0.9rem', color:'var(--text-primary)'}}>Create project</span>
+          </div>
+        )}
         {activeProjects.map(p => (
           <div key={p.id} className="widget-project-card" onClick={() => setSelectedProject(p)}>
             <div className="widget-project-icon" style={{backgroundColor: p.color || '#4F46E5'}}>

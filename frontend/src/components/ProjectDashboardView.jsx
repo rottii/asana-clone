@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend,
-  ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area
+  ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Label
 } from 'recharts';
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import './ProjectDashboardView.css';
-import { getParsedCustomFields } from '../utils/customFields';
+import { getParsedCustomFields, getParsedGithubPRs, getGithubPRStatusLabel } from '../utils/customFields';
 
 const ReactGridLayout = WidthProvider(GridLayout);
 
@@ -21,6 +21,20 @@ const CustomLollipopBar = (props) => {
       <line x1={centerX} y1={y + height} x2={centerX} y2={y} stroke={fill} strokeWidth={2} />
       <circle cx={centerX} cy={y} r={5} fill={fill} />
     </g>
+  );
+};
+
+const renderCustomizedPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
+  if (value === 0) return null;
+  const RADIAN = Math.PI / 180;
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+  return (
+    <text x={x} y={y} fill="#111827" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}>
+      {value}
+    </text>
   );
 };
 
@@ -58,7 +72,13 @@ const DEFAULT_CHARTS = [
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#06B6D4', '#84CC16'];
 
-const XAxisCustomDropdown = ({ value, onChange, disabled, axisOptions, customFieldOptions }) => {
+const dateFieldOptions = [
+  { value: 'date_due', label: 'Due date' },
+  { value: 'date_created', label: 'Creation date' },
+  { value: 'date_completed', label: 'Completion date' },
+];
+
+const XAxisCustomDropdown = ({ value, onChange, disabled, axisOptions, customFieldOptions, dateFieldOptions }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hoveredSubmenu, setHoveredSubmenu] = useState(null);
   const [submenuRect, setSubmenuRect] = useState(null);
@@ -77,7 +97,8 @@ const XAxisCustomDropdown = ({ value, onChange, disabled, axisOptions, customFie
 
   const selectedLabel = axisOptions.find(o => o.value === value)?.label ||
     customFieldOptions.find(c => c.value === value)?.label ||
-    value;
+    dateFieldOptions?.find(c => c.value === value)?.label ||
+    (value === 'time' ? 'Time' : value);
 
   if (disabled) {
     return (
@@ -105,7 +126,8 @@ const XAxisCustomDropdown = ({ value, onChange, disabled, axisOptions, customFie
           {axisOptions.map((opt, idx) => {
             const hasSubmenu = opt.hasSubmenu;
             const isCustomFieldSelected = value && value.startsWith('cf_') && opt.value === 'custom_field';
-            const isSelected = value === opt.value || isCustomFieldSelected;
+            const isDateFieldSelected = value && value.startsWith('date_') && opt.value === 'date';
+            const isSelected = value === opt.value || isCustomFieldSelected || isDateFieldSelected;
 
             return (
               <div
@@ -135,32 +157,51 @@ const XAxisCustomDropdown = ({ value, onChange, disabled, axisOptions, customFie
                 {hasSubmenu && <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>▶</span>}
 
                 {/* Flyout Submenu */}
-                {hasSubmenu && hoveredSubmenu === opt.value && opt.value === 'custom_field' && submenuRect && document.body ? createPortal(
+                {hasSubmenu && hoveredSubmenu === opt.value && submenuRect && document.body ? createPortal(
                   <div
                     className="custom-dropdown-submenu"
                     style={{ position: 'fixed', left: submenuRect.right + 'px', top: (submenuRect.top - 8) + 'px', zIndex: 999999, minWidth: '180px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: '8px 0', color: 'var(--text-primary)' }}
                   >
-                    {customFieldOptions.length === 0 ? (
-                      <div style={{ padding: '8px 16px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>No custom fields</div>
-                    ) : (
-                      customFieldOptions.map(cf => (
+                    {opt.value === 'custom_field' ? (
+                      customFieldOptions.length === 0 ? (
+                        <div style={{ padding: '8px 16px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>No custom fields</div>
+                      ) : (
+                        customFieldOptions.map(cf => (
+                          <div
+                            key={cf.value}
+                            className="custom-dropdown-item custom-submenu-item"
+                            style={{ padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', background: 'transparent', color: 'var(--text-primary)' }}
+                            onMouseDown={(e) => {
+                              e.preventDefault(); // Prevent focus loss on inputs if any
+                              onChange(cf.value);
+                              setIsOpen(false);
+                              setHoveredSubmenu(null);
+                            }}
+                          >
+                            <span style={{ width: '20px', display: 'inline-block' }}>{value === cf.value ? '✓' : ''}</span>
+                            <span style={{ marginRight: '8px', color: 'var(--text-secondary)' }}>{cf.icon}</span>
+                            <span>{cf.label}</span>
+                          </div>
+                        ))
+                      )
+                    ) : opt.value === 'date' ? (
+                      dateFieldOptions.map(df => (
                         <div
-                          key={cf.value}
+                          key={df.value}
                           className="custom-dropdown-item custom-submenu-item"
                           style={{ padding: '8px 16px', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', background: 'transparent', color: 'var(--text-primary)' }}
                           onMouseDown={(e) => {
-                            e.preventDefault(); // Prevent focus loss on inputs if any
-                            onChange(cf.value);
+                            e.preventDefault();
+                            onChange(df.value);
                             setIsOpen(false);
                             setHoveredSubmenu(null);
                           }}
                         >
-                          <span style={{ width: '20px', display: 'inline-block' }}>{value === cf.value ? '✓' : ''}</span>
-                          <span style={{ marginRight: '8px', color: 'var(--text-secondary)' }}>{cf.icon}</span>
-                          <span>{cf.label}</span>
+                          <span style={{ width: '20px', display: 'inline-block' }}>{value === df.value ? '✓' : ''}</span>
+                          <span>{df.label}</span>
                         </div>
                       ))
-                    )}
+                    ) : null}
                   </div>,
                   document.body
                 ) : null}
@@ -209,8 +250,8 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
       { value: 'section', label: 'Section' },
       { value: 'task_type', label: 'Task type' },
       { value: 'status', label: 'Completion status' },
-      { value: 'due_date', label: 'Due date status' },
-      { value: 'time', label: 'Date' },
+      { value: 'due_date_status', label: 'Due date status' },
+      { value: 'date', label: 'Date', hasSubmenu: true },
       { value: 'custom_field', label: 'Custom field', hasSubmenu: true },
     ];
   }, []);
@@ -219,9 +260,9 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     const opts = [];
     const fields = getParsedCustomFields(selectedProject);
     if (!fields || fields.length === 0) return opts;
-    
+
     const getCustomFieldIcon = (fieldType) => {
-      switch(fieldType) {
+      switch (fieldType) {
         case 'DATE':
         case 'DATE_TIME':
           return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
@@ -255,7 +296,8 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     tasksBySection, tasksByAssignee, tasksByStatus,
     tasksByCreator, tasksByType,
     overdueTasks, completionOverTime,
-    upcomingDeadlines, unassignedBySection, customFieldData, burnupOverTime, allTasks
+    upcomingDeadlines, unassignedBySection, customFieldData, burnupOverTime, allTasks,
+    dueStatusData
   } = useMemo(() => {
     let total = 0, completed = 0, incomplete = 0;
     const bySection = [];
@@ -268,7 +310,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     const tasks = [];
     const customFieldCounts = {};
 
-    selectedProject?.customFields?.forEach(cf => {
+    getParsedCustomFields(selectedProject).forEach(cf => {
       customFieldCounts[cf.id] = {};
     });
 
@@ -277,7 +319,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
 
       sec.tasks?.forEach(task => {
         total++; secTotal++;
-        tasks.push(task);
+        tasks.push({ ...task, _sectionName: sec.name });
 
         if (task.isCompleted) { completed++; secCompleted++; }
         else { incomplete++; }
@@ -330,6 +372,21 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
               if (!customFieldCounts[fieldId][valName]) customFieldCounts[fieldId][valName] = { Total: 0, Completed: 0 };
               customFieldCounts[fieldId][valName].Total++;
               if (task.isCompleted) customFieldCounts[fieldId][valName].Completed++;
+            }
+          });
+        }
+
+        // Handle Github PR custom fields specifically since they live on task.githubPRs
+        const prFields = getParsedCustomFields(selectedProject).filter(f => f.type === 'github_pr' || f.fieldType === 'github_pr');
+        if (prFields.length > 0) {
+          const prs = getParsedGithubPRs(task.githubPRs);
+          const prVal = prs.length > 0 ? getGithubPRStatusLabel(prs[0]) : 'Empty';
+
+          prFields.forEach(cf => {
+            if (customFieldCounts[cf.id]) {
+              if (!customFieldCounts[cf.id][prVal]) customFieldCounts[cf.id][prVal] = { Total: 0, Completed: 0 };
+              customFieldCounts[cf.id][prVal].Total++;
+              if (task.isCompleted) customFieldCounts[cf.id][prVal].Completed++;
             }
           });
         }
@@ -398,15 +455,38 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     // Upcoming deadlines (next 7 days)
     const upcoming = [];
     for (let i = 0; i < 7; i++) {
-      const d = new Date(); d.setDate(d.getDate() + i); d.setHours(0, 0, 0, 0);
-      const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const cnt = tasks.filter(t => {
-        if (t.isCompleted || !t.dueDate) return false;
-        const dd = new Date(t.dueDate); dd.setHours(0, 0, 0, 0);
-        return dd.getTime() === d.getTime();
-      }).length;
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short' });
+      const cnt = tasks.filter(t => !t.isCompleted && t.dueDate && new Date(t.dueDate).toDateString() === d.toDateString()).length;
       upcoming.push({ name: label, Due: cnt });
     }
+
+    // Due Date Status
+    let dsUpcoming = 0, dsOverdue = 0, dsUnscheduled = 0, dsCompleted = 0;
+    const dsNow = new Date(); dsNow.setHours(0, 0, 0, 0);
+
+    tasks.forEach(t => {
+      if (t.isCompleted) {
+        dsCompleted++;
+      } else if (!t.dueDate) {
+        dsUnscheduled++;
+      } else {
+        const dd = new Date(t.dueDate); dd.setHours(0, 0, 0, 0);
+        if (dd < dsNow) {
+          dsOverdue++;
+        } else {
+          dsUpcoming++;
+        }
+      }
+    });
+
+    const dueStatusData = [
+      { name: 'Upcoming', value: dsUpcoming, color: '#A78BFA' },
+      { name: 'Overdue', value: dsOverdue, color: '#EF4444' },
+      { name: 'Unscheduled', value: dsUnscheduled, color: '#9CA3AF' },
+      { name: 'Completed', value: dsCompleted, color: '#10B981' },
+    ];
 
     return {
       totalTasks: total, completedTasks: completed, incompleteTasks: incomplete,
@@ -414,7 +494,8 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
       tasksByCreator: byCreator, tasksByType: byType,
       overdueTasks, completionOverTime: completionDays,
       upcomingDeadlines: upcoming,
-      unassignedBySection: unassignedTasks, customFieldData, burnupOverTime, allTasks
+      unassignedBySection: unassignedTasks, customFieldData, burnupOverTime, allTasks,
+      dueStatusData
     };
   }, [selectedProject]);
 
@@ -436,7 +517,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     padding: '8px 12px'
   };
 
-  const renderDynamicChart = (config) => {
+  const renderDynamicChart = (config, isPreview = false) => {
     if (!config) return null;
     const { chartStyle, xAxis, dataLabels } = config;
     let data = [];
@@ -449,16 +530,82 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     else if (xAxis === 'section') { data = tasksBySection; emptyMsg = 'No sections to display'; }
     else if (xAxis === 'assignee') { data = tasksByAssignee; emptyMsg = 'No assignee data'; emptyIcon = '👥'; }
     else if (xAxis === 'status') { data = tasksByStatus; emptyMsg = 'No task data'; emptyIcon = '🔵'; }
-    else if (xAxis === 'due_date') { data = upcomingDeadlines; emptyMsg = 'No deadlines'; emptyIcon = '📅'; }
+    else if (xAxis === 'due_date_status') { data = dueStatusData; emptyMsg = 'No deadlines'; emptyIcon = '📅'; }
     else if (xAxis === 'creator') { data = tasksByCreator; emptyMsg = 'No creator data'; emptyIcon = '👤'; }
     else if (xAxis === 'task_type') { data = tasksByType; emptyMsg = 'No task type data'; emptyIcon = '📝'; }
+    else if (xAxis.startsWith('date_')) {
+      const gran = config.timeGranularity || 'day';
+      const formatGroup = (date) => {
+        if (!date) return null;
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return null;
+        if (gran === 'day') return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (gran === 'week') {
+          const sw = new Date(d);
+          sw.setDate(d.getDate() - d.getDay());
+          return `${String(sw.getDate()).padStart(2, '0')}/${String(sw.getMonth() + 1).padStart(2, '0')}`;
+        }
+        if (gran === 'month') return d.toLocaleDateString('en-US', { month: 'short' });
+        if (gran === 'quarter') return `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`;
+        if (gran === 'year') return `${d.getFullYear()}`;
+        return null;
+      };
+
+      const sortedData = [];
+      allTasks.forEach(t => {
+        let dateVal = null;
+        if (xAxis === 'date_due') dateVal = t.dueDate;
+        else if (xAxis === 'date_created') dateVal = t.createdAt;
+        else if (xAxis === 'date_completed') dateVal = t.completedAt;
+
+        const groupLabel = formatGroup(dateVal);
+        if (groupLabel) {
+          const d = new Date(dateVal);
+          let sortVal = 0;
+          if (gran === 'day') sortVal = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+          else if (gran === 'week') {
+            const sw = new Date(d);
+            sw.setDate(d.getDate() - d.getDay());
+            sortVal = new Date(sw.getFullYear(), sw.getMonth(), sw.getDate()).getTime();
+          }
+          else if (gran === 'month') sortVal = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+          else if (gran === 'quarter') sortVal = new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1).getTime();
+          else if (gran === 'year') sortVal = new Date(d.getFullYear(), 0, 1).getTime();
+          
+          let existing = sortedData.find(s => s.name === groupLabel);
+          if (!existing) {
+             existing = { name: groupLabel, value: 0, _sort: sortVal };
+             sortedData.push(existing);
+          }
+          existing.value++;
+        }
+      });
+      sortedData.sort((a, b) => a._sort - b._sort);
+      data = sortedData;
+      emptyMsg = 'No timeline data';
+      emptyIcon = '📅';
+    }
     else if (xAxis.startsWith('cf_')) {
       const cfId = xAxis.replace('cf_', '');
       data = customFieldData[cfId] || [];
       emptyMsg = 'No custom field data';
     }
 
-    if (chartStyle === 'burnup') {
+    if (config.filters && config.filters.length > 0) {
+      const statusFilter = config.filters.find(f => f.field === 'status');
+      if (statusFilter && xAxis === 'status') {
+        data = data.filter(d => d.name === statusFilter.value);
+      }
+
+      const overdueFilter = config.filters.find(f => f.field === 'overdue');
+      if (overdueFilter) {
+        data = [{ name: 'Overdue', value: overdueTotalCount, color: '#EF4444' }];
+        emptyMsg = 'No overdue tasks';
+        emptyIcon = '⚠️';
+      }
+    }
+
+    if (chartStyle === 'burnup' || chartStyle === 'burndown') {
       normalizedData = data.map(item => {
         let tot = item.Total;
         let comp = item.Completed;
@@ -485,22 +632,103 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
       return <div className="proj-dash-empty"><span className="proj-dash-empty-icon">{emptyIcon}</span>{emptyMsg}</div>;
     }
 
+    let stackedKeys = [];
+    if (chartStyle === 'stacked-bar' && config.groupBy) {
+      const gBy = config.groupBy;
+      const gran = config.timeGranularity || 'day';
+      
+      const getTaskDimensionValue = (task, dim) => {
+        if (!dim) return 'None';
+        if (dim === 'assignee') return task.assignee?.name || 'Unassigned';
+        if (dim === 'creator') return task.creator?.name || 'Unknown';
+        if (dim === 'section') return task._sectionName || 'No section';
+        if (dim === 'task_type') return task.type || 'Task';
+        if (dim === 'status') return task.isCompleted ? 'Completed' : 'Incomplete';
+        if (dim === 'due_date_status') {
+          if (task.isCompleted) return 'Completed';
+          if (!task.dueDate) return 'Unscheduled';
+          const now = new Date(); now.setHours(0, 0, 0, 0);
+          const dd = new Date(task.dueDate); dd.setHours(0, 0, 0, 0);
+          return dd < now ? 'Overdue' : 'Upcoming';
+        }
+        if (dim.startsWith('date_')) {
+          let dateVal = null;
+          if (dim === 'date_due') dateVal = task.dueDate;
+          else if (dim === 'date_created') dateVal = task.createdAt;
+          else if (dim === 'date_completed') dateVal = task.completedAt;
+          if (!dateVal) return 'None';
+          const d = new Date(dateVal);
+          if (isNaN(d.getTime())) return 'None';
+          if (gran === 'day') return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+          if (gran === 'week') {
+            const sw = new Date(d); sw.setDate(d.getDate() - d.getDay());
+            return `${String(sw.getDate()).padStart(2, '0')}/${String(sw.getMonth() + 1).padStart(2, '0')}`;
+          }
+          if (gran === 'month') return d.toLocaleDateString('en-US', { month: 'short' });
+          if (gran === 'quarter') return `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`;
+          if (gran === 'year') return `${d.getFullYear()}`;
+          return 'None';
+        }
+        if (dim.startsWith('cf_')) {
+          const cfId = dim.replace('cf_', '');
+          let parsedCF = {};
+          if (typeof task.customFields === 'string') {
+            try { parsedCF = JSON.parse(task.customFields); } catch (e) { }
+          } else if (task.customFields && typeof task.customFields === 'object') {
+            parsedCF = task.customFields;
+          }
+          if (Array.isArray(parsedCF)) {
+            const field = parsedCF.find(f => f.fieldId === cfId);
+            return field?.value || 'None';
+          } else {
+            return parsedCF[cfId] || 'None';
+          }
+        }
+        return 'Other';
+      };
+
+      const keys = new Set();
+      normalizedData.forEach(nd => {
+        const tasksInGroup = allTasks.filter(t => {
+           const xVal = getTaskDimensionValue(t, xAxis);
+           return xVal === nd.name;
+        });
+
+        tasksInGroup.forEach(t => {
+           if (config.filters && config.filters.length > 0) {
+             const statusFilter = config.filters.find(f => f.field === 'status');
+             if (statusFilter && statusFilter.value !== (t.isCompleted ? 'Completed' : 'Incomplete')) return;
+           }
+           const gVal = getTaskDimensionValue(t, gBy);
+           if (!nd[gVal]) nd[gVal] = 0;
+           nd[gVal]++;
+           keys.add(gVal);
+        });
+      });
+      
+      stackedKeys = Array.from(keys);
+    }
+
     if (chartStyle === 'number') {
       const sum = normalizedData.reduce((acc, curr) => acc + curr.value, 0);
       return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' }}>
           <div style={{ fontSize: '3.5rem', fontWeight: 300, color: 'var(--text-primary)', lineHeight: 1 }}>{sum}</div>
         </div>
       );
     }
 
     if (chartStyle === 'donut' || chartStyle === 'pie') {
+      const sum = normalizedData.reduce((acc, curr) => acc + curr.value, 0);
       return (
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie data={normalizedData} cx="50%" cy="50%" innerRadius={chartStyle === 'donut' ? "38%" : 0} outerRadius="65%" paddingAngle={chartStyle === 'donut' ? 4 : 0} dataKey="value"
-              label={dataLabels ? ({ name, value }) => `${name}: ${value}` : false} labelLine={false}>
+              label={dataLabels ? renderCustomizedPieLabel : false} labelLine={false} animationDuration={400} isAnimationActive={false}>
               {normalizedData.map((entry, i) => <Cell key={i} fill={entry.color || COLORS[i % COLORS.length]} />)}
+              {chartStyle === 'donut' && (
+                <Label value={sum} position="center" fill="var(--text-primary)" fontSize={32} fontWeight={400} />
+              )}
             </Pie>
             <RechartsTooltip contentStyle={tooltipStyle} />
             <Legend iconType="circle" layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '0.78rem' }} />
@@ -510,21 +738,32 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     }
 
     if (chartStyle === 'bar' || chartStyle === 'stacked-bar') {
-      if (xAxis === 'section' && chartStyle === 'stacked-bar') {
+      if (chartStyle === 'stacked-bar' && stackedKeys.length > 0) {
+        const getGroupColor = (key, idx) => {
+          if (key === 'Completed') return '#10B981';
+          if (key === 'Incomplete') return '#6366F1';
+          if (key === 'Overdue') return '#EF4444';
+          if (key === 'Upcoming') return '#A78BFA';
+          if (key === 'Unscheduled') return '#60A5FA';
+          return COLORS[idx % COLORS.length];
+        };
+
         return (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={tasksBySection} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+            <BarChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
               <RechartsTooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} contentStyle={tooltipStyle} />
               <Legend iconType="circle" wrapperStyle={{ fontSize: '0.78rem' }} />
-              <Bar dataKey="Completed" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
-              <Bar dataKey="Incomplete" stackId="a" fill="#E5E7EB" radius={[4, 4, 0, 0]} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
+              {stackedKeys.map((key, idx) => (
+                <Bar key={key} dataKey={key} stackId="a" fill={getGroupColor(key, idx)} radius={idx === stackedKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} label={dataLabels ? { position: 'center', fill: '#fff', fontSize: 10 } : false} animationDuration={400} isAnimationActive={false} />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         );
       }
+
       return (
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
@@ -532,7 +771,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
             <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
             <RechartsTooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} contentStyle={tooltipStyle} />
-            <Bar dataKey="value" fill="#6366F1" radius={[4, 4, 0, 0]} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} >
+            <Bar dataKey="value" fill="#6366F1" radius={[4, 4, 0, 0]} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} animationDuration={400} isAnimationActive={false} >
               {normalizedData.map((entry, i) => <Cell key={i} fill={entry.color || COLORS[i % COLORS.length]} />)}
             </Bar>
           </BarChart>
@@ -540,50 +779,42 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
       );
     }
 
-    if (chartStyle === 'line' || chartStyle === 'area') {
+    if (chartStyle === 'line') {
       return (
         <ResponsiveContainer width="100%" height="100%">
-          {chartStyle === 'line' ? (
-            <LineChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
-              <RechartsTooltip contentStyle={tooltipStyle} />
-              <Line type="monotone" dataKey="value" stroke="#06B6D4" strokeWidth={3} dot={{ r: 4, fill: '#06B6D4', strokeWidth: 0 }} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
-            </LineChart>
-          ) : (
-            <AreaChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-              <defs>
-                <linearGradient id="completionGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#06B6D4" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#06B6D4" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
-              <RechartsTooltip contentStyle={tooltipStyle} />
-              <Area type="monotone" dataKey="value" stroke="#06B6D4" strokeWidth={3} fillOpacity={1} fill="url(#completionGrad)" label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} />
-            </AreaChart>
-          )}
+          <LineChart data={normalizedData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
+            <RechartsTooltip contentStyle={tooltipStyle} />
+            <Line type="monotone" dataKey="value" stroke="#06B6D4" strokeWidth={3} dot={{ r: 4, fill: '#06B6D4', strokeWidth: 0 }} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} animationDuration={400} isAnimationActive={false} />
+          </LineChart>
         </ResponsiveContainer>
       );
     }
 
-    if (chartStyle === 'burnup') {
+    if (chartStyle === 'burnup' || chartStyle === 'burndown') {
+      const burnData = normalizedData.map(d => ({
+        ...d,
+        Remaining: d.Total - (d.Completed || 0)
+      }));
+
       return (
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={normalizedData} margin={{ top: 20, right: 10, left: -10, bottom: 25 }}>
+          <AreaChart data={burnData} margin={{ top: 20, right: 10, left: -10, bottom: 25 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} angle={-45} textAnchor="end" />
             <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
             <RechartsTooltip contentStyle={tooltipStyle} />
-            <Area type="monotone" dataKey="Total" stroke="none" fill="#EDE9FE" fillOpacity={1} label={dataLabels ? { position: 'top', fill: 'var(--text-primary)', fontSize: 11, fontWeight: 'bold' } : false} />
-            <Area type="monotone" dataKey="Completed" stroke="none" fill="#8B5CF6" fillOpacity={1} label={dataLabels ? { position: 'center', fill: '#fff', fontSize: 11, fontWeight: 'bold' } : false} />
+            <>
+              <Area type="monotone" dataKey="Total" stroke="none" fill="#EDE9FE" fillOpacity={1} label={dataLabels ? { position: 'top', fill: 'var(--text-primary)', fontSize: 11, fontWeight: 'bold' } : false} animationDuration={400} isAnimationActive={false} />
+              <Area type="monotone" dataKey={chartStyle === 'burnup' ? "Completed" : "Remaining"} stroke="none" fill="#8B5CF6" fillOpacity={1} label={dataLabels ? { position: 'center', fill: '#fff', fontSize: 11, fontWeight: 'bold' } : false} animationDuration={400} isAnimationActive={false} />
+            </>
           </AreaChart>
         </ResponsiveContainer>
       );
     }
+
 
     if (chartStyle === 'lollipop') {
       return (
@@ -593,7 +824,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
             <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
             <RechartsTooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} contentStyle={tooltipStyle} />
-            <Bar dataKey="value" shape={<CustomLollipopBar />} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} >
+            <Bar dataKey="value" shape={<CustomLollipopBar />} label={dataLabels ? { position: 'top', fill: 'var(--text-secondary)', fontSize: 11 } : false} animationDuration={400} isAnimationActive={false} >
               {normalizedData.map((entry, i) => <Cell key={i} fill={entry.color || COLORS[i % COLORS.length]} />)}
             </Bar>
           </BarChart>
@@ -605,32 +836,33 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
   };
 
   const renderChart = (type, config = null) => {
+    const isPreview = type === null;
     if (config) {
-      return renderDynamicChart(config);
+      return renderDynamicChart(config, isPreview);
     }
 
     switch (type) {
       case 'number-completed':
         return (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' }}>
             <div style={{ fontSize: '3.5rem', fontWeight: 300, color: '#10B981', lineHeight: 1 }}>{completedTasks}</div>
           </div>
         );
       case 'number-incomplete':
         return (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' }}>
             <div style={{ fontSize: '3.5rem', fontWeight: 300, color: '#6366F1', lineHeight: 1 }}>{incompleteTasks}</div>
           </div>
         );
       case 'number-total':
         return (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' }}>
             <div style={{ fontSize: '3.5rem', fontWeight: 300, color: 'var(--text-primary)', lineHeight: 1 }}>{totalTasks}</div>
           </div>
         );
       case 'number-overdue':
         return (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' }}>
             <div style={{ fontSize: '3.5rem', fontWeight: 300, color: overdueTotalCount > 0 ? '#EF4444' : 'var(--text-primary)', lineHeight: 1 }}>{overdueTotalCount}</div>
           </div>
         );
@@ -767,6 +999,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
   // LAYOUT OPERATIONS
   // ========================
   const [addChartModal, setAddChartModal] = useState(null); // null or { chartStyle, xAxis, yAxis, yMetric, dataLabels, filters }
+  const [viewChartModal, setViewChartModal] = useState(null); // null or chart object
 
 
 
@@ -774,10 +1007,10 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     { value: 'bar', label: 'Bar', icon: '📊' },
     { value: 'stacked-bar', label: 'Stacked bar', icon: '📊' },
     { value: 'line', label: 'Line', icon: '📈' },
-    { value: 'area', label: 'Area', icon: '📉' },
     { value: 'donut', label: 'Donut', icon: '🍩' },
     { value: 'number', label: 'Number', icon: '#️⃣' },
     { value: 'burnup', label: 'Burnup', icon: '🔥' },
+    { value: 'burndown', label: 'Burndown', icon: '📉' },
     { value: 'lollipop', label: 'Lollipop', icon: '🍭' },
   ];
 
@@ -792,6 +1025,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
       yAxis: 'task',
       yMetric: 'count',
       dataLabels: true,
+      timeGranularity: 'day',
       filters: [],
     });
   };
@@ -808,17 +1042,64 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
     setChartLayout(prev => [...prev, newChart]);
   };
 
+  const openEditChartModal = (chart) => {
+    let config = chart.config;
+    if (!config) {
+      config = {
+        chartStyle: chart.type.includes('number') ? 'number' :
+          chart.type.includes('donut') || chart.type === 'tasks-by-assignee' ? 'donut' :
+            chart.type.includes('status') ? 'pie' :
+              chart.type.includes('over-time') ? 'line' : 'bar',
+        xAxis: 'section',
+        yMetric: 'count',
+        dataLabels: true,
+        filters: []
+      };
+
+      if (chart.type === 'tasks-by-assignee') config.xAxis = 'assignee';
+      else if (chart.type === 'tasks-by-status') config.xAxis = 'status';
+      else if (chart.type === 'number-overdue' || chart.type === 'upcoming-deadlines') {
+        config.xAxis = 'date_due';
+        if (chart.type === 'number-overdue') config.filters = [{ field: 'overdue', value: true }];
+      }
+      else if (chart.type.includes('number')) {
+        config.xAxis = 'status';
+        if (chart.type === 'number-completed') config.filters = [{ field: 'status', value: 'Completed' }];
+        else if (chart.type === 'number-incomplete') config.filters = [{ field: 'status', value: 'Incomplete' }];
+      }
+      else if (chart.type === 'burnup-chart') {
+        config.xAxis = 'time';
+        config.chartStyle = 'burnup';
+      }
+      else if (chart.type === 'completion-over-time') {
+        config.xAxis = 'date_completed';
+      }
+    }
+
+    setAddChartModal({
+      editChartId: chart.i,
+      ...config
+    });
+    if (viewChartModal) setViewChartModal(null);
+  };
+
   const handleAddChartConfirm = () => {
-    const newChart = {
-      i: 'chart-' + Date.now(),
-      type: 'dynamic',
-      config: addChartModal,
-      x: 0,
-      y: Infinity,
-      w: addChartModal.chartStyle === 'number' ? 5 : 10,
-      h: addChartModal.chartStyle === 'number' ? 5 : 12,
-    };
-    setChartLayout(prev => [...prev, newChart]);
+    if (addChartModal.editChartId) {
+      setChartLayout(prev => prev.map(c =>
+        c.i === addChartModal.editChartId ? { ...c, type: 'dynamic', config: addChartModal } : c
+      ));
+    } else {
+      const newChart = {
+        i: 'chart-' + Date.now(),
+        type: 'dynamic',
+        config: addChartModal,
+        x: 0,
+        y: Infinity,
+        w: addChartModal.chartStyle === 'number' ? 5 : 10,
+        h: addChartModal.chartStyle === 'number' ? 5 : 12,
+      };
+      setChartLayout(prev => [...prev, newChart]);
+    }
     setAddChartModal(null);
   };
 
@@ -857,24 +1138,27 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
   // CARD MENU
   // ========================
   const renderCardMenu = (chart) => (
-    <div style={{ position: 'relative' }} ref={openMenu === chart.i ? menuRef : null}>
-      <button className="proj-dash-card-menu-btn" onMouseDown={(e) => { e.stopPropagation(); setOpenMenu(openMenu === chart.i ? null : chart.i); }}>
-        •••
+    <div className={`proj-dash-card-actions ${openMenu === chart.i ? 'active' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+      <button className="proj-dash-card-menu-btn" title="View larger" onMouseDown={(e) => { e.stopPropagation(); setViewChartModal(chart); }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
       </button>
-      {openMenu === chart.i && (
-        <div className="proj-dash-card-menu" onMouseDown={(e) => e.stopPropagation()}>
-          <button className="proj-dash-card-menu-item" onClick={() => toggleSize(chart.i, 'w', chart.w === 20 ? 10 : 20)}>
-            {chart.w === 20 ? '↔ Half width' : '↔ Full width'}
-          </button>
-          <button className="proj-dash-card-menu-item" onClick={() => toggleSize(chart.i, 'h', chart.h === 12 ? 6 : 12)}>
-            {chart.h === 12 ? '↕ Standard height' : '↕ Tall'}
-          </button>
-          <div className="proj-dash-card-menu-divider" />
-          <button className="proj-dash-card-menu-item danger" onClick={() => removeChart(chart.i)}>
-            ✕ Remove chart
-          </button>
-        </div>
+      {chart.type !== 'text-widget' && (
+        <button className="proj-dash-card-menu-btn" title="Edit chart" onMouseDown={(e) => { e.stopPropagation(); openEditChartModal(chart); }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+        </button>
       )}
+      <div style={{ position: 'relative' }} ref={openMenu === chart.i ? menuRef : null}>
+        <button className="proj-dash-card-menu-btn" onMouseDown={(e) => { e.stopPropagation(); setOpenMenu(openMenu === chart.i ? null : chart.i); }}>
+          •••
+        </button>
+        {openMenu === chart.i && (
+          <div className="proj-dash-card-menu" onMouseDown={(e) => e.stopPropagation()}>
+            <button className="proj-dash-card-menu-item danger" onClick={() => removeChart(chart.i)}>
+              ✕ Remove chart
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -890,7 +1174,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
   const getChartDesc = (chart) => {
     if (chart.type === 'text-widget') return 'A text block for notes and descriptions';
     if (chart.type === 'dynamic') {
-      const xLabel = axisOptions.find(o => o.value === chart.config?.xAxis)?.label || chart.config?.xAxis;
+      const xLabel = axisOptions.find(o => o.value === chart.config?.xAxis)?.label || customFieldOptions.find(o => o.value === chart.config?.xAxis)?.label || chart.config?.xAxis;
       return `Total tasks by ${xLabel.toLowerCase()}`;
     }
     return CHART_REGISTRY.find(r => r.type === chart.type)?.description || '';
@@ -899,7 +1183,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
   // Generate preview chart title based on config
   const getPreviewTitle = (config) => {
     if (!config) return '';
-    const xLabel = axisOptions.find(o => o.value === config.xAxis)?.label || config.xAxis;
+    const xLabel = axisOptions.find(o => o.value === config.xAxis)?.label || customFieldOptions.find(o => o.value === config.xAxis)?.label || config.xAxis;
     return `Total tasks by ${xLabel.toLowerCase()}`;
   };
 
@@ -947,8 +1231,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
                 </div>
               </div>
 
-              {/* Remove button */}
-              <button className="proj-dash-card-remove" onMouseDown={(e) => { e.stopPropagation(); removeChart(chart.i); }} title="Remove chart">✕</button>
+              {/* Remove button (Removed as per user request) */}
 
               {/* Header */}
               <div className="proj-dash-card-header">
@@ -1038,7 +1321,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
                         setAddChartModal(prev => ({
                           ...prev,
                           chartStyle: newStyle,
-                          xAxis: newStyle === 'burnup' ? 'time' : (prev.xAxis === 'time' ? 'section' : prev.xAxis)
+                          xAxis: newStyle === 'burnup' || newStyle === 'burndown' ? 'time' : (prev.xAxis === 'time' ? 'section' : prev.xAxis)
                         }));
                       }}
                     >
@@ -1056,15 +1339,48 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
                   <label className="add-chart-label">X-axis</label>
                   <div className="add-chart-select-wrap" style={{ border: 'none', padding: 0 }}>
                     <XAxisCustomDropdown
-                      value={addChartModal.chartStyle === 'burnup' ? 'time' : addChartModal.xAxis}
+                      value={addChartModal.chartStyle === 'burnup' || addChartModal.chartStyle === 'burndown' ? 'time' : addChartModal.xAxis}
                       onChange={(val) => setAddChartModal(prev => ({ ...prev, xAxis: val }))}
-                      disabled={addChartModal.chartStyle === 'burnup'}
+                      disabled={addChartModal.chartStyle === 'burnup' || addChartModal.chartStyle === 'burndown'}
                       axisOptions={axisOptions}
                       customFieldOptions={customFieldOptions}
+                      dateFieldOptions={dateFieldOptions}
                     />
                   </div>
 
-                  <label className="add-chart-label">Y-axis</label>
+                {addChartModal.xAxis?.startsWith('date_') && (
+                  <div className="add-chart-section">
+                    <label className="add-chart-label">Granularity</label>
+                    <div className="add-chart-select-wrap">
+                      <select className="add-chart-select" value={addChartModal.timeGranularity || 'day'} onChange={(e) => setAddChartModal(prev => ({ ...prev, timeGranularity: e.target.value }))}>
+                        <option value="day">Day</option>
+                        <option value="week">Week</option>
+                        <option value="month">Month</option>
+                        <option value="quarter">Quarter</option>
+                        <option value="year">Year</option>
+                      </select>
+                      <span className="add-chart-select-arrow">▼</span>
+                    </div>
+                  </div>
+                )}
+
+                {addChartModal.chartStyle === 'stacked-bar' && (
+                  <>
+                    <label className="add-chart-label" style={{ marginTop: '16px' }}>Group by</label>
+                    <div className="add-chart-select-wrap" style={{ border: 'none', padding: 0 }}>
+                      <XAxisCustomDropdown
+                        value={addChartModal.groupBy || 'due_date_status'}
+                        onChange={(val) => setAddChartModal(prev => ({ ...prev, groupBy: val }))}
+                        disabled={false}
+                        axisOptions={axisOptions}
+                        customFieldOptions={customFieldOptions}
+                        dateFieldOptions={dateFieldOptions}
+                      />
+                    </div>
+                  </>
+                )}
+
+                  <label className="add-chart-label" style={{ marginTop: '16px' }}>Y-axis</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <div className="add-chart-select-wrap" style={{ flex: 1 }}>
                       <select className="add-chart-select" value="task" disabled>
@@ -1111,7 +1427,45 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
             {/* Footer */}
             <div className="add-chart-modal-footer">
               <button className="add-chart-cancel-btn" onClick={() => setAddChartModal(null)}>Cancel</button>
-              <button className="add-chart-confirm-btn" onClick={handleAddChartConfirm}>Add chart</button>
+              <button className="add-chart-confirm-btn" onClick={handleAddChartConfirm}>
+                {addChartModal.editChartId ? 'Save chart' : 'Add chart'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== VIEW CHART MODAL ========== */}
+      {viewChartModal && (
+        <div className="proj-dash-picker-overlay" onClick={() => setViewChartModal(null)}>
+          <div className="add-chart-modal" style={{ width: '800px', maxWidth: '90vw', height: '80vh', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="add-chart-modal-header" style={{ padding: '16px 24px' }}>
+              <h2>View chart</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {viewChartModal.type !== 'text-widget' && (
+                  <button className="proj-dash-picker-close" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit chart" onClick={() => openEditChartModal(viewChartModal)}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                  </button>
+                )}
+                <button className="proj-dash-picker-close" onClick={() => setViewChartModal(null)}>✕</button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="add-chart-modal-body" style={{ flexDirection: 'column', padding: '24px', flex: 1, overflow: 'hidden' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: '500', marginBottom: '24px' }}>
+                {getChartDesc(viewChartModal)}
+              </h3>
+              <div style={{ flex: 1, width: '100%', minHeight: 0 }}>
+                {viewChartModal.type === 'text-widget' ? (
+                  <div style={{ fontSize: '1.1rem', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
+                    Text widgets cannot be enlarged.
+                  </div>
+                ) : (
+                  renderChart(viewChartModal.type, viewChartModal.config)
+                )}
+              </div>
             </div>
           </div>
         </div>

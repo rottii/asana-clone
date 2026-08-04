@@ -102,6 +102,8 @@ export default function Sidebar({
 
   const safeProjects = Array.isArray(projects) ? projects : [];
   const activeProjects = safeProjects.filter(p => !p.isArchived && !p.isTemplate && p.status !== 'MY_TASKS');
+  
+  const isGuest = activeWorkspace?.members?.find(m => m.userId === user?.id)?.role === 'GUEST';
 
   const toggleSection = (section) => {
     setCollapsed(prev => ({ ...prev, [section]: !prev[section] }));
@@ -359,7 +361,9 @@ export default function Sidebar({
                     <span className="sidebar-section-arrow">{collapsed.work ? '▶' : '▼'}</span>
                     <span className="sidebar-section-label" style={{ textTransform: 'none' }}>Work</span>
                   </div>
-                  <button className="sidebar-add-btn" onClick={(e) => { e.stopPropagation(); setActiveView('create_project'); }}>+</button>
+                  {!isGuest && (
+                    <button className="sidebar-add-btn" onClick={(e) => { e.stopPropagation(); setActiveView('create_project'); }}>+</button>
+                  )}
                 </div>
                 
                 {!collapsed.work && (
@@ -443,9 +447,11 @@ export default function Sidebar({
         </div>
 
         <div className="sidebar-wide-bottom">
-          <button className="sidebar-invite-btn">
-            <span className="invite-icon">✉</span> Invite teammates
-          </button>
+          {!isGuest && (
+            <button className="sidebar-invite-btn">
+              <span className="invite-icon">✉</span> Invite teammates
+            </button>
+          )}
         </div>
       </div>
       

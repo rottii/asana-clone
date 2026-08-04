@@ -271,10 +271,12 @@ export default function App() {
     return <Auth setToken={setToken} setUser={setUser} />
   }
 
-  // Relax workspace filtering so users can see all their projects (helps when invited to projects in other workspaces)
-  const filteredProjects = projects;
-  const filteredPortfolios = portfolios;
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+
+  // Filter projects by active workspace, but always include 'MY_TASKS' which is global
+  // Actually, MY_TASKS will now have a workspaceId, so we just filter by workspaceId directly!
+  const filteredProjects = projects.filter(p => p.workspaceId === activeWorkspace?.id);
+  const filteredPortfolios = portfolios.filter(p => p.workspaceId === activeWorkspace?.id);
 
   return (
     <UndoProvider>

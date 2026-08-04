@@ -7,6 +7,7 @@
   padding: 2rem;
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   background-color: var(--bg-secondary);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -300,12 +301,22 @@
 }
 
 /* --- CARD MENU --- */
+.proj-dash-card-actions {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.proj-dash-chart-card:hover .proj-dash-card-actions,
+.proj-dash-card-actions.active {
+  opacity: 1;
+}
 .proj-dash-card-menu-btn {
   background: none;
   border: none;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: 0.85rem;
+  letter-spacing: 1px;
   padding: 2px 6px;
   border-radius: 4px;
   transition: all 0.15s ease;
@@ -388,8 +399,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(3px);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -562,6 +572,7 @@
   border: 1px solid var(--border-color);
   border-radius: 12px;
   width: 900px;
+  height: 600px;
   max-width: 95vw;
   max-height: 85vh;
   display: flex;
@@ -854,115 +865,72 @@
 
 /* --- RGL RESIZE HANDLES --- */
 .react-resizable-handle {
-  position: absolute;
+  position: absolute !important;
   opacity: 0;
   transition: opacity 0.15s ease;
-  z-index: 5;
+  z-index: 20 !important;
   background-image: none !important;
+  transform: none !important; /* prevent default rotation which messes up 100% height edges */
   /* hide default arrows */
 }
 
 .proj-dash-chart-card:hover .react-resizable-handle {
-  opacity: 0.4;
+  /* stay invisible until the handle itself is hovered */
 }
 
-.react-resizable-handle:hover,
-.react-resizable-handle:active {
-  background-color: rgba(79, 70, 229, 0.1);
-  opacity: 1 !important;
-}
+/* stay invisible even on hover */
 
 /* Base positioning for RGL handles */
 .react-resizable-handle-e {
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 12px;
-  cursor: ew-resize;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  height: auto !important;
+  width: 12px !important;
+  cursor: ew-resize !important;
 }
 
 .react-resizable-handle-w {
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 12px;
-  cursor: ew-resize;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  height: auto !important;
+  width: 12px !important;
+  cursor: ew-resize !important;
 }
 
 .react-resizable-handle-s {
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 12px;
-  cursor: ns-resize;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: auto !important;
+  height: 12px !important;
+  cursor: ns-resize !important;
 }
 
 .react-resizable-handle-se {
-  bottom: 0;
-  right: 0;
-  width: 16px;
-  height: 16px;
-  cursor: nwse-resize;
-  z-index: 6;
+  bottom: 0 !important;
+  right: 0 !important;
+  width: 16px !important;
+  height: 16px !important;
+  cursor: nwse-resize !important;
+  z-index: 20 !important;
 }
 
 .react-resizable-handle-sw {
-  bottom: 0;
-  left: 0;
-  width: 16px;
-  height: 16px;
-  cursor: nesw-resize;
-  z-index: 6;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 16px !important;
+  height: 16px !important;
+  cursor: nesw-resize !important;
+  z-index: 20 !important;
 }
 
-/* Visual indicators */
-.react-resizable-handle-e::after,
-.react-resizable-handle-w::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 4px;
-  height: 24px;
-  border-radius: 2px;
-  background-color: var(--text-tertiary);
+/* Visual indicators removed as per user request to hide symbols */
+.react-resizable-handle::after {
+  content: none !important;
+  display: none !important;
 }
-
-.react-resizable-handle-s::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  height: 4px;
-  width: 24px;
-  border-radius: 2px;
-  background-color: var(--text-tertiary);
-}
-
-.react-resizable-handle-se::after {
-  content: '';
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid var(--text-tertiary);
-  border-bottom: 2px solid var(--text-tertiary);
-}
-
-.react-resizable-handle-sw::after {
-  content: '';
-  position: absolute;
-  bottom: 4px;
-  left: 4px;
-  width: 8px;
-  height: 8px;
-  border-left: 2px solid var(--text-tertiary);
-  border-bottom: 2px solid var(--text-tertiary);
-}
-
 /* --- EMPTY CHART STATE --- */
 .proj-dash-empty {
   display: flex;
@@ -1003,3 +971,13 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* --- RECHARTS FIXES --- */
+/* Prevent the floating tooltip from expanding container bounds and causing scrollbars/resizing */
+.recharts-wrapper {
+  overflow: hidden !important;
+}
+
+.recharts-tooltip-wrapper {
+  pointer-events: none !important;
+}

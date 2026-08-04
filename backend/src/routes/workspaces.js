@@ -20,17 +20,41 @@ router.get('/', authenticateToken, async (req, res) => {
         }
       },
       include: {
+        members: true,
         teams: {
           include: {
             members: {
               include: { user: true }
             },
-            projects: true
+            projects: {
+              include: {
+                members: true
+              }
+            }
           }
         }
       }
     });
-    res.json(workspaces);
+
+    // Filter data for GUEST users
+    const filteredWorkspaces = workspaces.map(workspace => {
+      const userMember = workspace.members.find(m => m.userId === req.user.userId);
+      if (userMember && userMember.role === 'GUEST') {
+        // Guests only see teams they are explicitly members of
+        workspace.teams = workspace.teams.filter(team => 
+          team.members.some(m => m.userId === req.user.userId)
+        );
+        // Guests only see projects they are explicitly members of
+        workspace.teams.forEach(team => {
+          team.projects = team.projects.filter(project => 
+            project.members.some(m => m.userId === req.user.userId)
+          );
+        });
+      }
+      return workspace;
+    });
+
+    res.json(filteredWorkspaces);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Server error fetching workspaces' });

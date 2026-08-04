@@ -929,55 +929,60 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
             </div>
 
             <div style={{ padding: '1rem 0', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', marginTop: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '500', color: 'var(--text-primary)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                Projects <span style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '0 0.4rem', borderRadius: '4px', fontSize: '0.75rem' }}>{(task.secondaryProjects?.length || 0) + 1}</span>
-                {!isReadOnly && (
-                  <div style={{ position: 'relative' }}>
-                    <span style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', lineHeight: '1', marginLeft: '0.5rem' }} onClick={() => setShowProjectInput(true)}>+</span>
-                    {showProjectInput && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '4px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', padding: '8px', zIndex: 100, width: '250px' }}>
-                        {availableProjects.length > 0 ? (
-                          <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {availableProjects.filter(p => p.id !== task.section?.projectId && !task.secondaryProjects?.find(sp => sp.projectId === p.id)).map(proj => (
-                              <div
-                                key={proj.id}
-                                onClick={() => handleAddToProject(proj.id)}
-                                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px', cursor: 'pointer', borderRadius: '4px' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                              >
-                                <span style={{ color: proj.color }}>{proj.icon || '📋'}</span>
-                                <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 'normal' }}>{proj.name}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Loading projects...</div>
-                        )}
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-                          <button onClick={() => setShowProjectInput(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'normal' }}>Cancel</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Projects List */}
-              {[{
-                isPrimary: true,
-                project: task.section?.project || selectedProject,
-                section: task.section || selectedProject?.sections?.find(s => s.id === task.sectionId)
-              }, ...(task.secondaryProjects || []).map(sp => ({
-                isPrimary: false,
-                project: sp.project,
-                section: sp.section
-              }))].filter(p => p.project).map(({ isPrimary, project, section }, index) => {
-                const cfs = getCustomFieldSettingsForProject(project);
-                const expanded = isProjectExpanded(project.id);
+              {(() => {
+                const validProjects = [{
+                  isPrimary: true,
+                  project: task.section?.project || selectedProject,
+                  section: task.section || selectedProject?.sections?.find(s => s.id === task.sectionId)
+                }, ...(task.secondaryProjects || []).map(sp => ({
+                  isPrimary: false,
+                  project: sp.project,
+                  section: sp.section
+                }))].filter(p => p.project && p.project.status !== 'MY_TASKS' && p.project.name !== 'My Tasks');
 
                 return (
-                  <div key={`${project.id}-${index}`} style={{ width: '100%', marginBottom: '0.5rem' }}>
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '500', color: 'var(--text-primary)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                      Projects <span style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '0 0.4rem', borderRadius: '4px', fontSize: '0.75rem' }}>{validProjects.length}</span>
+                      {!isReadOnly && (
+                        <div style={{ position: 'relative' }}>
+                          <span style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', lineHeight: '1', marginLeft: '0.5rem' }} onClick={() => setShowProjectInput(true)}>+</span>
+                          {showProjectInput && (
+                            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '4px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', padding: '8px', zIndex: 100, width: '250px' }}>
+                              {availableProjects.length > 0 ? (
+                                <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  {availableProjects.filter(p => p.id !== task.section?.projectId && !task.secondaryProjects?.find(sp => sp.projectId === p.id)).map(proj => (
+                                    <div
+                                      key={proj.id}
+                                      onClick={() => handleAddToProject(proj.id)}
+                                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px', cursor: 'pointer', borderRadius: '4px' }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
+                                      <span style={{ color: proj.color }}>{proj.icon || '📋'}</span>
+                                      <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 'normal' }}>{proj.name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Loading projects...</div>
+                              )}
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                <button onClick={() => setShowProjectInput(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'normal' }}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Projects List */}
+                    {validProjects.map(({ isPrimary, project, section }, index) => {
+                      const cfs = getCustomFieldSettingsForProject(project);
+                      const expanded = isProjectExpanded(project.id);
+
+                      return (
+                        <div key={`${project.id}-${index}`} style={{ width: '100%', marginBottom: '0.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0' }}>
                       <span
                         onClick={() => {
@@ -1340,6 +1345,9 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                   </div>
                 );
               })}
+            </>
+          );
+        })()}
             </div>
 
           </div>
