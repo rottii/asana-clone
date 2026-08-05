@@ -6,7 +6,7 @@ const { OAuth2Client } = require('google-auth-library');
 
 const router = express.Router();
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
+const { JWT_SECRET } = require('../config/env');
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 

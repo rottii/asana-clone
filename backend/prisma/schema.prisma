@@ -51,6 +51,7 @@ model User {
   
   commentReactions CommentReaction[]
   activities    TaskActivity[]
+  auditLogs     AuditLog[]
   dashboardLayout DashboardLayout?
 }
 
@@ -507,4 +508,19 @@ model DashboardLayout {
 
   userId    String   @unique
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// --- YENİ MODEL: AUDIT LOG (SECURITY) ---
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String   // e.g. "CREATE_TASK", "DELETE_PROJECT"
+  entity    String   // e.g. "Task", "Project"
+  entityId  String?
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }

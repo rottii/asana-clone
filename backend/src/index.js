@@ -18,7 +18,32 @@ const dashboardRoutes = require('./routes/dashboard');
 const { startCronScheduler } = require('./utils/cronScheduler');
 const { startReminderCron } = require('./utils/reminders');
 
+const Sentry = require('@sentry/node');
+const { ProfilingIntegration } = require('@sentry/profiling-node');
+
 const app = express();
+
+// Initialize Sentry early
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || '',
+  integrations: [
+    // enable HTTP calls tracing
+    new Sentry.Integrations.Http({ tracing: true }),
+    // enable Express.js middleware tracing
+    new Sentry.Integrations.Express({ app }),
+    new ProfilingIntegration(),
+  ],
+  // Performance Monitoring
+  tracesSampleRate: 1.0, //  Capture 100% of the transactions
+  // Set sampling rate for profiling - this is relative to tracesSampleRate
+  profilesSampleRate: 1.0,
+});
+
+// The request handler must be the first middleware on the app
+app.use(Sentry.Handlers.requestHandler());
+// TracingHandler creates a trace for every incoming request
+app.use(Sentry.Handlers.tracingHandler());
+
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
@@ -59,9 +84,28 @@ io.on('connection', (socket) => {
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5001;
 
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const xssSanitizer = require('./middleware/xssSanitizer');
+const auditLogger = require('./middleware/auditLogger');
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" } // allow images to be loaded
+}));
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(xssSanitizer);
+app.use(auditLogger);
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // Limit each IP to 500 requests per window
+  message: { error: 'Too many requests from this IP, please try again after 15 minutes' }
+});
+
+app.use('/api', apiLimiter);
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
@@ -91,6 +135,14 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({ status: 'DOWN', error: error.message });
   }
 });
+
+const globalErrorHandler = require('./middleware/errorHandler');
+
+// The error handler must be before any other error middleware and after all controllers
+app.use(Sentry.Handlers.errorHandler());
+
+// Custom global error handler
+app.use(globalErrorHandler);
 
 // --- Data Migration / Bootstrap for Workspaces & Teams ---
 async function bootstrapData() {

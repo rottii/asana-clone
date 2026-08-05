@@ -3,7 +3,7 @@ const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
+const { JWT_SECRET } = require('../config/env');
 
 const { authenticateToken } = require('../middleware/auth');
 

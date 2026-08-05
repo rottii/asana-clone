@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 
 const router = express.Router();
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'asana_gizli_anahtar_123';
+const { JWT_SECRET } = require('../config/env');
 
 const { authenticateToken } = require('../middleware/auth');
 
