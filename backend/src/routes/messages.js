@@ -8,11 +8,18 @@ const { JWT_SECRET } = require('../config/env');
 
 const { authenticateToken } = require('../middleware/auth');
 const { processMentions } = require('../utils/mentions');
+const { getProjectRole, hasRole } = require('../utils/projectHelpers');
 
 // GET /api/projects/:projectId/messages — Projenin tüm mesajlarını getir
 router.get('/', authenticateToken, async (req, res) => {
     try {
         const { projectId } = req.params;
+
+        // Authorization: must be at least VIEWER on the project
+        const role = await getProjectRole(req.user.userId, projectId);
+        if (!hasRole(role, 'VIEWER')) {
+            return res.status(403).json({ error: 'Bu projenin mesajlarını görüntüleme yetkiniz yok.' });
+        }
 
         const messages = await prisma.projectMessage.findMany({
             where: { projectId },
@@ -43,6 +50,12 @@ router.post('/', authenticateToken, async (req, res) => {
 
         if (!body) {
             return res.status(400).json({ error: 'Mesaj gövdesi (body) gereklidir.' });
+        }
+
+        // Authorization: must be at least COMMENTER on the project
+        const role = await getProjectRole(req.user.userId, projectId);
+        if (!hasRole(role, 'COMMENTER')) {
+            return res.status(403).json({ error: 'Bu projede mesaj göndermek için yetkiniz yok.' });
         }
 
         // Check if project exists
@@ -91,11 +104,17 @@ router.post('/', authenticateToken, async (req, res) => {
 // POST /api/projects/:projectId/messages/:messageId/replies — Mesaja cevap yaz
 router.post('/:messageId/replies', authenticateToken, async (req, res) => {
     try {
-        const { messageId } = req.params;
+        const { projectId, messageId } = req.params;
         const { text } = req.body;
 
         if (!text) {
             return res.status(400).json({ error: 'Cevap metni (text) gereklidir.' });
+        }
+
+        // Authorization: must be at least COMMENTER on the project
+        const role = await getProjectRole(req.user.userId, projectId);
+        if (!hasRole(role, 'COMMENTER')) {
+            return res.status(403).json({ error: 'Bu projede cevap yazmak için yetkiniz yok.' });
         }
 
         const reply = await prisma.projectMessageReply.create({

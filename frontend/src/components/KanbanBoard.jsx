@@ -960,14 +960,28 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleTopAddTaskGlobal = async (overrides = {}) => {
     if (isReadOnly) return;
 
-    // Check if activeGroup exists instead of relying on isVirtualGrouping because it's defined later
-    if (activeGroup && activeGroup !== 'Sections') {
+    const currentGroup = activeGroups?.[0]?.field;
+    if (currentGroup && currentGroup !== 'Sections') {
       alert("You cannot add tasks directly into a dynamically grouped view. Please switch to 'Group by: Sections' to add tasks.");
       return;
     }
 
-    const targetSectionId = overrides.sectionId || lastInteractedSectionId || parsedSections?.[0]?.id;
-    if (!targetSectionId) return;
+    // Verify that lastInteractedSectionId belongs to the current project
+    let validLastSectionId = null;
+    let validLastTaskId = null;
+    if (parsedSections) {
+        if (lastInteractedSectionId && parsedSections.some(s => s.id === lastInteractedSectionId)) {
+            validLastSectionId = lastInteractedSectionId;
+        }
+        if (lastInteractedTaskId && parsedSections.some(s => (s.tasks || []).some(t => t.id === lastInteractedTaskId))) {
+            validLastTaskId = lastInteractedTaskId;
+        }
+    }
+    const targetSectionId = overrides.sectionId || validLastSectionId || parsedSections?.[0]?.id;
+    if (!targetSectionId) {
+        alert("This project has no sections. Please create a section first.");
+        return;
+    }
 
     try {
       let bodyData = { title: 'New task', sectionId: targetSectionId, ...overrides };
@@ -981,9 +995,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       })
       const data = await response.json()
       if (response.ok) {
-        handleTaskUpdate(data.id, data, 'create', targetSectionId, overrides.insertAfterTaskId || lastInteractedTaskId)
+        handleTaskUpdate(data.id, data, 'create', targetSectionId, overrides.insertAfterTaskId || validLastTaskId)
+        // Visually focus the newly created task by opening its details pane
+        setActiveTaskPaneId(data.id)
       } else { alert(data.error); }
-    } catch (err) { console.error(err) }
+    } catch (err) { 
+      console.error(err);
+      alert("Error adding task: " + err.message);
+    }
   }
 
   const handleCreateSectionGlobal = async () => {

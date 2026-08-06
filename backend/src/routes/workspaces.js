@@ -101,13 +101,17 @@ router.post('/:workspaceId/teams', authenticateToken, async (req, res) => {
     const { workspaceId } = req.params;
     const { name, description } = req.body;
 
-    // Verify workspace access
-    const isMember = await prisma.workspaceMember.findFirst({
-      where: { workspaceId, userId: req.user.id }
+    // Verify workspace access — must be ADMIN to create teams
+    const member = await prisma.workspaceMember.findFirst({
+      where: { workspaceId, userId: req.user.userId }
     });
 
-    if (!isMember) {
+    if (!member) {
       return res.status(403).json({ error: 'Not a member of this workspace' });
+    }
+
+    if (member.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Sadece çalışma alanı yöneticisi takım oluşturabilir.' });
     }
 
     const team = await prisma.team.create({
@@ -117,7 +121,7 @@ router.post('/:workspaceId/teams', authenticateToken, async (req, res) => {
         workspaceId,
         members: {
           create: {
-            userId: req.user.id,
+            userId: req.user.userId,
             role: 'ADMIN'
           }
         }

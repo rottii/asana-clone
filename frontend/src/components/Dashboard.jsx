@@ -819,7 +819,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
       </div>
 
       {/* GRID */}
-      <div className={`dashboard-grid ${dragIndex !== null ? 'is-dragging' : ''}`}>
+      <div key={activeWorkspace?.id || 'default'} className={`dashboard-grid ${dragIndex !== null ? 'is-dragging' : ''}`}>
         {widgetLayout.map((widget, index) => (
           <div
             key={widget.id}

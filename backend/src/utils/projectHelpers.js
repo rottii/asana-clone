@@ -328,8 +328,34 @@ const fullTaskInclude = {
     }
 };
 
+// Workspace-level helpers
+const WORKSPACE_ROLE_LEVEL = { GUEST: 0, MEMBER: 1, ADMIN: 2 };
+
+async function getWorkspaceRole(userId, workspaceId) {
+    if (!userId || !workspaceId) return null;
+    const member = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId } },
+        select: { role: true }
+    });
+    return member ? member.role : null;
+}
+
+async function isWorkspaceMember(userId, workspaceId) {
+    if (!userId || !workspaceId) return false;
+    const count = await prisma.workspaceMember.count({
+        where: { workspaceId, userId }
+    });
+    return count > 0;
+}
+
+function hasWorkspaceRole(userRole, minimumRole) {
+    if (!userRole) return false;
+    return (WORKSPACE_ROLE_LEVEL[userRole] || 0) >= (WORKSPACE_ROLE_LEVEL[minimumRole] || 0);
+}
+
 module.exports = {
     ROLE_LEVEL,
+    WORKSPACE_ROLE_LEVEL,
     extractMentions,
     processMentions,
     getProjectRole,
@@ -337,6 +363,9 @@ module.exports = {
     getProjectRoleFromSection,
     ensureMyTasksProject,
     hasRole,
+    hasWorkspaceRole,
+    getWorkspaceRole,
+    isWorkspaceMember,
     fullProjectInclude,
     fullTaskInclude
 };

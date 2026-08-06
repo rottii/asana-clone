@@ -3,11 +3,19 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const router = express.Router({ mergeParams: true }); // projectId alabilmek için
 const { evaluateRules } = require('../utils/ruleEngine');
+const { authenticateToken } = require('../middleware/auth');
+const { getProjectRole, hasRole } = require('../utils/projectHelpers');
 
 // 1. Projeye ait tüm kuralları getir
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   const { projectId } = req.params;
   try {
+    // Authorization: must be at least VIEWER on the project
+    const role = await getProjectRole(req.user.userId, projectId);
+    if (!hasRole(role, 'VIEWER')) {
+      return res.status(403).json({ error: 'Bu projenin kurallarını görüntüleme yetkiniz yok.' });
+    }
+
     const rules = await prisma.rule.findMany({
       where: { projectId },
       orderBy: { createdAt: 'desc' }
@@ -20,7 +28,7 @@ router.get('/', async (req, res) => {
 });
 
 // 2. Projeye yeni kural ekle
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   const { projectId } = req.params;
   const { ruleData, isActive } = req.body;
 
@@ -29,6 +37,12 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    // Authorization: must be at least EDITOR on the project
+    const role = await getProjectRole(req.user.userId, projectId);
+    if (!hasRole(role, 'EDITOR')) {
+      return res.status(403).json({ error: 'Kural eklemek için yetkiniz yok. (Editor veya üstü gerekli)' });
+    }
+
     const newRule = await prisma.rule.create({
       data: {
         projectId,
@@ -44,9 +58,15 @@ router.post('/', async (req, res) => {
 });
 
 // 3. Projeden kural sil
-router.delete('/:ruleId', async (req, res) => {
-  const { ruleId } = req.params;
+router.delete('/:ruleId', authenticateToken, async (req, res) => {
+  const { projectId, ruleId } = req.params;
   try {
+    // Authorization: must be ADMIN on the project
+    const role = await getProjectRole(req.user.userId, projectId);
+    if (role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Sadece proje yöneticisi kuralları silebilir.' });
+    }
+
     await prisma.rule.delete({
       where: { id: ruleId }
     });
@@ -58,8 +78,8 @@ router.delete('/:ruleId', async (req, res) => {
 });
 
 // 4. Projedeki kuralı güncelle
-router.put('/:ruleId', async (req, res) => {
-  const { ruleId } = req.params;
+router.put('/:ruleId', authenticateToken, async (req, res) => {
+  const { projectId, ruleId } = req.params;
   const { ruleData, isActive } = req.body;
 
   if (!ruleData || !ruleData.trigger) {
@@ -67,6 +87,12 @@ router.put('/:ruleId', async (req, res) => {
   }
 
   try {
+    // Authorization: must be at least EDITOR on the project
+    const role = await getProjectRole(req.user.userId, projectId);
+    if (!hasRole(role, 'EDITOR')) {
+      return res.status(403).json({ error: 'Kural güncellemek için yetkiniz yok. (Editor veya üstü gerekli)' });
+    }
+
     const updatedRule = await prisma.rule.update({
       where: { id: ruleId },
       data: {
@@ -82,9 +108,15 @@ router.put('/:ruleId', async (req, res) => {
 });
 
 // 5. Kuralı manuel çalıştır
-router.post('/:ruleId/run/:taskId', async (req, res) => {
+router.post('/:ruleId/run/:taskId', authenticateToken, async (req, res) => {
   const { projectId, ruleId, taskId } = req.params;
   try {
+    // Authorization: must be at least EDITOR on the project
+    const role = await getProjectRole(req.user.userId, projectId);
+    if (!hasRole(role, 'EDITOR')) {
+      return res.status(403).json({ error: 'Kural çalıştırmak için yetkiniz yok. (Editor veya üstü gerekli)' });
+    }
+
     const rule = await prisma.rule.findUnique({ where: { id: ruleId } });
     if (!rule) return res.status(404).json({ error: 'Kural bulunamadı' });
 

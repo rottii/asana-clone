@@ -7,20 +7,26 @@ const prisma = new PrismaClient();
 const { JWT_SECRET } = require('../config/env');
 
 const { authenticateToken } = require('../middleware/auth');
+const { isWorkspaceMember } = require('../utils/projectHelpers');
 
-// 1. Kullanıcının tüm portföylerini getir
+// 1. Kullanıcının tüm portföylerini getir (+ workspace public portfolios)
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.query;
     
-    // Filtreyi duruma göre oluştur
-    const filter = { ownerId: req.user.userId };
+    // Build the where filter: owned portfolios + public portfolios in the same workspace
+    const whereFilter = {
+      OR: [
+        { ownerId: req.user.userId },
+        ...(workspaceId ? [{ workspaceId, privacy: 'Public to My workspace' }] : [])
+      ]
+    };
     if (workspaceId) {
-      filter.workspaceId = workspaceId;
+      whereFilter.AND = { workspaceId };
     }
 
     const portfolios = await prisma.portfolio.findMany({
-      where: filter,
+      where: whereFilter,
       include: {
         projects: {
           include: {
@@ -159,6 +165,17 @@ router.get('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Portföy bulunamadı.' });
     }
 
+    // Authorization: must be owner OR workspace member (for public portfolios)
+    if (portfolio.ownerId !== req.user.userId) {
+      if (portfolio.privacy !== 'Public to My workspace') {
+        return res.status(403).json({ error: 'Bu portföye erişim yetkiniz yok.' });
+      }
+      const isMember = await isWorkspaceMember(req.user.userId, portfolio.workspaceId);
+      if (!isMember) {
+        return res.status(403).json({ error: 'Bu portföye erişim yetkiniz yok.' });
+      }
+    }
+
     // Task progress hesaplaması
     const projectsList = portfolio.projects.map(pp => {
       const p = pp.project;
@@ -202,6 +219,13 @@ router.post('/:id/projects', authenticateToken, async (req, res) => {
 
     if (!projectId) {
       return res.status(400).json({ error: 'Proje ID gereklidir.' });
+    }
+
+    // Authorization: only owner can add projects
+    const portfolio = await prisma.portfolio.findUnique({ where: { id }, select: { ownerId: true } });
+    if (!portfolio) return res.status(404).json({ error: 'Portföy bulunamadı.' });
+    if (portfolio.ownerId !== req.user.userId) {
+      return res.status(403).json({ error: 'Sadece portföy sahibi proje ekleyebilir.' });
     }
     
     const portfolioProject = await prisma.portfolioProject.create({
@@ -267,6 +291,13 @@ router.post('/:id/portfolios', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Bir portföy kendisine eklenemez.' });
     }
 
+    // Authorization: must own both portfolios
+    const parentPortfolio = await prisma.portfolio.findUnique({ where: { id }, select: { ownerId: true } });
+    if (!parentPortfolio) return res.status(404).json({ error: 'Portföy bulunamadı.' });
+    if (parentPortfolio.ownerId !== req.user.userId) {
+      return res.status(403).json({ error: 'Sadece portföy sahibi alt portföy ekleyebilir.' });
+    }
+
     const portfolioPortfolio = await prisma.portfolioPortfolio.create({
       data: {
         parentPortfolioId: id,
@@ -297,6 +328,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Yeni portföy adı gereklidir.' });
     }
 
+    // Authorization: only owner can update
+    const portfolio = await prisma.portfolio.findUnique({ where: { id }, select: { ownerId: true } });
+    if (!portfolio) return res.status(404).json({ error: 'Portföy bulunamadı.' });
+    if (portfolio.ownerId !== req.user.userId) {
+      return res.status(403).json({ error: 'Sadece portföy sahibi güncelleyebilir.' });
+    }
+
     const updatedPortfolio = await prisma.portfolio.update({
       where: { id },
       data: { name }
@@ -313,6 +351,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Authorization: only owner can delete
+    const portfolio = await prisma.portfolio.findUnique({ where: { id }, select: { ownerId: true } });
+    if (!portfolio) return res.status(404).json({ error: 'Portföy bulunamadı.' });
+    if (portfolio.ownerId !== req.user.userId) {
+      return res.status(403).json({ error: 'Sadece portföy sahibi silebilir.' });
+    }
 
     // We can just delete it, and cascade will handle the related PortfolioProject / PortfolioPortfolio if set up,
     // otherwise we might need to delete those first. Let's assume Prisma handles it.

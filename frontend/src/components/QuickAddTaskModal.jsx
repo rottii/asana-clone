@@ -79,7 +79,7 @@ export default function QuickAddTaskModal({ projects, token, onClose, onTaskCrea
               onChange={(e) => setProjectId(e.target.value)}
             >
               <option value="">Select a project</option>
-              {projects.map(p => (
+              {projects.filter(p => p.status !== 'MY_TASKS').map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>

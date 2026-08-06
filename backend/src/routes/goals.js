@@ -8,10 +8,11 @@ const { authenticateToken } = require('../middleware/auth');
 
 const prisma = new PrismaClient();
 
-// Get all goals for the workspace
+// Get all goals for the current user (scoped to owned goals)
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const goals = await prisma.goal.findMany({
+      where: { ownerId: req.user.userId },
       include: {
         owner: { select: { id: true, name: true, email: true } },
         projects: {
@@ -68,6 +69,13 @@ router.patch('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, timePeriod, status, metricType, currentValue, targetValue, level } = req.body;
+
+    // Authorization: only the goal owner can update
+    const goal = await prisma.goal.findUnique({ where: { id }, select: { ownerId: true } });
+    if (!goal) return res.status(404).json({ error: 'Goal not found' });
+    if (goal.ownerId !== req.user.userId) {
+      return res.status(403).json({ error: 'Sadece hedef sahibi güncelleyebilir.' });
+    }
 
     const updatedGoal = await prisma.goal.update({
       where: { id },
@@ -127,6 +135,13 @@ router.post('/:id/projects', authenticateToken, async (req, res) => {
 
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
 
+    // Authorization: only the goal owner can link projects
+    const goal = await prisma.goal.findUnique({ where: { id }, select: { ownerId: true } });
+    if (!goal) return res.status(404).json({ error: 'Goal not found' });
+    if (goal.ownerId !== req.user.userId) {
+      return res.status(403).json({ error: 'Sadece hedef sahibi proje bağlayabilir.' });
+    }
+
     const goalProject = await prisma.goalProject.create({
       data: {
         goalId: id,
@@ -158,6 +173,13 @@ router.post('/:id/projects', authenticateToken, async (req, res) => {
 router.delete('/:id/projects/:projectId', authenticateToken, async (req, res) => {
   try {
     const { id, projectId } = req.params;
+
+    // Authorization: only the goal owner can unlink projects
+    const goal = await prisma.goal.findUnique({ where: { id }, select: { ownerId: true } });
+    if (!goal) return res.status(404).json({ error: 'Goal not found' });
+    if (goal.ownerId !== req.user.userId) {
+      return res.status(403).json({ error: 'Sadece hedef sahibi proje bağlantısını kaldırabilir.' });
+    }
 
     const goalProject = await prisma.goalProject.findUnique({
       where: { goalId_projectId: { goalId: id, projectId } }

@@ -268,6 +268,8 @@ export default function TopNav({
               
               if (updatedCurrentProject) {
                 handleSelectProject(updatedCurrentProject);
+              } else {
+                alert(`Task created in ${task.section?.project?.name || 'project'}`);
               }
             }
           }}

@@ -31,6 +31,11 @@ export default function App() {
   const initialWorkspaceId = (storedWorkspaceId === 'null' || storedWorkspaceId === 'undefined') ? null : storedWorkspaceId;
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(initialWorkspaceId)
 
+  const handleWorkspaceChange = (newId) => {
+    setActiveWorkspaceId(newId);
+    setActiveView('home');
+  };
+
   const [activeView, setActiveView] = useState(() => {
     const path = window.location.pathname;
     if (path.startsWith('/project/')) {
@@ -296,7 +301,7 @@ export default function App() {
         setIsDarkMode={setIsDarkMode}
         workspaces={workspaces}
         activeWorkspaceId={activeWorkspaceId}
-        setActiveWorkspaceId={setActiveWorkspaceId}
+        setActiveWorkspaceId={handleWorkspaceChange}
       />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <Sidebar 
@@ -316,7 +321,7 @@ export default function App() {
           workspaces={workspaces}
           activeWorkspace={activeWorkspace}
           activeWorkspaceId={activeWorkspaceId}
-          setActiveWorkspaceId={setActiveWorkspaceId}
+          setActiveWorkspaceId={handleWorkspaceChange}
           portfolios={filteredPortfolios}
           selectedPortfolio={selectedPortfolio}
           setSelectedPortfolio={setSelectedPortfolio}

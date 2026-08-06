@@ -4,6 +4,7 @@ const {
     getProjectRole,
     hasRole,
     ensureMyTasksProject,
+    isWorkspaceMember,
     fullProjectInclude
 } = require('../utils/projectHelpers');
 
@@ -16,6 +17,12 @@ exports.getTemplates = async (req, res) => {
         const { workspaceId } = req.query;
         if (!workspaceId || workspaceId === 'null' || workspaceId === 'undefined') {
             return res.status(400).json({ error: 'Çalışma alanı (workspaceId) gereklidir.' });
+        }
+
+        // Authorization: must be a member of the workspace
+        const isMember = await isWorkspaceMember(req.user.userId, workspaceId);
+        if (!isMember) {
+            return res.status(403).json({ error: 'Bu çalışma alanına erişim yetkiniz yok.' });
         }
 
         // Fix any orphaned templates (from before this fix) by assigning them to this workspace
@@ -221,6 +228,12 @@ exports.getProjectById = async (req, res) => {
         });
         if (!project) return res.status(404).json({ error: 'Proje bulunamadı.' });
 
+        // Authorization: must be owner or member to view project
+        const role = await getProjectRole(req.user.userId, req.params.id);
+        if (!role) {
+            return res.status(403).json({ error: 'Bu projeye erişim yetkiniz yok.' });
+        }
+
         // Merge secondary tasks into sections
         if (project.sections) {
             project.sections.forEach(section => {
@@ -295,6 +308,12 @@ exports.duplicateProject = async (req, res) => {
     try {
         const { name, isTemplate, workspaceId, teamId } = req.body;
         const sourceProjectId = req.params.id;
+
+        // Authorization: must have at least VIEWER role on source project
+        const role = await getProjectRole(req.user.userId, sourceProjectId);
+        if (!hasRole(role, 'VIEWER')) {
+            return res.status(403).json({ error: 'Bu projeyi kopyalamak için yetkiniz yok.' });
+        }
 
         const sourceProject = await prisma.project.findUnique({
             where: { id: sourceProjectId },
@@ -382,6 +401,12 @@ exports.duplicateProject = async (req, res) => {
 exports.saveAsTemplate = async (req, res) => {
     try {
         const sourceProjectId = req.params.id;
+
+        // Authorization: must have ADMIN role to save as template
+        const role = await getProjectRole(req.user.userId, sourceProjectId);
+        if (role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Sadece proje yöneticisi şablon olarak kaydedebilir.' });
+        }
         
         const sourceProject = await prisma.project.findUnique({
             where: { id: sourceProjectId },
@@ -756,6 +781,15 @@ exports.removeMember = async (req, res) => {
 
         await prisma.projectMembership.deleteMany({
             where: { projectId: req.params.id, userId: req.params.userId }
+        });
+
+        // Unassign any tasks assigned to this user in this project
+        await prisma.task.updateMany({
+            where: {
+                section: { projectId: req.params.id },
+                assigneeId: req.params.userId
+            },
+            data: { assigneeId: null }
         });
 
         const updatedProject = await prisma.project.findUnique({

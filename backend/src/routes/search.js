@@ -16,31 +16,52 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 
     const searchQuery = { contains: q, mode: 'insensitive' };
+    const userId = req.user.userId;
 
-    // Parallel fetch for speed
+    // Reusable filter: projects the user owns or is a member of
+    const userProjectFilter = {
+      OR: [
+        { ownerId: userId },
+        { members: { some: { userId } } }
+      ]
+    };
+
+    // Parallel fetch for speed — all scoped to user's access
     const [tasks, projects, users, portfolios, goals] = await Promise.all([
+      // Tasks: only in projects the user is a member/owner of
       prisma.task.findMany({
-        where: { title: searchQuery },
+        where: {
+          title: searchQuery,
+          section: { project: userProjectFilter }
+        },
         take: 5,
         select: { id: true, title: true, isCompleted: true, section: { select: { project: { select: { id: true, name: true } } } } }
       }),
+      // Projects: only those the user is a member/owner of
       prisma.project.findMany({
-        where: { name: searchQuery, isArchived: false },
+        where: {
+          name: searchQuery,
+          isArchived: false,
+          ...userProjectFilter
+        },
         take: 5,
         select: { id: true, name: true }
       }),
+      // Users: safe to return (finding collaborators)
       prisma.user.findMany({
         where: { OR: [{ name: searchQuery }, { email: searchQuery }] },
         take: 5,
         select: { id: true, name: true, email: true }
       }),
+      // Portfolios: only owned by the user
       prisma.portfolio.findMany({
-        where: { name: searchQuery, ownerId: req.user.userId },
+        where: { name: searchQuery, ownerId: userId },
         take: 5,
         select: { id: true, name: true }
       }),
+      // Goals: only owned by the user
       prisma.goal.findMany({
-        where: { title: searchQuery },
+        where: { title: searchQuery, ownerId: userId },
         take: 5,
         select: { id: true, title: true, status: true }
       })
