@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import UserAvatar from './UserAvatar';
+import { apiFetch } from '../api';
 
 export default function Portfolios({
   portfolios = [],
@@ -118,7 +119,7 @@ export default function Portfolios({
           </div>
 
           <button style={styles.continueBtn} onClick={() => {
-            fetch('http://localhost:5001/api/portfolios', {
+            apiFetch('/api/portfolios', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -138,7 +139,7 @@ export default function Portfolios({
                   setCreatedPortfolio(data);
 
                   if (portfolioCreationParent) {
-                    fetch(`http://localhost:5001/api/portfolios/${portfolioCreationParent}/portfolios`, {
+                    apiFetch(`/api/portfolios/${portfolioCreationParent}/portfolios`, {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',

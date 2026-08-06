@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import './Sidebar.css';
 import UserAvatar from './UserAvatar';
+import { apiFetch } from '../api';
 
 export default function Sidebar({ 
   projects, 
@@ -86,7 +87,7 @@ export default function Sidebar({
 
   useEffect(() => {
     if (token) {
-      fetch('http://localhost:5001/api/notifications', {
+      apiFetch('/api/notifications', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       .then(res => res.json())
@@ -103,7 +104,16 @@ export default function Sidebar({
   const safeProjects = Array.isArray(projects) ? projects : [];
   const activeProjects = safeProjects.filter(p => !p.isArchived && !p.isTemplate && p.status !== 'MY_TASKS');
   
-  const isGuest = activeWorkspace?.members?.find(m => m.userId === user?.id)?.role === 'GUEST';
+  let currentUserId = user?.id || user?.userId;
+  if (!currentUserId && token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      currentUserId = payload.userId || payload.id;
+    } catch(e) {}
+  }
+  
+  const isGuest = activeWorkspace?.members?.find(m => m.userId === currentUserId)?.role === 'GUEST';
+  const isAdmin = activeWorkspace?.members?.find(m => m.userId === currentUserId)?.role === 'ADMIN';
 
   const toggleSection = (section) => {
     setCollapsed(prev => ({ ...prev, [section]: !prev[section] }));
@@ -234,16 +244,18 @@ export default function Sidebar({
                 
                 {/* Admin block */}
                 <div style={{ padding: '4px 0' }}>
-                  <div onClick={() => { setShowProfileMenu(false); alert('Admin console is not implemented yet.'); }} className="profile-menu-item" style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                    <span style={{ fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>⚷</span> Admin console
-                  </div>
+                  {isAdmin && (
+                    <div onClick={() => { setShowProfileMenu(false); setActiveView('admin_console'); }} className="profile-menu-item" style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                      <span style={{ fontSize: '1.1rem', width: '20px', textAlign: 'center' }}>⚷</span> Admin console
+                    </div>
+                  )}
                   <div onClick={async () => {
                     setShowProfileMenu(false);
                     const name = window.prompt("Enter new workspace name:");
                     if (name) {
                       try {
                         const token = localStorage.getItem('token');
-                        const res = await fetch('http://localhost:5001/api/workspaces', {
+                        const res = await apiFetch('/api/workspaces', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                           body: JSON.stringify({ name })

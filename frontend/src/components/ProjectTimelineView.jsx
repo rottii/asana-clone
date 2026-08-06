@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { apiFetch } from '../api';
 
 export default function ProjectTimelineView({ 
   selectedProject, applyTaskFilter, applyTaskSort, onOpenTaskPane, handleTaskUpdate, token, 
@@ -218,7 +219,7 @@ export default function ProjectTimelineView({
 
           if (handleTaskUpdate) {
             try {
-              const response = await fetch(`http://localhost:5001/api/projects/tasks/${t.id}`, {
+              const response = await apiFetch(`/api/projects/tasks/${t.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ 
@@ -257,27 +258,41 @@ export default function ProjectTimelineView({
   const handleCreateDependency = async (blockedById, blockingId) => {
     if (blockedById === blockingId) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${blockedById}/dependencies`, {
+      const response = await apiFetch(`/api/projects/tasks/${blockedById}/dependencies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ blockingId })
       });
       const data = await response.json();
       if (response.ok && handleTaskUpdate) {
-        handleTaskUpdate(blockedById, data);
+        const oldTask = rawTasks[blockedById];
+        if (oldTask) {
+          const updatedTask = {
+            ...oldTask,
+            blockedBy: [...(oldTask.blockedBy || []), data]
+          };
+          handleTaskUpdate(blockedById, updatedTask);
+        }
       }
     } catch (err) { console.error(err); }
   };
 
   const handleDeleteDependency = async (taskId, dependencyId) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskId}/dependencies/${dependencyId}`, {
+      const response = await apiFetch(`/api/projects/tasks/${taskId}/dependencies/${dependencyId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
       if (response.ok && handleTaskUpdate) {
-        handleTaskUpdate(taskId, data);
+        const oldTask = rawTasks[taskId];
+        if (oldTask) {
+          const updatedTask = {
+            ...oldTask,
+            blockedBy: (oldTask.blockedBy || []).filter(d => d.id !== dependencyId)
+          };
+          handleTaskUpdate(taskId, updatedTask);
+        }
       }
     } catch (err) { console.error(err); }
   };
@@ -299,7 +314,7 @@ export default function ProjectTimelineView({
             <div style={styles.sectionHeaderPlaceholder}></div>
             <div style={{ ...styles.datesTrack, width: TRACK_WIDTH }}>
               {days.map((d, i) => (
-                <div key={i} style={{ ...styles.dateHeaderCell, width: DAY_WIDTH, backgroundColor: d.isToday ? '#EEF2FF' : 'transparent' }}>
+                <div key={i} style={{ ...styles.dateHeaderCell, width: DAY_WIDTH, backgroundColor: d.isToday ? 'rgba(99, 102, 241, 0.1)' : 'transparent' }}>
                   <span style={{ ...styles.dayName, color: d.isToday ? '#4F46E5' : 'var(--text-secondary)' }}>{d.dayName.charAt(0)}</span>
                   <span style={{ ...styles.dayNum, color: d.isToday ? '#4F46E5' : 'var(--text-primary)' }}>{d.dayNum}</span>
                 </div>
@@ -485,7 +500,7 @@ export default function ProjectTimelineView({
                 </div>
                 <div style={{ ...styles.tasksTrack, width: TRACK_WIDTH }}>
                   {days.map((d, i) => (
-                    <div key={i} style={{ ...styles.gridLineVertical, left: i * DAY_WIDTH, backgroundColor: d.isToday ? '#EEF2FF' : '#F3F4F6', width: d.isToday ? DAY_WIDTH : 1, zIndex: d.isToday ? 0 : 0 }} />
+                    <div key={i} style={{ ...styles.gridLineVertical, left: i * DAY_WIDTH, backgroundColor: d.isToday ? 'rgba(99, 102, 241, 0.1)' : 'var(--border-color)', width: d.isToday ? DAY_WIDTH : 1, zIndex: d.isToday ? 0 : 0 }} />
                   ))}
                   
                   <div style={styles.tasksArea}>
@@ -525,7 +540,7 @@ export default function ProjectTimelineView({
                             style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === t.id ? 1 : 0 }}
                             onMouseDown={(e) => {
                               e.stopPropagation();
-                              if (svgRef.current) {
+                              if (!isReadOnly && svgRef.current) {
                                 const rect = svgRef.current.getBoundingClientRect();
                                 setConnectingTask({
                                   id: t.id,
@@ -546,15 +561,18 @@ export default function ProjectTimelineView({
                           {!t.isMilestone && (
                             <div
                               className="drag-handle"
-                              onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'LEFT', startX: e.clientX, deltaX: 0 }); }}
-                              style={{ ...styles.dragHandleLeft, opacity: hoveredTaskId === t.id ? 1 : 0 }}
+                              onMouseDown={(e) => { e.stopPropagation(); if (!isReadOnly) setDragState({ taskId: t.id, type: 'LEFT', startX: e.clientX, deltaX: 0 }); }}
+                              style={{ ...styles.dragHandleLeft, opacity: hoveredTaskId === t.id ? 1 : 0, cursor: isReadOnly ? 'pointer' : 'ew-resize' }}
                             >||</div>
                           )}
                           
                           {t.isMilestone ? (
-                            <div 
-                              onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'MOVE', startX: e.clientX, deltaX: 0 }); }}
-                              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'grab', flex: 1, height: '100%', paddingLeft: '4px' }}
+                            <div className="task-bar"
+                              onMouseDown={(e) => { 
+                                e.stopPropagation(); 
+                                if (!isReadOnly) setDragState({ taskId: t.id, type: 'MOVE', startX: e.clientX, deltaX: 0 }); 
+                              }}
+                              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'pointer' : 'grab', flex: 1, height: '100%', paddingLeft: '4px' }}
                             >
                               <div style={{
                                 width: '14px', height: '14px', flexShrink: 0,
@@ -562,17 +580,21 @@ export default function ProjectTimelineView({
                                 backgroundColor: t.isCompleted ? '#10B981' : t.color,
                                 border: '2px solid rgba(0,0,0,0.15)',
                               }} />
-                              <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: t.isCompleted ? 'line-through' : 'none' }}>{t.title}</span>
+                              <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: t.isCompleted ? 'line-through' : 'none' }}>{t.title}</span>
                             </div>
                           ) : (
-                            <div 
-                              onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'MOVE', startX: e.clientX, deltaX: 0 }); }}
+                            <div className="task-bar"
+                              onMouseDown={(e) => { 
+                                e.stopPropagation(); 
+                                if (!isReadOnly) setDragState({ taskId: t.id, type: 'MOVE', startX: e.clientX, deltaX: 0 }); 
+                              }}
                               style={{
                                 ...styles.taskBar,
                                 backgroundColor: t.isCompleted ? '#F3F4F6' : t.color,
-                                color: t.isCompleted ? '#9CA3AF' : 'var(--text-primary)',
+                                color: t.isCompleted ? '#4B5563' : '#111827',
                                 textDecoration: t.isCompleted ? 'line-through' : 'none',
                                 border: '1px solid rgba(0,0,0,0.1)',
+                                cursor: isReadOnly ? 'pointer' : 'grab'
                               }}
                             >
                               {t.title}
@@ -582,8 +604,8 @@ export default function ProjectTimelineView({
                           {!t.isMilestone && (
                             <div
                               className="drag-handle"
-                              onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: t.id, type: 'RIGHT', startX: e.clientX, deltaX: 0 }); }}
-                              style={{ ...styles.dragHandleRight, opacity: hoveredTaskId === t.id ? 1 : 0 }}
+                              onMouseDown={(e) => { e.stopPropagation(); if (!isReadOnly) setDragState({ taskId: t.id, type: 'RIGHT', startX: e.clientX, deltaX: 0 }); }}
+                              style={{ ...styles.dragHandleRight, opacity: hoveredTaskId === t.id ? 1 : 0, cursor: isReadOnly ? 'pointer' : 'ew-resize' }}
                             >||</div>
                           )}
                           
@@ -593,7 +615,7 @@ export default function ProjectTimelineView({
                             style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === t.id ? 1 : 0 }}
                             onMouseDown={(e) => {
                               e.stopPropagation();
-                              if (svgRef.current) {
+                              if (!isReadOnly && svgRef.current) {
                                 const rect = svgRef.current.getBoundingClientRect();
                                 setConnectingTask({
                                   id: t.id,

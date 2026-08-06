@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './BrowseProjects.css';
 import UserAvatar from './UserAvatar';
+import { apiFetch } from '../api';
 
 export default function BrowseProjects({ projects, user, handleSelectProject, setActiveView, token, setProjects, activeWorkspaceId }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -8,7 +9,7 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
 
   useEffect(() => {
     if (!token || !activeWorkspaceId) return;
-    fetch(`http://localhost:5001/api/projects/templates?workspaceId=${activeWorkspaceId}`, {
+    apiFetch(`/api/projects/templates?workspaceId=${activeWorkspaceId}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -23,7 +24,7 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
     const newName = window.prompt("Yeni proje adını girin:", template.name.replace(' Template', ''));
     if (!newName) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${template.id}/duplicate`, {
+      const response = await apiFetch(`/api/projects/${template.id}/duplicate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ name: newName, isTemplate: false })

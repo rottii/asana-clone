@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import RichTextEditor from './RichTextEditor';
 import UserAvatar from './UserAvatar';
+import { apiFetch } from '../api';
 
 const statusConfig = {
   NONE: { color: 'var(--text-tertiary)', label: 'Set status', desc: 'No status set. Click to update.' },
@@ -60,7 +61,7 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
   const handleUpdateStatus = async (newStatus) => {
     if (isReadOnly) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: newStatus })
@@ -78,7 +79,7 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
   const handleSaveDescription = async () => {
     if (isReadOnly) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ description: descInput.trim() })
@@ -96,7 +97,7 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
   const handleSaveGithub = async () => {
     if (isReadOnly) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ githubRepo: githubInput.trim() })
@@ -115,7 +116,7 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
     if (isReadOnly) return;
     const newValue = e.target.checked;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ allowAutoCodeOnPR: newValue })
@@ -172,7 +173,7 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
                 </div>
               </div>
             ) : selectedProject.description ? (
-              <div className="rich-text-content" style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: selectedProject.description }} />
+              <div className="rich-text-content" style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: '1.5', wordBreak: 'break-word', overflowWrap: 'break-word' }} dangerouslySetInnerHTML={{ __html: selectedProject.description }} />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2rem 0', color: '#9CA3AF' }}>
                 <span style={{ fontSize: '2rem', marginBottom: '1rem' }}>📝</span>

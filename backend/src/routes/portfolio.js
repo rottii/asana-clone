@@ -98,6 +98,14 @@ router.post('/', authenticateToken, async (req, res) => {
     if (!name) {
       return res.status(400).json({ error: 'Portföy adı gereklidir.' });
     }
+
+    if (workspaceId) {
+      const { getWorkspaceRole } = require('../utils/projectHelpers');
+      const role = await getWorkspaceRole(req.user.userId, workspaceId);
+      if (role === 'GUEST') {
+          return res.status(403).json({ error: 'Guests cannot create new portfolios.' });
+      }
+    }
     
     if (!workspaceId) {
       return res.status(400).json({ error: 'Çalışma alanı (workspaceId) gereklidir.' });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import IconColorPicker from './IconColorPicker';
+import { apiFetch } from '../api';
 
 export default function CreateProject({ token, setProjects, setPortfolios, setActiveView, previousView = 'home', setSelectedProject, portfolioCreationParent, setPortfolioCreationParent, activeWorkspace }) {
   const [step, setStep] = useState(1);
@@ -19,7 +20,7 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
 
   useEffect(() => {
     if (!token || !activeWorkspace) return;
-    fetch(`http://localhost:5001/api/projects/templates?workspaceId=${activeWorkspace.id}`, {
+    apiFetch(`/api/projects/templates?workspaceId=${activeWorkspace.id}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -32,7 +33,7 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
   const handleUseTemplate = async (template) => {
     try {
       const finalName = (!projectName || projectName === 'new project') ? template.name.replace(' Template', '') : projectName;
-      const response = await fetch(`http://localhost:5001/api/projects/${template.id}/duplicate`, {
+      const response = await apiFetch(`/api/projects/${template.id}/duplicate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ 
@@ -92,7 +93,7 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
       return { id, name: k, type: k };
     });
     
-    fetch('http://localhost:5001/api/projects', {
+    apiFetch('/api/projects', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -116,7 +117,7 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
         
         // If it was created from inside a portfolio, link it
         if (portfolioCreationParent) {
-          fetch(`http://localhost:5001/api/portfolios/${portfolioCreationParent}/projects`, {
+          apiFetch(`/api/portfolios/${portfolioCreationParent}/projects`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,

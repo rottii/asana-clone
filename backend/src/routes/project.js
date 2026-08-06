@@ -55,6 +55,9 @@ router.post('/:id/share', projectController.shareProject);
 router.patch('/:id/members', projectController.updateMemberRole);
 router.delete('/:id/members/:userId', projectController.removeMember);
 
+router.post('/:id/public-link', projectController.generatePublicLink);
+router.delete('/:id/public-link', projectController.revokePublicLink);
+
 router.get('/:id/form', projectController.getFormSettings);
 router.post('/:id/form/submit', projectController.submitForm);
 

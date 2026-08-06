@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { apiFetch } from '../api';
 
 export default function ProjectGanttView({ 
   selectedProject, handleTaskUpdate, onOpenTaskPane, token, isReadOnly, applyTaskFilter, applyTaskSort,
@@ -39,7 +40,7 @@ export default function ProjectGanttView({
       return;
     }
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ title: editTaskTitleValue.trim() })
@@ -207,7 +208,7 @@ export default function ProjectGanttView({
 
           if (handleTaskUpdate && !isReadOnly) {
             try {
-              const response = await fetch(`http://localhost:5001/api/projects/tasks/${t.id}`, {
+              const response = await apiFetch(`/api/projects/tasks/${t.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ 
@@ -246,24 +247,42 @@ export default function ProjectGanttView({
   const handleCreateDependency = async (blockedById, blockingId) => {
     if (blockedById === blockingId) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${blockedById}/dependencies`, {
+      const response = await apiFetch(`/api/projects/tasks/${blockedById}/dependencies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ blockingId })
       });
       const data = await response.json();
-      if (response.ok && handleTaskUpdate) handleTaskUpdate(blockedById, data);
+      if (response.ok && handleTaskUpdate) {
+        const oldTask = rawTasks[blockedById];
+        if (oldTask) {
+          const updatedTask = {
+            ...oldTask,
+            blockedBy: [...(oldTask.blockedBy || []), data]
+          };
+          handleTaskUpdate(blockedById, updatedTask);
+        }
+      }
     } catch (err) { console.error(err); }
   };
 
   const handleDeleteDependency = async (taskId, dependencyId) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskId}/dependencies/${dependencyId}`, {
+      const response = await apiFetch(`/api/projects/tasks/${taskId}/dependencies/${dependencyId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
-      if (response.ok && handleTaskUpdate) handleTaskUpdate(taskId, data);
+      if (response.ok && handleTaskUpdate) {
+        const oldTask = rawTasks[taskId];
+        if (oldTask) {
+          const updatedTask = {
+            ...oldTask,
+            blockedBy: (oldTask.blockedBy || []).filter(d => d.id !== dependencyId)
+          };
+          handleTaskUpdate(taskId, updatedTask);
+        }
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -271,7 +290,7 @@ export default function ProjectGanttView({
     e.stopPropagation();
     if (isReadOnly) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ isCompleted: !task.isCompleted })
@@ -400,7 +419,7 @@ export default function ProjectGanttView({
                       if (setDraggingSectionId) setDraggingSectionId(null);
                       if (handleFinalSectionMove) handleFinalSectionMove();
                     }}
-                    style={styles.drag6DotHandleCellSection}
+                    style={{ ...styles.drag6DotHandleCellSection, cursor: isReadOnly ? 'pointer' : 'grab' }}
                   >
                     ⋮⋮
                   </div>
@@ -440,7 +459,7 @@ export default function ProjectGanttView({
                         }
                       }}
                       onDragEnd={() => { if (setDraggingTaskId) setDraggingTaskId(null); }}
-                      style={styles.drag6DotHandleCellTask}
+                      style={{ ...styles.drag6DotHandleCellTask, cursor: isReadOnly ? 'pointer' : 'grab' }}
                     >
                       ⋮⋮
                     </div>
@@ -502,15 +521,15 @@ export default function ProjectGanttView({
                             flex: 1, minWidth: 0, cursor: isReadOnly ? 'default' : 'text',
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             textDecoration: task.isCompleted ? 'line-through' : 'none',
-                            color: task.isCompleted ? '#9CA3AF' : '#111827'
+                            color: task.isCompleted ? 'var(--text-secondary)' : 'var(--text-primary)'
                           }}
                         >
                           {task.title}
                         </span>
                       )}
                     </div>
-                    <div style={{ ...styles.tableCol, flex: 1, color: '#6B7280', minWidth: 0 }}>{task.formattedDueDate}</div>
-                    <div style={{ ...styles.tableCol, flex: 1, color: '#6B7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                    <div style={{ ...styles.tableCol, flex: 1, color: 'var(--text-secondary)', minWidth: 0 }}>{task.formattedDueDate}</div>
+                    <div style={{ ...styles.tableCol, flex: 1, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                       {task.blockersStr || '-'}
                     </div>
                   </div>
@@ -527,9 +546,9 @@ export default function ProjectGanttView({
             {/* Timeline Header */}
             <div style={styles.timelineHeader}>
               {days.map((d, i) => (
-                <div key={i} style={{ ...styles.dayHeaderCell, width: DAY_WIDTH, borderBottom: d.isToday ? '3px solid #10B981' : '1px solid #E5E7EB' }}>
-                  <div style={{ fontSize: '0.7rem', color: '#6B7280', textTransform: 'uppercase' }}>{d.dayName}</div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: d.isToday ? '700' : '500', color: d.isToday ? '#10B981' : '#111827' }}>
+                <div key={i} style={{ ...styles.dayHeaderCell, width: DAY_WIDTH, borderBottom: d.isToday ? '3px solid #10B981' : '1px solid var(--border-color)' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{d.dayName}</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: d.isToday ? '700' : '500', color: d.isToday ? '#10B981' : 'var(--text-primary)' }}>
                     {d.dayNum}
                   </div>
                 </div>
@@ -604,14 +623,14 @@ export default function ProjectGanttView({
 
               <div style={styles.gridLinesContainer}>
                 {days.map((d, i) => (
-                  <div key={i} style={{ ...styles.gridLine, left: i * DAY_WIDTH, backgroundColor: d.isToday ? 'rgba(16, 185, 129, 0.1)' : 'transparent', borderLeft: d.dayName === 'Mon' ? '1px solid #E5E7EB' : '1px dashed #F3F4F6' }}></div>
+                  <div key={i} style={{ ...styles.gridLine, left: i * DAY_WIDTH, backgroundColor: d.isToday ? 'rgba(99, 102, 241, 0.1)' : 'transparent', borderLeft: d.dayName === 'Mon' ? '1px solid var(--border-color)' : '1px dashed var(--border-color)' }}></div>
                 ))}
               </div>
 
               {sectionData.map((section, sIdx) => (
                 <React.Fragment key={section.id}>
                   {/* Section Spacer in Grid */}
-                  <div style={{ height: '36px', minHeight: '36px', maxHeight: '36px', display: 'flex', borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB', boxSizing: 'border-box' }}></div>
+                  <div style={{ height: '36px', minHeight: '36px', maxHeight: '36px', display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', boxSizing: 'border-box' }}></div>
                   
                   {/* Task Bars */}
                   {section.tasks.map(task => (
@@ -639,9 +658,9 @@ export default function ProjectGanttView({
                           }}
                         >
                           {/* Connector node LEFT */}
-                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { 
+                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0, cursor: isReadOnly ? 'pointer' : 'crosshair' }} onMouseDown={(e) => { 
                             e.stopPropagation(); 
-                            if (svgRef.current) {
+                            if (!isReadOnly && svgRef.current) {
                               const rect = svgRef.current.getBoundingClientRect();
                               setConnectingTask({ id: task.id, isStart: true });
                               setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -652,7 +671,7 @@ export default function ProjectGanttView({
 
                           <div 
                             onMouseDown={(e) => { if(!isReadOnly){ e.stopPropagation(); setDragState({ taskId: task.id, type: 'MOVE', startX: e.clientX, deltaX: 0 });} }}
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'grab', flex: 1 }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: isReadOnly ? 'pointer' : 'grab', flex: 1 }}
                           >
                             <div style={{
                               width: '14px', height: '14px', flexShrink: 0,
@@ -664,9 +683,9 @@ export default function ProjectGanttView({
                           </div>
 
                           {/* Connector node RIGHT */}
-                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { 
+                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0, cursor: isReadOnly ? 'pointer' : 'crosshair' }} onMouseDown={(e) => { 
                             e.stopPropagation(); 
-                            if (svgRef.current) {
+                            if (!isReadOnly && svgRef.current) {
                               const rect = svgRef.current.getBoundingClientRect();
                               setConnectingTask({ id: task.id, isStart: false });
                               setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -698,9 +717,9 @@ export default function ProjectGanttView({
                           }}
                         >
                           {/* Connector node LEFT */}
-                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => {
+                          <div style={{ ...styles.connectorNodeLeft, opacity: hoveredTaskId === task.id ? 1 : 0, cursor: isReadOnly ? 'pointer' : 'crosshair' }} onMouseDown={(e) => {
                             e.stopPropagation();
-                            if (svgRef.current) {
+                            if (!isReadOnly && svgRef.current) {
                               const rect = svgRef.current.getBoundingClientRect();
                               setConnectingTask({ id: task.id, isStart: true });
                               setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -709,25 +728,21 @@ export default function ProjectGanttView({
                             <div style={styles.connectorLineLeft} />
                           </div>
 
-                          {!isReadOnly && (
-                            <div style={{ ...styles.dragHandle, left: 0 }} onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: task.id, type: 'LEFT', startX: e.clientX, deltaX: 0 }); }} />
-                          )}
+                          <div style={{ ...styles.dragHandle, left: 0, cursor: isReadOnly ? 'pointer' : 'col-resize' }} onMouseDown={(e) => { e.stopPropagation(); if(!isReadOnly) setDragState({ taskId: task.id, type: 'LEFT', startX: e.clientX, deltaX: 0 }); }} />
                           
                           <div 
-                            style={styles.taskBarContent} 
+                            style={{ ...styles.taskBarContent, cursor: isReadOnly ? 'pointer' : 'grab' }} 
                             onMouseDown={(e) => { if(!isReadOnly){ e.stopPropagation(); setDragState({ taskId: task.id, type: 'MOVE', startX: e.clientX, deltaX: 0 });} }}
                           >
                             {/* Title removed for cleaner Gantt UI */}
                           </div>
 
-                          {!isReadOnly && (
-                            <div style={{ ...styles.dragHandle, right: 0 }} onMouseDown={(e) => { e.stopPropagation(); setDragState({ taskId: task.id, type: 'RIGHT', startX: e.clientX, deltaX: 0 }); }} />
-                          )}
+                          <div style={{ ...styles.dragHandle, right: 0, cursor: isReadOnly ? 'pointer' : 'col-resize' }} onMouseDown={(e) => { e.stopPropagation(); if(!isReadOnly) setDragState({ taskId: task.id, type: 'RIGHT', startX: e.clientX, deltaX: 0 }); }} />
 
                           {/* Connector node RIGHT */}
-                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0 }} onMouseDown={(e) => { 
+                          <div style={{ ...styles.connectorNodeRight, opacity: hoveredTaskId === task.id ? 1 : 0, cursor: isReadOnly ? 'pointer' : 'crosshair' }} onMouseDown={(e) => { 
                             e.stopPropagation(); 
-                            if (svgRef.current) {
+                            if (!isReadOnly && svgRef.current) {
                               const rect = svgRef.current.getBoundingClientRect();
                               setConnectingTask({ id: task.id, isStart: false });
                               setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -756,7 +771,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
-    backgroundColor: '#FFF',
+    backgroundColor: 'var(--bg-primary)',
     overflow: 'hidden'
   },
   layoutWrapper: {

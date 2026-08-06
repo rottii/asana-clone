@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './Goals.css'; // We'll reuse some css and add specific ones later if needed
+import { apiFetch } from '../api';
 
 export default function GoalDetail({ goal, token, onBack }) {
   const [currentGoal, setCurrentGoal] = useState(goal);
@@ -20,7 +21,7 @@ export default function GoalDetail({ goal, token, onBack }) {
 
   useEffect(() => {
     // Fetch all projects for the linking dropdown
-    fetch('http://localhost:5001/api/projects', {
+    apiFetch('/api/projects', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => res.json())
@@ -30,7 +31,7 @@ export default function GoalDetail({ goal, token, onBack }) {
 
   const handleSave = async () => {
     try {
-      const res = await fetch(`http://localhost:5001/api/goals/${currentGoal.id}`, {
+      const res = await apiFetch(`/api/goals/${currentGoal.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -57,7 +58,7 @@ export default function GoalDetail({ goal, token, onBack }) {
 
   const handleLinkProject = async (projectId) => {
     try {
-      const res = await fetch(`http://localhost:5001/api/goals/${currentGoal.id}/projects`, {
+      const res = await apiFetch(`/api/goals/${currentGoal.id}/projects`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,7 +78,7 @@ export default function GoalDetail({ goal, token, onBack }) {
 
   const handleUnlinkProject = async (projectId) => {
     try {
-      const res = await fetch(`http://localhost:5001/api/goals/${currentGoal.id}/projects/${projectId}`, {
+      const res = await apiFetch(`/api/goals/${currentGoal.id}/projects/${projectId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -93,7 +94,7 @@ export default function GoalDetail({ goal, token, onBack }) {
   const handleDeleteGoal = async () => {
     if (!window.confirm("Are you sure you want to delete this goal?")) return;
     try {
-      const res = await fetch(`http://localhost:5001/api/goals/${currentGoal.id}`, {
+      const res = await apiFetch(`/api/goals/${currentGoal.id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

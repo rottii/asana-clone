@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const { OAuth2Client } = require('google-auth-library');
 
@@ -10,10 +11,35 @@ const { JWT_SECRET } = require('../config/env');
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
+// Helper function to generate tokens and session
+async function generateTokens(userId, rememberMe = false) {
+  // Generate short-lived access token (e.g. 1 hour)
+  const accessToken = jwt.sign({ userId }, JWT_SECRET, { expiresIn: '1h' });
+  
+  // Generate a cryptographically secure random string for the refresh token
+  const refreshToken = crypto.randomBytes(40).toString('hex');
+  
+  // Expiry for refresh token (30 days if rememberMe, otherwise 1 day)
+  const days = rememberMe ? 30 : 1;
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + days);
+
+  // Save session in DB
+  await prisma.session.create({
+    data: {
+      userId,
+      refreshToken,
+      expiresAt
+    }
+  });
+
+  return { accessToken, refreshToken };
+}
+
 // 0. GOOGLE ILE GIRIŞ YAP VEYA KAYIT OL - POST /api/auth/google
 router.post('/google', async (req, res) => {
   try {
-    const { token } = req.body;
+    const { token, rememberMe } = req.body;
     if (!token) {
       return res.status(400).json({ error: 'Google token is required.' });
     }
@@ -81,12 +107,13 @@ router.post('/google', async (req, res) => {
       });
     }
 
-    // JWT Token üretme (1 gün geçerli)
-    const jwtToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1d' });
+    // Generate Tokens
+    const tokens = await generateTokens(user.id, rememberMe);
 
     res.json({
       message: 'Google login successful!',
-      token: jwtToken,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: { id: user.id, name: user.name, email: user.email }
     });
 
@@ -99,7 +126,7 @@ router.post('/google', async (req, res) => {
 // 1. KAYIT OL (REGISTER) - POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, rememberMe } = req.body;
 
     // Girdilerin kontrolü
     if (!email || !password || !name) {
@@ -149,7 +176,15 @@ router.post('/register', async (req, res) => {
       }
     });
 
-    res.status(201).json({ message: 'Kullanıcı başarıyla oluşturuldu.', userId: newUser.id });
+    // Generate Tokens
+    const tokens = await generateTokens(newUser.id, rememberMe);
+
+    res.status(201).json({ 
+      message: 'Kullanıcı başarıyla oluşturuldu.', 
+      userId: newUser.id,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken
+    });
   } catch (error) {
     res.status(500).json({ error: 'Kayıt esnasında bir hata oluştu.', details: error.message });
   }
@@ -158,7 +193,7 @@ router.post('/register', async (req, res) => {
 // 2. GİRİŞ YAP (LOGIN) - POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, rememberMe } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email ve şifre zorunludur.' });
@@ -176,16 +211,80 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Geçersiz email veya şifre.' });
     }
 
-    // JWT Token üretme (1 gün geçerli)
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1d' });
+    // Generate Tokens
+    const tokens = await generateTokens(user.id, rememberMe);
 
     res.json({
       message: 'Giriş başarılı!',
-      token,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: { id: user.id, name: user.name, email: user.email }
     });
   } catch (error) {
     res.status(500).json({ error: 'Giriş esnasında bir hata oluştu.', details: error.message });
+  }
+});
+// 3. REFRESH TOKEN - POST /api/auth/refresh
+router.post('/refresh', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    
+    if (!refreshToken) {
+      return res.status(401).json({ error: 'Refresh token is required.' });
+    }
+
+    // Find the session
+    const session = await prisma.session.findUnique({
+      where: { refreshToken }
+    });
+
+    if (!session) {
+      return res.status(401).json({ error: 'Invalid refresh token.' });
+    }
+
+    // Check if expired
+    if (new Date() > session.expiresAt) {
+      // Clean up expired session
+      await prisma.session.delete({ where: { id: session.id } });
+      return res.status(401).json({ error: 'Refresh token expired.' });
+    }
+
+    // Generate new access token
+    const newAccessToken = jwt.sign({ userId: session.userId }, JWT_SECRET, { expiresIn: '1h' });
+    
+    // Rotate refresh token for security
+    const newRefreshToken = crypto.randomBytes(40).toString('hex');
+    
+    // Update session in DB
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { refreshToken: newRefreshToken }
+    });
+
+    res.json({
+      token: newAccessToken,
+      refreshToken: newRefreshToken
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Token refresh failed.', details: error.message });
+  }
+});
+
+// 4. LOGOUT - POST /api/auth/logout
+router.post('/logout', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    
+    if (refreshToken) {
+      // Attempt to delete the session if it exists
+      await prisma.session.deleteMany({
+        where: { refreshToken }
+      });
+    }
+    
+    res.json({ message: 'Logged out successfully.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Logout failed.', details: error.message });
   }
 });
 

@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { apiFetch } from '../api';
 import UserAvatar from './UserAvatar';
 
 export default function ProjectWorkloadView({ 
@@ -139,7 +140,7 @@ export default function ProjectWorkloadView({
 
           if (handleTaskUpdate && !isReadOnly) {
             try {
-              const response = await fetch(`http://localhost:5001/api/projects/tasks/${t.id}`, {
+              const response = await apiFetch(`/api/projects/tasks/${t.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ 
@@ -322,7 +323,7 @@ export default function ProjectWorkloadView({
                       return (
                         <>
                           <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-                            <polygon points={polyPoints} fill="#EEF2FF" />
+                            <polygon points={polyPoints} fill="rgba(99, 102, 241, 0.15)" />
                             <polyline points={linePoints} fill="none" stroke="#818CF8" strokeWidth="2" />
                           </svg>
 
@@ -337,7 +338,7 @@ export default function ProjectWorkloadView({
                                 top: p.y - 8,
                                 textAlign: 'center',
                                 fontSize: '0.75rem',
-                                color: isOverloaded ? '#EF4444' : '#6B7280',
+                                color: isOverloaded ? '#EF4444' : 'var(--text-primary)',
                                 fontWeight: isOverloaded ? 'bold' : '500',
                                 pointerEvents: 'none'
                               }}>

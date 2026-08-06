@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend,
-  ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Label
+  ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Label, LabelList
 } from 'recharts';
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import './ProjectDashboardView.css';
+import { apiFetch } from '../api';
 import { getParsedCustomFields, getParsedGithubPRs, getGithubPRStatusLabel } from '../utils/customFields';
 
 const ReactGridLayout = WidthProvider(GridLayout);
@@ -21,6 +22,30 @@ const CustomLollipopBar = (props) => {
       <line x1={centerX} y1={y + height} x2={centerX} y2={y} stroke={fill} strokeWidth={2} />
       <circle cx={centerX} cy={y} r={5} fill={fill} />
     </g>
+  );
+};
+
+const renderCustomStackedBarLabel = (props, data) => {
+  const { x, y, width, height, index, dataKey, payload, value } = props;
+  
+  let actualValue = null;
+  if (data && index !== undefined && data[index] !== undefined) {
+    actualValue = data[index][dataKey];
+  } else if (payload && payload[dataKey] !== undefined) {
+    actualValue = payload[dataKey];
+  } else if (Array.isArray(value)) {
+    actualValue = value[1] - value[0];
+  } else {
+    actualValue = value;
+  }
+  
+  if (!actualValue || actualValue === 0) return null;
+  if (x === undefined || y === undefined || width === undefined || height === undefined) return null;
+  
+  return (
+    <text x={x + width / 2} y={y + height / 2} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={500}>
+      {actualValue}
+    </text>
   );
 };
 
@@ -215,16 +240,26 @@ const XAxisCustomDropdown = ({ value, onChange, disabled, axisOptions, customFie
 };
 
 
-export default function ProjectDashboardView({ selectedProject, showPicker, setShowPicker }) {
-  // --- Chart layout state (localStorage per project) ---
+export default function ProjectDashboardView({ selectedProject, showPicker, setShowPicker, isReadOnly }) {
+  // --- Chart layout state ---
   const storageKey = `proj-dash-layout-${selectedProject?.id}`;
   const [chartLayout, setChartLayout] = useState(() => {
+    // 1. Try to load from database first
+    try {
+      const dbSaved = selectedProject?.dashboardLayout;
+      if (dbSaved) {
+        const parsed = typeof dbSaved === 'string' ? JSON.parse(dbSaved) : dbSaved;
+        if (parsed.length > 0 && (parsed[0].i !== undefined && parsed.every(p => p.type))) {
+          return parsed;
+        }
+      }
+    } catch { }
+
+    // 2. Fallback to localStorage (migration)
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Migration: If the layout doesn't use the 'i' property (old format), reset to defaults
-        // Also if 'type' is missing due to a previous bug, reset to defaults
         if (parsed.length > 0 && (parsed[0].i === undefined || parsed.some(p => !p.type))) {
           return DEFAULT_CHARTS;
         }
@@ -237,11 +272,34 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
   const [openMenu, setOpenMenu] = useState(null);
   const [isDraggingOrResizing, setIsDraggingOrResizing] = useState(false);
   const menuRef = useRef(null);
+  const saveTimerRef = useRef(null);
 
-  // Persist layout
+  // Persist layout to localStorage AND Database
   useEffect(() => {
+    if (isReadOnly) return;
     try { localStorage.setItem(storageKey, JSON.stringify(chartLayout)); } catch { }
-  }, [chartLayout, storageKey]);
+    
+    // Save to Database
+    if (selectedProject?.id) {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        apiFetch(`/api/projects/${selectedProject.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ dashboardLayout: chartLayout })
+        })
+        .catch(err => {
+            console.error('Failed to save dashboard layout:', err);
+        });
+      }, 1000);
+    }
+  }, [chartLayout, storageKey, selectedProject?.id, isReadOnly]);
 
   const axisOptions = useMemo(() => {
     return [
@@ -757,7 +815,9 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
               <RechartsTooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} contentStyle={tooltipStyle} />
               <Legend iconType="circle" wrapperStyle={{ fontSize: '0.78rem' }} />
               {stackedKeys.map((key, idx) => (
-                <Bar key={key} dataKey={key} stackId="a" fill={getGroupColor(key, idx)} radius={idx === stackedKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} label={dataLabels ? { position: 'center', fill: '#fff', fontSize: 10 } : false} animationDuration={400} isAnimationActive={false} />
+                <Bar key={key} dataKey={key} stackId="a" fill={getGroupColor(key, idx)} animationDuration={400} isAnimationActive={false}>
+                  {dataLabels && <LabelList dataKey={key} position="center" fill="#fff" fontSize={10} fontWeight={500} formatter={(val) => (val && val !== 0 ? val : '')} />}
+                </Bar>
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -807,8 +867,8 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
             <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} allowDecimals={false} />
             <RechartsTooltip contentStyle={tooltipStyle} />
             <>
-              <Area type="monotone" dataKey="Total" stroke="none" fill="#EDE9FE" fillOpacity={1} label={dataLabels ? { position: 'top', fill: 'var(--text-primary)', fontSize: 11, fontWeight: 'bold' } : false} animationDuration={400} isAnimationActive={false} />
-              <Area type="monotone" dataKey={chartStyle === 'burnup' ? "Completed" : "Remaining"} stroke="none" fill="#8B5CF6" fillOpacity={1} label={dataLabels ? { position: 'center', fill: '#fff', fontSize: 11, fontWeight: 'bold' } : false} animationDuration={400} isAnimationActive={false} />
+              <Area type="monotone" dataKey="Total" stroke="none" fill="#EDE9FE" fillOpacity={1} label={dataLabels ? { position: 'top', fill: '#111827', stroke: '#EDE9FE', strokeWidth: 3, paintOrder: 'stroke', fontSize: 11, fontWeight: 'bold' } : false} animationDuration={400} isAnimationActive={false} />
+              <Area type="monotone" dataKey={chartStyle === 'burnup' ? "Completed" : "Remaining"} stroke="none" fill="#8B5CF6" fillOpacity={1} label={dataLabels ? { position: 'center', fill: '#fff', stroke: '#8B5CF6', strokeWidth: 3, paintOrder: 'stroke', fontSize: 11, fontWeight: 'bold' } : false} animationDuration={400} isAnimationActive={false} />
             </>
           </AreaChart>
         </ResponsiveContainer>
@@ -1142,23 +1202,25 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
       <button className="proj-dash-card-menu-btn" title="View larger" onMouseDown={(e) => { e.stopPropagation(); setViewChartModal(chart); }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
       </button>
-      {chart.type !== 'text-widget' && (
+      {!isReadOnly && chart.type !== 'text-widget' && (
         <button className="proj-dash-card-menu-btn" title="Edit chart" onMouseDown={(e) => { e.stopPropagation(); openEditChartModal(chart); }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
         </button>
       )}
-      <div style={{ position: 'relative' }} ref={openMenu === chart.i ? menuRef : null}>
-        <button className="proj-dash-card-menu-btn" onMouseDown={(e) => { e.stopPropagation(); setOpenMenu(openMenu === chart.i ? null : chart.i); }}>
-          •••
-        </button>
-        {openMenu === chart.i && (
-          <div className="proj-dash-card-menu" onMouseDown={(e) => e.stopPropagation()}>
-            <button className="proj-dash-card-menu-item danger" onClick={() => removeChart(chart.i)}>
-              ✕ Remove chart
-            </button>
-          </div>
-        )}
-      </div>
+      {!isReadOnly && (
+        <div style={{ position: 'relative' }} ref={openMenu === chart.i ? menuRef : null}>
+          <button className="proj-dash-card-menu-btn" onMouseDown={(e) => { e.stopPropagation(); setOpenMenu(openMenu === chart.i ? null : chart.i); }}>
+            •••
+          </button>
+          {openMenu === chart.i && (
+            <div className="proj-dash-card-menu" onMouseDown={(e) => e.stopPropagation()}>
+              <button className="proj-dash-card-menu-item danger" onClick={() => removeChart(chart.i)}>
+                ✕ Remove chart
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -1209,7 +1271,10 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
           cols={20}
           rowHeight={20}
           margin={[20, 20]}
+          isDraggable={!isReadOnly}
+          isResizable={!isReadOnly}
           onLayoutChange={(layout) => {
+            if (isReadOnly) return;
             setChartLayout(prev => layout.map(l => {
               const existing = prev.find(p => p.i === l.i);
               return existing ? { ...existing, ...l } : l;
@@ -1225,11 +1290,13 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
           {chartLayout.map((chart) => (
             <div key={chart.i} data-grid={chart} className="proj-dash-chart-card">
               {/* Drag handle */}
-              <div className="proj-dash-card-drag-handle">
-                <div className="proj-dash-card-drag-dots">
-                  <span /><span /><span /><span /><span /><span />
+              {!isReadOnly && (
+                <div className="proj-dash-card-drag-handle">
+                  <div className="proj-dash-card-drag-dots">
+                    <span /><span /><span /><span /><span /><span />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Remove button (Removed as per user request) */}
 
@@ -1261,13 +1328,15 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
 
         {/* Empty state when no charts */}
         {chartLayout.length === 0 && (
-          <div className="proj-dash-chart-card" style={{ alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border-color)', background: 'transparent', boxShadow: 'none', cursor: 'pointer', minHeight: '300px' }} onClick={openAddChartModal}>
+          <div className="proj-dash-chart-card" style={{ alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border-color)', background: 'transparent', boxShadow: 'none', cursor: isReadOnly ? 'default' : 'pointer', minHeight: '300px' }} onClick={!isReadOnly ? openAddChartModal : undefined}>
             <div className="proj-dash-empty">
               <span className="proj-dash-empty-icon">📊</span>
               <span>No charts added yet</span>
-              <button className="proj-dash-add-btn" style={{ marginTop: '0.5rem' }}>
-                <span className="plus-icon">+</span> Add widget
-              </button>
+              {!isReadOnly && (
+                <button className="proj-dash-add-btn" style={{ marginTop: '0.5rem' }}>
+                  <span className="plus-icon">+</span> Add widget
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1443,7 +1512,7 @@ export default function ProjectDashboardView({ selectedProject, showPicker, setS
             <div className="add-chart-modal-header" style={{ padding: '16px 24px' }}>
               <h2>View chart</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {viewChartModal.type !== 'text-widget' && (
+                {!isReadOnly && viewChartModal.type !== 'text-widget' && (
                   <button className="proj-dash-picker-close" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit chart" onClick={() => openEditChartModal(viewChartModal)}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                   </button>

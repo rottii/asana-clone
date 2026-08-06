@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusColor, getGithubPRStatusLabel } from '../utils/customFields';
 import UserAvatar from './UserAvatar';
 import AddFieldModal from './AddFieldModal'
+import { apiFetch } from '../api'
 
 export default function ProjectListView({
   selectedProject,
@@ -85,7 +86,7 @@ export default function ProjectListView({
 
   const handleSaveProjectSettings = async (updates) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -265,7 +266,7 @@ export default function ProjectListView({
     if (isReadOnly) return;
     try {
       const isCompleted = status === 'APPROVED' || status === 'REJECTED';
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ approvalStatus: status, isCompleted })
@@ -284,7 +285,7 @@ export default function ProjectListView({
     const title = quickTaskInputs[sectionId];
     if (isReadOnly || !title || !title.trim()) return;
     try {
-      const response = await fetch('http://localhost:5001/api/projects/tasks', {
+      const response = await apiFetch('/api/projects/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ title: title.trim(), sectionId })
@@ -310,7 +311,7 @@ export default function ProjectListView({
       return;
     }
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ title: editTaskTitleValue.trim() })
@@ -335,7 +336,7 @@ export default function ProjectListView({
       }
       const newCustomFields = { ...currentCustomFields, [fieldId]: value };
 
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskId}`, {
+      const response = await apiFetch(`/api/projects/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ customFields: newCustomFields })
@@ -506,7 +507,7 @@ export default function ProjectListView({
             setDragTargetTaskId(null);
           }}
           onMouseDown={(e) => e.stopPropagation()}
-          style={styles.drag6DotHandleCellTask}
+          style={{ ...styles.drag6DotHandleCellTask, cursor: isReadOnly ? 'pointer' : 'grab' }}
         >
           ⋮⋮
         </div>
@@ -1193,7 +1194,7 @@ export default function ProjectListView({
                       handleFinalSectionMove();
                       setDraggingSectionId(null);
                     }}
-                    style={styles.drag6DotHandleCell}
+                    style={{ ...styles.drag6DotHandleCell, cursor: isReadOnly ? 'pointer' : 'grab', opacity: isVirtualGrouping ? 0.3 : 1 }}
                   >
                     ⋮⋮
                   </div>

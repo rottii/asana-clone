@@ -15,7 +15,9 @@ const tagsRoutes = require('./routes/tags');
 const reportingRoutes = require('./routes/reporting');
 const workspacesRoutes = require('./routes/workspaces');
 const dashboardRoutes = require('./routes/dashboard');
+const publicRoutes = require('./routes/public');
 const { startCronScheduler } = require('./utils/cronScheduler');
+
 const { startReminderCron } = require('./utils/reminders');
 
 const Sentry = require('@sentry/node');
@@ -111,6 +113,7 @@ app.use('/api', apiLimiter);
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Rotalar
+app.use('/api/public', publicRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/projects/:projectId/rules', rulesRoutes);

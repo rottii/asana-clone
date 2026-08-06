@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import './PortfolioTimelineView.css';
+import { apiFetch } from '../api';
 import UserAvatar from './UserAvatar';
 
 const MONTH_WIDTH = 150;
@@ -234,7 +235,7 @@ export default function PortfolioTimelineView({ projectsList, token, setDetails,
           } : p
         ));
 
-        fetch(`http://localhost:5001/api/projects/${dragState.projectId}`, {
+        apiFetch(`/api/projects/${dragState.projectId}`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -383,7 +384,7 @@ export default function PortfolioTimelineView({ projectsList, token, setDetails,
                       {formatDateStr(p.pStart)} - {formatDateStr(p.pDue)}
                     </div>
                   )}
-                  <div className="pt-project-bar-content">
+                  <div className="pt-project-bar-content" style={{ color: '#111827' }}>
                     <UserAvatar name={p.owner?.name} size={18} style={{ marginRight: '6px' }} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {p.owner ? p.owner.name : 'Unknown'}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api';
 
 export default function PublicForm() {
   const [project, setProject] = useState(null);
@@ -15,7 +16,7 @@ export default function PublicForm() {
 
   useEffect(() => {
     document.body.style.backgroundColor = 'var(--bg-secondary)'; // Standard form bg
-    fetch(`http://localhost:5001/api/projects/${projectId}/form`)
+    apiFetch(`/api/projects/${projectId}/form`)
       .then(res => res.json())
       .then(data => {
         if (data.error) setError(data.error);
@@ -64,7 +65,7 @@ export default function PublicForm() {
     });
 
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${projectId}/form/submit`, {
+      const response = await apiFetch(`/api/projects/${projectId}/form/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, description, customFields })

@@ -16,6 +16,7 @@ services:
   backend:
     build: ./backend
     container_name: asana_backend
+    restart: on-failure
     ports:
       - "5001:5000"
     environment:
@@ -32,6 +33,7 @@ services:
   frontend:
     build: ./frontend
     container_name: asana_frontend
+    restart: on-failure
     ports:
       - "5173:5173"
     volumes:

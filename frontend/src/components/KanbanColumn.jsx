@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import TaskCard from './TaskCard'
+import { apiFetch } from '../api'
 
 export default function KanbanColumn({ section, token, isVirtualGrouping, customFieldSettings, projectMembers, onTaskUpdate, onTaskContextMenu, onOpenApprovalMenu, onDeleteSection, onRenameSection, onGeneralDrop, onOpenPopover, onOpenTaskPane, projectRole, handleLiveTaskSwap, draggingTaskId, setDraggingTaskId, draggableSection, onDragStartSection, onDragEndSection, setLastInteractedSectionId, setLastInteractedTaskId, fieldConfig, selectedTaskIds, onTaskSelect, isMatrixCell, subgroup }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -22,7 +23,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
     if (isReadOnly) return
     if (!newTaskTitle.trim()) return
     try {
-      const response = await fetch('http://localhost:5001/api/projects/tasks', {
+      const response = await apiFetch('/api/projects/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ title: newTaskTitle, sectionId: section.id })

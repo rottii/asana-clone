@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import PortfolioTimelineView from './PortfolioTimelineView';
 import UserAvatar from './UserAvatar';
+import { apiFetch } from '../api';
 
 export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, setPortfolios, projects, setProjects, token, user, setActiveView, setPortfolioCreationParent, handleSelectProject }) {
   const [activeTab, setActiveTab] = useState('List');
@@ -32,7 +33,7 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`http://localhost:5001/api/portfolios/${portfolio.id}`, {
+    apiFetch(`/api/portfolios/${portfolio.id}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -47,7 +48,7 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
   }, [portfolio.id, token]);
 
   const handleAddProject = (projectId) => {
-    fetch(`http://localhost:5001/api/portfolios/${portfolio.id}/projects`, {
+    apiFetch(`/api/portfolios/${portfolio.id}/projects`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -73,7 +74,7 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
   };
 
   const handleAddPortfolio = (childPortfolioId) => {
-    fetch(`http://localhost:5001/api/portfolios/${portfolio.id}/portfolios`, {
+    apiFetch(`/api/portfolios/${portfolio.id}/portfolios`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -115,7 +116,7 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
     const newName = window.prompt("Enter new name for this portfolio:", details.name);
     if (!newName || newName.trim() === '' || newName === details.name) return;
 
-    fetch(`http://localhost:5001/api/portfolios/${portfolio.id}`, {
+    apiFetch(`/api/portfolios/${portfolio.id}`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -138,7 +139,7 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
   const handleDeletePortfolio = () => {
     setShowPortfolioSettings(false);
     if (window.confirm("Are you sure you want to delete this portfolio? This action cannot be undone.")) {
-      fetch(`http://localhost:5001/api/portfolios/${portfolio.id}`, {
+      apiFetch(`/api/portfolios/${portfolio.id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -166,7 +167,7 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
 
   const handleToggleStar = async () => {
     try {
-      const response = await fetch(`http://localhost:5001/api/portfolios/${details.id}/star`, {
+      const response = await apiFetch(`/api/portfolios/${details.id}/star`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

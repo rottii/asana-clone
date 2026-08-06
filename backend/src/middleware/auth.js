@@ -29,7 +29,10 @@ const authenticateToken = async (req, res, next) => {
     req.user = decoded;
     next();
   } catch (err) {
-    return res.status(403).json({ error: 'Geçersiz veya süresi dolmuş token.' });
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    }
+    return res.status(401).json({ error: 'Geçersiz token.' });
   }
 };
 

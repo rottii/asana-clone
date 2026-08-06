@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
+import { apiFetch, API_BASE_URL } from './api'
 import Auth from './components/Auth'
 import Dashboard from './components/Dashboard'
 import KanbanBoard from './components/KanbanBoard'
@@ -15,6 +16,7 @@ import ProfileView from './components/ProfileView'
 import Goals from './components/Goals'
 import Reporting from './components/Reporting'
 import PublicForm from './components/PublicForm'
+import AdminConsoleView from './components/AdminConsoleView'
 import { UndoProvider } from './context/UndoContext'
 
 export default function App() {
@@ -42,6 +44,16 @@ export default function App() {
       localStorage.setItem('selectedProjectId', path.split('/')[2]);
       return 'project';
     }
+    if (path.startsWith('/workspace/')) {
+      const parts = path.split('/');
+      localStorage.setItem('activeWorkspaceId', parts[2]);
+      if (parts[3]) {
+        const view = parts[3];
+        const validViews = ['home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'projects', 'profile', 'create_project', 'admin_console'];
+        if (validViews.includes(view)) return view;
+      }
+      return 'home';
+    }
     if (path.startsWith('/portfolio/')) {
       localStorage.setItem('selectedPortfolioId', path.split('/')[2]);
       return 'portfolio_detail';
@@ -49,7 +61,7 @@ export default function App() {
     if (path.length > 1) {
       const view = path.substring(1);
       // Validate view to prevent random paths from crashing the app
-      const validViews = ['home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'projects', 'profile', 'create_project'];
+      const validViews = ['home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'projects', 'profile', 'create_project', 'admin_console'];
       if (validViews.includes(view)) return view;
     }
     return localStorage.getItem('activeView') || 'home';
@@ -80,9 +92,19 @@ export default function App() {
           setSelectedPortfolio(port);
           setActiveView('portfolio_detail');
         }
+      } else if (path.startsWith('/workspace/')) {
+        const parts = path.split('/');
+        setActiveWorkspaceId(parts[2]);
+        if (parts[3]) {
+           const view = parts[3];
+           const validViews = ['home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'projects', 'profile', 'create_project', 'admin_console'];
+           setActiveView(validViews.includes(view) ? view : 'home');
+        } else {
+           setActiveView('home');
+        }
       } else {
         const view = path.length > 1 ? path.substring(1) : 'home';
-        const validViews = ['home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'projects', 'profile', 'create_project'];
+        const validViews = ['home', 'my-tasks', 'inbox', 'reporting', 'portfolios', 'goals', 'projects', 'profile', 'create_project', 'admin_console'];
         setActiveView(validViews.includes(view) ? view : 'home');
       }
     };
@@ -97,6 +119,10 @@ export default function App() {
       newPath = `/project/${selectedProject.id}`;
     } else if (activeView === 'portfolio_detail' && selectedPortfolio) {
       newPath = `/portfolio/${selectedPortfolio.id}`;
+    } else if (activeView === 'home' && activeWorkspaceId) {
+      newPath = `/workspace/${activeWorkspaceId}`;
+    } else if (activeWorkspaceId && activeView !== 'home') {
+      newPath = `/workspace/${activeWorkspaceId}/${activeView}`;
     } else if (activeView !== 'home') {
       newPath = `/${activeView}`;
     }
@@ -104,7 +130,7 @@ export default function App() {
     if (window.location.pathname !== newPath) {
       window.history.pushState({}, '', newPath);
     }
-  }, [activeView, selectedProject, selectedPortfolio]);
+  }, [activeView, selectedProject, selectedPortfolio, activeWorkspaceId]);
   
   // ---------------------------------
 
@@ -114,6 +140,18 @@ export default function App() {
     }
     localStorage.setItem('activeView', activeView)
   }, [activeView])
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setToken(null)
+      setUser(null)
+      setSelectedProject(null)
+      setSelectedPortfolio(null)
+      setActiveView('home')
+    };
+    window.addEventListener('auth-expired', handleAuthExpired);
+    return () => window.removeEventListener('auth-expired', handleAuthExpired);
+  }, []);
 
   useEffect(() => {
     if (activeWorkspaceId) {
@@ -133,7 +171,7 @@ export default function App() {
   useEffect(() => {
     if (token) {
       // Projeleri çek (Bypass cache with timestamp)
-      fetch(`http://localhost:5001/api/projects?t=${Date.now()}`, { headers: { 'Authorization': `Bearer ${token}` } })
+      apiFetch(`/api/projects?t=${Date.now()}`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -179,7 +217,7 @@ export default function App() {
         .catch(err => console.error("Projeler yüklenemedi", err))
 
       // Portföyleri çek
-      fetch('http://localhost:5001/api/portfolios', { headers: { 'Authorization': `Bearer ${token}` } })
+      apiFetch('/api/portfolios', { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -199,7 +237,7 @@ export default function App() {
         .catch(err => console.error("Portföyler yüklenemedi", err))
 
       // Workspaces (Teams) çek
-      fetch('http://localhost:5001/api/workspaces', { headers: { 'Authorization': `Bearer ${token}` } })
+      apiFetch('/api/workspaces', { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -220,7 +258,7 @@ export default function App() {
 
   useEffect(() => {
     if (user && user.id) {
-      const socket = io('http://localhost:5001');
+      const socket = io(API_BASE_URL);
       socket.emit('join_user', user.id);
       
       socket.on('project_created', (newProj) => {
@@ -256,8 +294,21 @@ export default function App() {
     setSelectedProject(project)
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (refreshToken) {
+      try {
+        await fetch(`${API_BASE_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken })
+        });
+      } catch (err) {
+        console.error('Logout failed', err);
+      }
+    }
     localStorage.removeItem('token')
+    localStorage.removeItem('refreshToken')
     localStorage.removeItem('user')
     localStorage.removeItem('selectedProjectId')
     setToken(null)
@@ -410,6 +461,12 @@ export default function App() {
               portfolioCreationParent={portfolioCreationParent}
               setPortfolioCreationParent={setPortfolioCreationParent}
               activeWorkspace={activeWorkspace}
+            />
+          ) : activeView === 'admin_console' ? (
+            <AdminConsoleView
+              workspaceId={activeWorkspaceId}
+              token={token}
+              currentUser={user}
             />
           ) : (
             <Dashboard 

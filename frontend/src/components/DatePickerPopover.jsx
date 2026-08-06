@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { getParsedTaskCustomFields } from '../utils/customFields';
+import { apiFetch } from '../api';
 const monthsList = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export default function DatePickerPopover({ task, token, coords, onDatesUpdated, customFieldId, filterMode, initialStart, initialEnd, onFilterApply, styleOverrides }) {
@@ -117,7 +118,7 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated,
         };
       }
 
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(bodyData)
@@ -149,7 +150,7 @@ export default function DatePickerPopover({ task, token, coords, onDatesUpdated,
         bodyData = { startDate: null, dueDate: null, isRecurring: false };
       }
 
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(bodyData)

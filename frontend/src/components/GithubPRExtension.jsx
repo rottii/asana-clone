@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Node, mergeAttributes, nodePasteRule, nodeInputRule } from '@tiptap/core';
+import { apiFetch } from '../api';
 import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
 
 const GITHUB_PR_REGEX = /https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/pull\/(\d+)/g;
@@ -20,7 +21,7 @@ const GithubPRNodeView = (props) => {
     const fetchPR = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5001/api/github/pr', {
+        const response = await apiFetch('/api/github/pr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url })

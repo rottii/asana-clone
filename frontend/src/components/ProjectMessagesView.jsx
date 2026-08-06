@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import RichTextEditor from './RichTextEditor';
+import { apiFetch } from '../api';
 
 const styles = {
   container: {
@@ -233,7 +234,7 @@ export default function ProjectMessagesView({ selectedProject, token, currentUse
 
   const fetchMessages = async () => {
     try {
-      const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/messages`, {
+      const res = await apiFetch(`/api/projects/${selectedProject.id}/messages`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -248,7 +249,7 @@ export default function ProjectMessagesView({ selectedProject, token, currentUse
   const handleSendMessage = async () => {
     if (!newBody.trim()) return;
     try {
-      const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/messages`, {
+      const res = await apiFetch(`/api/projects/${selectedProject.id}/messages`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -273,7 +274,7 @@ export default function ProjectMessagesView({ selectedProject, token, currentUse
     if (!text || !text.trim()) return;
 
     try {
-      const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/messages/${messageId}/replies`, {
+      const res = await apiFetch(`/api/projects/${selectedProject.id}/messages/${messageId}/replies`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

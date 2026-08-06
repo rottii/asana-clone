@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import UserAvatar from './UserAvatar'
+import { apiFetch } from '../api'
 
 export default function AssigneePopover({ task, token, coords, project, onAssigneeUpdated, filterMode, onFilterApply, styleOverrides }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -32,7 +33,7 @@ export default function AssigneePopover({ task, token, coords, project, onAssign
       return;
     }
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ assigneeId: userId })

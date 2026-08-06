@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './TopNav.css';
 import QuickAddTaskModal from './QuickAddTaskModal';
+import { apiFetch } from '../api';
 
 export default function TopNav({ 
   isSidebarCollapsed, 
@@ -58,7 +59,7 @@ export default function TopNav({
 
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const response = await fetch(`http://localhost:5001/api/search?q=${encodeURIComponent(searchQuery)}`, {
+        const response = await apiFetch(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {

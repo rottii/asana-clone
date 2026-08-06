@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api';
 
 export default function Reporting({ token }) {
   const [metrics, setMetrics] = useState(null);
@@ -10,7 +11,7 @@ export default function Reporting({ token }) {
 
   const fetchMetrics = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/reporting/global', {
+      const response = await apiFetch('/api/reporting/global', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();

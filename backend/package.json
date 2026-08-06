@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "src/index.js",
   "scripts": {
-    "dev": "npx prisma generate && node src/index.js"
+    "dev": "npx prisma db push --accept-data-loss && npx prisma generate && node src/index.js"
   },
   "dependencies": {
     "@prisma/client": "^5.14.0",

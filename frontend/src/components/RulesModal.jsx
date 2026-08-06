@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import './RulesModal.css';
+import { apiFetch } from '../api';
 
 const TRIGGER_OPTIONS = [
   {
@@ -189,7 +190,7 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
 
   const fetchProjectData = async () => {
     try {
-      const res = await fetch(`http://localhost:5001/api/projects`, {
+      const res = await apiFetch(`/api/projects`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const projects = await res.json();
@@ -216,13 +217,13 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
     try {
       let res;
       if (editRule) {
-        res = await fetch(`http://localhost:5001/api/projects/${projectId}/rules/${editRule.id}`, {
+        res = await apiFetch(`/api/projects/${projectId}/rules/${editRule.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ ruleData, isActive })
         });
       } else {
-        res = await fetch(`http://localhost:5001/api/projects/${projectId}/rules`, {
+        res = await apiFetch(`/api/projects/${projectId}/rules`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ ruleData, isActive })

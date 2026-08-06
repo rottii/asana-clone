@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api';
 
 export default function QuickAddTaskModal({ projects, token, onClose, onTaskCreated }) {
   const [title, setTitle] = useState('');
@@ -29,7 +30,7 @@ export default function QuickAddTaskModal({ projects, token, onClose, onTaskCrea
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:5001/api/projects/tasks', {
+      const response = await apiFetch('/api/projects/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

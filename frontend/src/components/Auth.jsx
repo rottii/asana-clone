@@ -1,27 +1,30 @@
 import { useState } from 'react'
 import { GoogleLogin } from '@react-oauth/google'
+import { apiFetch } from '../api'
 
 export default function Auth({ setToken, setUser }) {
   const [isLogin, setIsLogin] = useState(true)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [authMessage, setAuthMessage] = useState('')
 
   const handleAuth = async (e) => {
     e.preventDefault()
     const endpoint = isLogin ? 'login' : 'register'
     try {
-      const response = await fetch(`http://localhost:5001/api/auth/${endpoint}`, {
+      const response = await apiFetch(`/api/auth/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isLogin ? { email, password } : { name, email, password }),
+        body: JSON.stringify(isLogin ? { email, password, rememberMe } : { name, email, password, rememberMe }),
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error)
 
       if (isLogin) {
         localStorage.setItem('token', data.token)
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
         localStorage.setItem('user', JSON.stringify(data.user))
         setToken(data.token)
         setUser(data.user)
@@ -34,15 +37,16 @@ export default function Auth({ setToken, setUser }) {
 
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/auth/google`, {
+      const response = await apiFetch(`/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: credentialResponse.credential }),
+        body: JSON.stringify({ token: credentialResponse.credential, rememberMe }),
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error)
 
       localStorage.setItem('token', data.token)
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
       localStorage.setItem('user', JSON.stringify(data.user))
       setToken(data.token)
       setUser(data.user)
@@ -82,6 +86,16 @@ export default function Auth({ setToken, setUser }) {
           {!isLogin && <input type="text" placeholder="Ad Soyad" value={name} onChange={e => setName(e.target.value)} style={styles.input} required />}
           <input type="email" placeholder="E-posta" value={email} onChange={e => setEmail(e.target.value)} style={styles.input} required />
           <input type="password" placeholder="Şifre" value={password} onChange={e => setPassword(e.target.value)} style={styles.input} required />
+          
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#4B5563', cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              checked={rememberMe} 
+              onChange={(e) => setRememberMe(e.target.checked)} 
+            />
+            Oturumumu açık tut (30 gün)
+          </label>
+
           <button type="submit" style={styles.button}>{isLogin ? 'Giriş Yap' : 'Kayıt Ol'}</button>
         </form>
         {authMessage && <p style={{ textAlign: 'center', color: 'red', marginTop: '1rem' }}>{authMessage}</p>}

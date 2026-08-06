@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { io } from 'socket.io-client'
+import { apiFetch, API_BASE_URL } from '../api'
 import KanbanColumn from './KanbanColumn'
 import DatePickerPopover from './DatePickerPopover'
 import AssigneePopover from './AssigneePopover'
 import FilterValueDropdown from './FilterValueDropdown'
 import ShareProjectModal from './ShareProjectModal'
+import ShareDashboardModal from './ShareDashboardModal'
 import ProjectListView from './ProjectListView'
 import AddFieldModal from './AddFieldModal'
 import RulesModal from './RulesModal'
@@ -32,6 +34,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, taskId: null })
   const [approvalMenu, setApprovalMenu] = useState({ visible: false, x: 0, y: 0, task: null })
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+  const [isShareDashboardModalOpen, setIsShareDashboardModalOpen] = useState(false)
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false)
   const [isCustomizePanelOpen, setIsCustomizePanelOpen] = useState(false)
   const [isOptionsPaneOpen, setIsOptionsPaneOpen] = useState(false)
@@ -219,12 +222,12 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   useEffect(() => {
     if (!selectedProject || !selectedProject.id) return;
 
-    const socket = io('http://localhost:5001');
+    const socket = io(API_BASE_URL);
     socket.emit('join_project', selectedProject.id);
 
     const refreshProject = async () => {
       try {
-        const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}?t=${Date.now()}`, {
+        const response = await apiFetch(`/api/projects/${selectedProject.id}?t=${Date.now()}`, {
           headers: { 'Authorization': `Bearer ${token}` },
           cache: 'no-store'
         });
@@ -333,7 +336,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       return;
     }
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: newStatusId })
@@ -350,7 +353,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   const handleUpdateViews = async (newViews, newDefaultView = selectedProject.defaultView) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ activeViews: newViews, defaultView: newDefaultView })
@@ -365,7 +368,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleUpdateIconColor = async (color, icon) => {
     if (projectRole !== 'ADMIN' && projectRole !== 'EDITOR') return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, {
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ color, icon })
@@ -379,7 +382,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   const handleToggleStar = async () => {
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/star`, {
+      const response = await apiFetch(`/api/projects/${selectedProject.id}/star`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -942,7 +945,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     const currentSections = latestSectionsRef.current || parsedSections || [];
     const orderedSectionIds = [...currentSections].sort((a, b) => a.order - b.order).map(s => s.id);
     try {
-      const response = await fetch('http://localhost:5001/api/projects/sections/move', {
+      const response = await apiFetch('/api/projects/sections/move', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ orderedSectionIds, projectId: selectedProject.id })
@@ -988,7 +991,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       if (overrides.type === 'APPROVAL') bodyData.title = 'New approval';
       if (overrides.type === 'MILESTONE') bodyData.title = 'New milestone';
 
-      const response = await fetch('http://localhost:5001/api/projects/tasks', {
+      const response = await apiFetch('/api/projects/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(bodyData)
@@ -1008,7 +1011,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleCreateSectionGlobal = async () => {
     if (isReadOnly) return;
     try {
-      const response = await fetch('http://localhost:5001/api/projects/sections', {
+      const response = await apiFetch('/api/projects/sections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ name: 'New Section', projectId: selectedProject.id })
@@ -1028,7 +1031,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       setIsEditingName(false); return;
     }
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ name: nameInput.trim() }) })
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ name: nameInput.trim() }) })
       const data = await response.json()
       if (response.ok) syncProjectStates(data)
       setIsEditingName(false)
@@ -1040,7 +1043,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     const isCurrentlyArchived = selectedProject.isArchived;
     if (!window.confirm(`Proje ${isCurrentlyArchived ? 'arşivden çıkarılsın' : 'arşivlensin'} mi?`)) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ isArchived: !isCurrentlyArchived }) })
+      const response = await apiFetch(`/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ isArchived: !isCurrentlyArchived }) })
       const data = await response.json()
       setProjects(prev => prev.map(p => p.id === selectedProject.id ? data : p));
       syncProjectStates(data);
@@ -1051,7 +1054,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     if (isMyTasks || (projectRole !== 'ADMIN' && projectRole !== 'EDITOR')) return;
     if (!window.confirm("Bu projeyi şablon olarak kaydetmek istediğinize emin misiniz?")) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/save-as-template`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
+      const response = await apiFetch(`/api/projects/${selectedProject.id}/save-as-template`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } })
       if (response.ok) {
         alert('Proje başarıyla şablon olarak kaydedildi.');
       } else {
@@ -1065,7 +1068,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     if (isMyTasks || projectRole !== 'ADMIN') return;
     if (!window.confirm("Proje silinsin mi?")) return;
     try {
-      await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
+      await apiFetch(`/api/projects/${selectedProject.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
       setProjects(prev => prev.filter(p => p.id !== selectedProject.id)); setSelectedProject(null);
     } catch (err) { console.error(err) }
   }
@@ -1074,7 +1077,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     e.preventDefault()
     if (isReadOnly || !newSectionName.trim()) return
     try {
-      const response = await fetch('http://localhost:5001/api/projects/sections', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ name: newSectionName, projectId: selectedProject.id }) })
+      const response = await apiFetch('/api/projects/sections', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ name: newSectionName, projectId: selectedProject.id }) })
       const data = await response.json()
       syncProjectStates({ ...selectedProject, sections: [...(selectedProject.sections || []), { ...data, tasks: [] }] })
       setNewSectionName('')
@@ -1105,7 +1108,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       },
       onCommit: async () => {
         try {
-          await fetch(`http://localhost:5001/api/projects/sections/${sectionId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+          await apiFetch(`/api/projects/sections/${sectionId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
         } catch (err) { console.error(err); }
         setOptimisticDeletedSectionIds(prev => {
           const next = new Set(prev);
@@ -1119,7 +1122,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleRenameSection = async (sectionId, newName) => {
     if (isReadOnly || !newName.trim()) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/sections/${sectionId}`, {
+      const response = await apiFetch(`/api/projects/sections/${sectionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ name: newName.trim() })
@@ -1138,7 +1141,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const fetchProjectRules = async () => {
     if (isMyTasks) return;
     try {
-      const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/rules`, {
+      const res = await apiFetch(`/api/projects/${selectedProject.id}/rules`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -1162,7 +1165,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleDeleteRule = async (ruleId) => {
     if (isMyTasks) return;
     try {
-      const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/rules/${ruleId}`, {
+      const res = await apiFetch(`/api/projects/${selectedProject.id}/rules/${ruleId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1173,7 +1176,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const handleDuplicateRule = async (rule) => {
     if (isMyTasks) return;
     try {
-      const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}/rules`, {
+      const res = await apiFetch(`/api/projects/${selectedProject.id}/rules`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
@@ -1263,7 +1266,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       const previousState = task.isCompleted;
       handleTaskUpdate(task.id, { ...task, isCompleted: !previousState });
 
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ isCompleted: !previousState })
@@ -1278,7 +1281,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             // Revert Optimistic UI
             handleTaskUpdate(task.id, { ...task, isCompleted: previousState });
             try {
-              const revRes = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+              const revRes = await apiFetch(`/api/projects/tasks/${task.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ isCompleted: previousState })
@@ -1316,7 +1319,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     setApprovalMenu({ visible: false, x: 0, y: 0, task: null });
     if (isReadOnly) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToDuplicate}/duplicate`, {
+      const response = await apiFetch(`/api/projects/tasks/${taskIdToDuplicate}/duplicate`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1331,7 +1334,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   const executeDeleteTask = async (taskId) => {
     try {
-      await fetch(`http://localhost:5001/api/projects/tasks/${taskId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
+      await apiFetch(`/api/projects/tasks/${taskId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
     } catch (err) { console.error(err) }
   }
 
@@ -1547,7 +1550,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         },
         onCommit: async () => {
           try {
-            await fetch('http://localhost:5001/api/projects/tasks/bulk-delete', {
+            await apiFetch('/api/projects/tasks/bulk-delete', {
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ taskIds })
@@ -1623,7 +1626,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         },
         onCommit: async () => {
           try {
-            await fetch('http://localhost:5001/api/projects/tasks/bulk-update', {
+            await apiFetch('/api/projects/tasks/bulk-update', {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ taskIds, updates })
@@ -1640,7 +1643,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     if (isReadOnly) return;
     try {
       if (newType === 'PROJECT') {
-        const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToConvert}/convert-to-project`, {
+        const response = await apiFetch(`/api/projects/tasks/${taskIdToConvert}/convert-to-project`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -1653,7 +1656,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         return;
       }
 
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToConvert}`, {
+      const response = await apiFetch(`/api/projects/tasks/${taskIdToConvert}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ type: newType })
@@ -1680,7 +1683,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     setApprovalMenu({ visible: false, x: 0, y: 0, task: null });
     if (!taskIdToUpdate || isReadOnly) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${taskIdToUpdate}`, {
+      const response = await apiFetch(`/api/projects/tasks/${taskIdToUpdate}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ approvalStatus: status === 'PENDING' ? null : status })
@@ -1696,6 +1699,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
   const handleGeneralDrop = async (e, targetSectionId, explicitTargetTaskId = null, targetSubgroup = null, dropEdge = 'top') => {
     e.preventDefault()
+    if (isReadOnly) return;
     setDraggingTaskId(null)
 
     const dragType = e.dataTransfer.getData('drag-type')
@@ -1824,7 +1828,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       syncProjectStates({ ...selectedProject, sections: reorderedSections });
 
       try {
-        const response = await fetch('http://localhost:5001/api/projects/tasks/move', {
+        const response = await apiFetch('/api/projects/tasks/move', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ taskIds: draggedIds, targetSectionId, orderedTaskIds, projectId: selectedProject.id, taskPayloads })
@@ -2395,54 +2399,66 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
       {activeViewObj.type !== 'Overview' && activeViewObj.type !== 'Note' && activeViewObj.type !== 'Files' && activeViewObj.type !== 'Messages' && (
         <div style={styles.asanaOptionsSubHeader}>
           {activeViewObj.type === 'Dashboard' ? (
-            <div>
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                <button
-                  style={styles.addTaskDropdownBtn}
-                  disabled={isReadOnly}
-                  onClick={(e) => { e.stopPropagation(); setIsAddWidgetMenuOpen(!isAddWidgetMenuOpen); }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#818CF8'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6366F1'}
-                >
-                  <span style={{ fontWeight: '700' }}>+</span> Add widget
-                </button>
-                {isAddWidgetMenuOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    marginTop: '4px',
-                    background: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-                    zIndex: 10001,
-                    minWidth: '160px',
-                    padding: '4px 0',
-                    animation: 'fadeIn 0.15s ease',
-                  }}>
-                    <button
-                      style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 16px', border: 'none', background: 'none', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left' }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-                      onClick={() => { setIsAddWidgetMenuOpen(false); window.dispatchEvent(new CustomEvent('openAddChartModal')); }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="12" width="4" height="9" rx="1" /><rect x="10" y="6" width="4" height="15" rx="1" /><rect x="17" y="3" width="4" height="18" rx="1" /></svg>
-                      Chart
-                    </button>
-                    <button
-                      style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 16px', border: 'none', background: 'none', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left' }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-                      onClick={() => { setIsAddWidgetMenuOpen(false); window.dispatchEvent(new CustomEvent('openAddTextWidget')); }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h16v3" /><path d="M9 20h6" /><path d="M12 4v16" /></svg>
-                      Text
-                    </button>
-                  </div>
-                )}
+            <>
+              <div>
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <button
+                    style={styles.addTaskDropdownBtn}
+                    disabled={isReadOnly}
+                    onClick={(e) => { e.stopPropagation(); setIsAddWidgetMenuOpen(!isAddWidgetMenuOpen); }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#818CF8'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6366F1'}
+                  >
+                    <span style={{ fontWeight: '700' }}>+</span> Add widget
+                  </button>
+                  {isAddWidgetMenuOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      marginTop: '4px',
+                      background: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                      zIndex: 10001,
+                      minWidth: '160px',
+                      padding: '4px 0',
+                      animation: 'fadeIn 0.15s ease',
+                    }}>
+                      <button
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 16px', border: 'none', background: 'none', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                        onClick={() => { setIsAddWidgetMenuOpen(false); window.dispatchEvent(new CustomEvent('openAddChartModal')); }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="12" width="4" height="9" rx="1" /><rect x="10" y="6" width="4" height="15" rx="1" /><rect x="17" y="3" width="4" height="18" rx="1" /></svg>
+                        Chart
+                      </button>
+                      <button
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 16px', border: 'none', background: 'none', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                        onClick={() => { setIsAddWidgetMenuOpen(false); window.dispatchEvent(new CustomEvent('openAddTextWidget')); }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h16v3" /><path d="M9 20h6" /><path d="M12 4v16" /></svg>
+                        Text
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
+                <button
+                  style={{ ...styles.addTaskDropdownBtn, backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+                  onClick={(e) => { e.stopPropagation(); setIsShareDashboardModalOpen(true); }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                >
+                  🔗 Share Dashboard
+                </button>
+              </div>
+            </>
           ) : (
             <div style={{ position: 'relative', display: 'flex', alignItems: 'stretch' }}>
               <button
@@ -3152,7 +3168,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           setShowPicker={setIsAddWidgetMenuOpen}
         />
       ) : activeViewObj.type === 'Calendar' ? (
-        <ProjectCalendarView selectedProject={selectedProject} applyTaskFilter={applyTaskFilter} applyTaskSort={applyTaskSort} onOpenTaskPane={setActiveTaskPaneId} handleTaskUpdate={handleTaskUpdate} token={token} />
+        <ProjectCalendarView selectedProject={selectedProject} applyTaskFilter={applyTaskFilter} applyTaskSort={applyTaskSort} onOpenTaskPane={setActiveTaskPaneId} handleTaskUpdate={handleTaskUpdate} token={token} isReadOnly={isReadOnly} />
       ) : activeViewObj.type === 'Timeline' ? (
         <ProjectTimelineView
           selectedProject={selectedProject}
@@ -3272,14 +3288,14 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             const newField = { id: Date.now().toString(), ...fieldData };
             const newCustomFields = [...(selectedProject.customFieldSettings || []), newField];
             try {
-              const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ customFieldSettings: newCustomFields }) });
+              const res = await apiFetch(`/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ customFieldSettings: newCustomFields }) });
               if (res.ok) { const updatedProj = await res.json(); syncProjectStates(updatedProj); setShowAddFieldMenu(false); }
             } catch (err) { console.error(err); }
           }}
           onUpdateField={async (updatedField) => {
             const newCustomFields = (selectedProject.customFieldSettings || []).map(f => f.id === updatedField.id ? updatedField : f);
             try {
-              const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ customFieldSettings: newCustomFields }) });
+              const res = await apiFetch(`/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ customFieldSettings: newCustomFields }) });
               if (res.ok) { const updatedProj = await res.json(); syncProjectStates(updatedProj); setShowAddFieldMenu(false); setFieldToEdit(null); }
             } catch (err) { console.error(err); }
           }}
@@ -3296,7 +3312,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           onUndo: async () => {
             handleTaskUpdate(id, prevTask);
             try {
-              const revRes = await fetch(`http://localhost:5001/api/projects/tasks/${id}`, {
+              const revRes = await apiFetch(`/api/projects/tasks/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ dueDate: prevTask.dueDate, startDate: prevTask.startDate })
@@ -3316,7 +3332,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           onUndo: async () => {
             handleTaskUpdate(id, prevTask);
             try {
-              const revRes = await fetch(`http://localhost:5001/api/projects/tasks/${id}`, {
+              const revRes = await apiFetch(`/api/projects/tasks/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ assigneeId: prevTask.assigneeId })
@@ -3574,7 +3590,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
 
                           // Remote update
                           try {
-                            const res = await fetch(`http://localhost:5001/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ customFieldSettings: newFields }) });
+                            const res = await apiFetch(`/api/projects/${selectedProject.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ customFieldSettings: newFields }) });
                             if (res.ok) { const updatedProj = await res.json(); syncProjectStates(updatedProj); }
                           } catch (err) { console.error(err); }
                         }}
@@ -4147,6 +4163,15 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
             ) : null}
           </div>
         </>
+      )}
+
+      {isShareDashboardModalOpen && (
+        <ShareDashboardModal
+          project={selectedProject}
+          token={token}
+          onClose={() => setIsShareDashboardModalOpen(false)}
+          onProjectUpdated={setSelectedProject}
+        />
       )}
 
       {tabContextMenu.visible && (

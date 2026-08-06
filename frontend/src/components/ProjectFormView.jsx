@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api';
 
 export default function ProjectFormView({ project, token, onProjectUpdate, onClose, activeFormId }) {
   const [formSettings, setFormSettings] = useState({
@@ -39,7 +40,7 @@ export default function ProjectFormView({ project, token, onProjectUpdate, onClo
         newFormsArray = [...formsArray, formSettings];
       }
 
-      const response = await fetch(`http://localhost:5001/api/projects/${project.id}`, {
+      const response = await apiFetch(`/api/projects/${project.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ formSettings: newFormsArray })

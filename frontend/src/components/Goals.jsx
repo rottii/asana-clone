@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import GoalDetail from './GoalDetail';
+import { apiFetch } from '../api';
 import './Goals.css';
 import UserAvatar from './UserAvatar';
 
@@ -15,7 +16,7 @@ export default function Goals({ token, user, setActiveView }) {
 
   const fetchGoals = async () => {
     try {
-      const res = await fetch('http://localhost:5001/api/goals', {
+      const res = await apiFetch('/api/goals', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -38,7 +39,7 @@ export default function Goals({ token, user, setActiveView }) {
     if (!newGoalTitle.trim()) return;
 
     try {
-      const res = await fetch('http://localhost:5001/api/goals', {
+      const res = await apiFetch('/api/goals', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

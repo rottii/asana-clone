@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch, assetUrl } from '../api';
 
 export default function ProjectFilesView({ selectedProject, token, onTaskUpdate }) {
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -23,7 +24,7 @@ export default function ProjectFilesView({ selectedProject, token, onTaskUpdate 
     setIsDeleting(true);
     setOpenMenuId(null);
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/attachments/${att.id}`, {
+      const response = await apiFetch(`/api/projects/attachments/${att.id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -51,7 +52,7 @@ export default function ProjectFilesView({ selectedProject, token, onTaskUpdate 
     e.stopPropagation();
     setOpenMenuId(null);
     const link = document.createElement('a');
-    link.href = `http://localhost:5001/uploads/${att.filename}`;
+    link.href = assetUrl(`/uploads/${att.filename}`);
     link.download = att.originalName;
     link.target = '_blank';
     document.body.appendChild(link);
@@ -101,7 +102,7 @@ export default function ProjectFilesView({ selectedProject, token, onTaskUpdate 
           {allAttachments.map((att) => (
             <div
               key={att.id}
-              onClick={() => window.open(`http://localhost:5001/uploads/${att.filename}`, '_blank')}
+              onClick={() => window.open(assetUrl(`/uploads/${att.filename}`), '_blank')}
               style={{
                 backgroundColor: 'var(--bg-primary)',
                 border: '1px solid var(--border-color)',
@@ -248,7 +249,7 @@ export default function ProjectFilesView({ selectedProject, token, onTaskUpdate 
               }}>
                 {att.mimeType?.startsWith('image/') ? (
                   <img
-                    src={`http://localhost:5001/uploads/${att.filename}`}
+                    src={assetUrl(`/uploads/${att.filename}`)}
                     alt={att.originalName}
                     style={{
                       maxWidth: '100%',

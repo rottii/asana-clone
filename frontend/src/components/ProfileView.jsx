@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import UserAvatar from './UserAvatar';
+import { apiFetch } from '../api';
 
 export default function ProfileView({ user, projects, activeWorkspace, setActiveView, handleSelectProject, token }) {
   const [goals, setGoals] = useState([]);
 
   useEffect(() => {
     if (token) {
-      fetch('http://localhost:5001/api/goals', {
+      apiFetch('/api/goals', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       .then(res => res.json())

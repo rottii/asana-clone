@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts'
 import UserAvatar from './UserAvatar'
+import { apiFetch } from '../api'
 import './Dashboard.css'
 
 // ========================
@@ -25,9 +26,9 @@ const DEFAULT_LAYOUT = [
   { id: 'people', type: 'people', colSpan: 1, rowSpan: 1 },
 ]
 
-export default function Dashboard({ user, projects, setProjects, setSelectedProject, token, handleLogout, setActiveView, activeWorkspace }) {
+export default function Dashboard({ user, projects, setProjects, setSelectedProject, token, handleLogout, setActiveView, activeWorkspace, workspaces }) {
   // --- Layout State ---
-  const [widgetLayout, setWidgetLayout] = useState(DEFAULT_LAYOUT)
+  const [widgetLayout, setWidgetLayout] = useState([])
   const [notepadContent, setNotepadContent] = useState('')
   const [layoutLoaded, setLayoutLoaded] = useState(false)
 
@@ -51,13 +52,15 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
   // ========================
   useEffect(() => {
     if (!token) return
-    fetch('http://localhost:5001/api/dashboard', {
+    apiFetch('/api/dashboard', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(data => {
         if (data.layout && Array.isArray(data.layout) && data.layout.length > 0) {
           setWidgetLayout(data.layout)
+        } else {
+          setWidgetLayout(DEFAULT_LAYOUT)
         }
         if (data.notepad) {
           setNotepadContent(data.notepad)
@@ -66,6 +69,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
       })
       .catch(err => {
         console.error('Failed to load dashboard layout:', err)
+        setWidgetLayout(DEFAULT_LAYOUT)
         setLayoutLoaded(true)
       })
   }, [token])
@@ -77,7 +81,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
     if (!token) return
     clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      fetch('http://localhost:5001/api/dashboard', {
+      apiFetch('/api/dashboard', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ layout })
@@ -89,7 +93,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
     if (!token) return
     clearTimeout(notepadTimerRef.current)
     notepadTimerRef.current = setTimeout(() => {
-      fetch('http://localhost:5001/api/dashboard', {
+      apiFetch('/api/dashboard', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ notepad: text })
@@ -227,7 +231,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
   const [goalsData, setGoalsData] = useState([])
   useEffect(() => {
     if (!token) return
-    fetch('http://localhost:5001/api/goals', {
+    apiFetch('/api/goals', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -251,7 +255,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
       }
     }
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ isCompleted: !task.isCompleted })
@@ -820,7 +824,7 @@ export default function Dashboard({ user, projects, setProjects, setSelectedProj
 
       {/* GRID */}
       <div key={activeWorkspace?.id || 'default'} className={`dashboard-grid ${dragIndex !== null ? 'is-dragging' : ''}`}>
-        {widgetLayout.map((widget, index) => (
+        {(activeWorkspace || workspaces?.length === 0) && widgetLayout.map((widget, index) => (
           <div
             key={widget.id}
             className={`dashboard-widget ${widget.colSpan === 2 ? 'span-2' : ''} ${widget.rowSpan === 2 ? 'row-2' : 'row-1'} ${dragIndex === index ? 'widget-dragging' : ''} ${dragOverIndex === index && dragIndex !== index ? 'widget-drop-target' : ''}`}

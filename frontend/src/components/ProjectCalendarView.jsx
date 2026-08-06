@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { apiFetch } from '../api';
 import UserAvatar from './UserAvatar';
 
-export default function ProjectCalendarView({ selectedProject, applyTaskFilter, applyTaskSort, onOpenTaskPane, handleTaskUpdate, token }) {
+export default function ProjectCalendarView({ selectedProject, applyTaskFilter, applyTaskSort, onOpenTaskPane, handleTaskUpdate, token, isReadOnly }) {
   const containerRef = useRef(null);
   const [visibleMonth, setVisibleMonth] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -236,7 +237,7 @@ export default function ProjectCalendarView({ selectedProject, applyTaskFilter, 
       if (data.hasDueDate) updates.dueDate = toLocalISOString(newEnd);
 
       if (token) {
-        const response = await fetch(`http://localhost:5001/api/projects/tasks/${data.taskId}`, {
+        const response = await apiFetch(`/api/projects/tasks/${data.taskId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(updates)
@@ -329,16 +330,17 @@ export default function ProjectCalendarView({ selectedProject, applyTaskFilter, 
                   return (
                     <div 
                       key={tIdx} 
+                      className="task-bar"
                       data-task-id={task.id}
-                      draggable="true"
-                      onDragStart={(e) => handleDragStart(e, task, week.days, startCol, endCol)}
+                      draggable={!isReadOnly}
+                      onDragStart={(e) => { if(!isReadOnly) handleDragStart(e, task, week.days, startCol, endCol); }}
                       onDragEnd={handleDragEnd}
                       onClick={(e) => { e.stopPropagation(); onOpenTaskPane && onOpenTaskPane(task.id); }}
                       style={{ 
                         ...styles.taskBar, 
                         pointerEvents: isDragging ? 'none' : 'auto',
                         backgroundColor: task.isCompleted ? '#E5E7EB' : task.sectionColor,
-                        color: task.isCompleted ? '#9CA3AF' : 'var(--text-primary)',
+                        color: task.isCompleted ? '#4B5563' : '#111827',
                         textDecoration: task.isCompleted ? 'line-through' : 'none',
                         left: `calc(${startCol * (100/7)}% + 6px)`,
                         width: `calc(${(endCol - startCol + 1) * (100/7)}% - 12px)`,

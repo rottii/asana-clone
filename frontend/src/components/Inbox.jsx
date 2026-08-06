@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
+import { apiFetch, API_BASE_URL } from '../api';
 
 export default function Inbox({ token, user }) {
   const [notifications, setNotifications] = useState([]);
@@ -9,7 +10,7 @@ export default function Inbox({ token, user }) {
     fetchNotifications();
 
     if (user && user.id) {
-      const socket = io('http://localhost:5001');
+      const socket = io(API_BASE_URL);
       socket.emit('join_user', user.id);
 
       socket.on('notification_received', () => {
@@ -24,7 +25,7 @@ export default function Inbox({ token, user }) {
 
   const fetchNotifications = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/notifications', {
+      const response = await apiFetch('/api/notifications', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
@@ -40,7 +41,7 @@ export default function Inbox({ token, user }) {
 
   const handleMarkAsRead = async (id) => {
     try {
-      await fetch(`http://localhost:5001/api/notifications/${id}/read`, {
+      await apiFetch(`/api/notifications/${id}/read`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -52,7 +53,7 @@ export default function Inbox({ token, user }) {
 
   const handleMarkAllAsRead = async () => {
     try {
-      await fetch('http://localhost:5001/api/notifications/read-all', {
+      await apiFetch('/api/notifications/read-all', {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}` }
       });

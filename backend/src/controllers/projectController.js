@@ -130,12 +130,22 @@ exports.getTemplates = async (req, res) => {
 
 exports.getProjects = async (req, res) => {
     try {
+        const fullAccessWorkspaces = await prisma.workspaceMember.findMany({
+            where: { userId: req.user.userId, role: { in: ['MEMBER', 'ADMIN'] } },
+            select: { workspaceId: true }
+        });
+        const fullAccessWorkspaceIds = fullAccessWorkspaces.map(w => w.workspaceId);
+
         const projects = await prisma.project.findMany({
             where: {
                 isTemplate: false,
                 OR: [
                     { ownerId: req.user.userId },
-                    { members: { some: { userId: req.user.userId } } }
+                    { members: { some: { userId: req.user.userId } } },
+                    { 
+                        workspaceId: { in: fullAccessWorkspaceIds },
+                        isPrivate: false
+                    }
                 ]
             },
             include: fullProjectInclude,
@@ -273,6 +283,14 @@ exports.createProject = async (req, res) => {
         const { name, description, defaultView, activeViews, color, icon, workspaceId, teamId } = req.body;
         if (!name || !name.trim()) {
             return res.status(400).json({ error: 'Proje adı zorunludur.' });
+        }
+
+        if (workspaceId) {
+            const { getWorkspaceRole } = require('../utils/projectHelpers');
+            const role = await getWorkspaceRole(req.user.userId, workspaceId);
+            if (role === 'GUEST') {
+                return res.status(403).json({ error: 'Guests cannot create new projects.' });
+            }
         }
 
         const newProject = await prisma.project.create({
@@ -496,7 +514,7 @@ exports.updateProject = async (req, res) => {
             return res.status(403).json({ error: 'Bu işlem için yetkiniz yok. (Editor veya üstü gerekli)' });
         }
 
-        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, formSettings, startDate, dueDate, color, icon, workspaceId, teamId, githubRepo, allowAutoCodeOnPR } = req.body;
+        const { name, description, status, isArchived, defaultView, activeViews, customFieldSettings, formSettings, dashboardLayout, startDate, dueDate, color, icon, workspaceId, teamId, githubRepo, allowAutoCodeOnPR, isPrivate } = req.body;
 
         const updateData = {};
         if (name !== undefined) updateData.name = name;
@@ -507,6 +525,7 @@ exports.updateProject = async (req, res) => {
         if (activeViews !== undefined) updateData.activeViews = activeViews;
         if (githubRepo !== undefined) updateData.githubRepo = githubRepo;
         if (allowAutoCodeOnPR !== undefined) updateData.allowAutoCodeOnPR = allowAutoCodeOnPR;
+        if (isPrivate !== undefined) updateData.isPrivate = isPrivate;
         if (customFieldSettings !== undefined) {
             updateData.customFieldSettings = customFieldSettings;
 
@@ -585,6 +604,7 @@ exports.updateProject = async (req, res) => {
             }
         }
         if (formSettings !== undefined) updateData.formSettings = formSettings;
+        if (dashboardLayout !== undefined) updateData.dashboardLayout = dashboardLayout;
         if (workspaceId !== undefined) updateData.workspaceId = workspaceId;
         if (teamId !== undefined) updateData.teamId = teamId;
         if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
@@ -604,7 +624,7 @@ exports.updateProject = async (req, res) => {
         res.json(updatedProject);
     } catch (error) {
         console.error('Error updating project:', error);
-        res.status(500).json({ error: 'Proje güncellenirken hata oluştu.', details: error.message });
+        res.status(500).json({ error: 'Proje güncellenirken hata oluştu.', details: error.message, stack: error.stack });
     }
 };
 
@@ -655,6 +675,65 @@ exports.deleteProject = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  PUBLIC LINKS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+exports.generatePublicLink = async (req, res) => {
+    try {
+        const role = await getProjectRole(req.user.userId, req.params.id);
+        if (role !== 'ADMIN' && role !== 'EDITOR') {
+            return res.status(403).json({ error: 'Sadece proje yöneticileri veya editörler public link oluşturabilir.' });
+        }
+
+        const crypto = require('crypto');
+        const token = crypto.randomBytes(24).toString('hex');
+
+        const updatedProject = await prisma.project.update({
+            where: { id: req.params.id },
+            data: {
+                isPublicDashboard: true,
+                publicToken: token
+            },
+            include: fullProjectInclude
+        });
+
+        const io = req.app.get('io');
+        if (io) io.to(req.params.id).emit('project_updated', updatedProject);
+
+        res.json(updatedProject);
+    } catch (error) {
+        console.error('Error generating public link:', error);
+        res.status(500).json({ error: 'Public link oluşturulurken hata oluştu.', details: error.message });
+    }
+};
+
+exports.revokePublicLink = async (req, res) => {
+    try {
+        const role = await getProjectRole(req.user.userId, req.params.id);
+        if (role !== 'ADMIN' && role !== 'EDITOR') {
+            return res.status(403).json({ error: 'Sadece proje yöneticileri veya editörler public linki iptal edebilir.' });
+        }
+
+        const updatedProject = await prisma.project.update({
+            where: { id: req.params.id },
+            data: {
+                isPublicDashboard: false,
+                publicToken: null
+            },
+            include: fullProjectInclude
+        });
+
+        const io = req.app.get('io');
+        if (io) io.to(req.params.id).emit('project_updated', updatedProject);
+
+        res.json(updatedProject);
+    } catch (error) {
+        console.error('Error revoking public link:', error);
+        res.status(500).json({ error: 'Public link iptal edilirken hata oluştu.', details: error.message });
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  SHARING / MEMBERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -665,7 +744,7 @@ exports.shareProject = async (req, res) => {
             return res.status(403).json({ error: 'Sadece proje yöneticisi üye ekleyebilir.' });
         }
 
-        const { email } = req.body;
+        const { email, projectRole, workspaceRole } = req.body;
         if (!email) return res.status(400).json({ error: 'Email adresi zorunludur.' });
 
         const userToAdd = await prisma.user.findUnique({ where: { email } });
@@ -683,11 +762,13 @@ exports.shareProject = async (req, res) => {
             where: {
                 projectId_userId: { projectId: req.params.id, userId: userToAdd.id }
             },
-            update: {},
+            update: {
+                role: projectRole || 'EDITOR'
+            },
             create: {
                 projectId: req.params.id,
                 userId: userToAdd.id,
-                role: 'EDITOR'
+                role: projectRole || 'EDITOR'
             }
         });
 
@@ -697,11 +778,11 @@ exports.shareProject = async (req, res) => {
                 where: {
                     workspaceId_userId: { workspaceId: project.workspaceId, userId: userToAdd.id }
                 },
-                update: {},
+                update: {}, // Don't demote existing members to guest
                 create: {
                     workspaceId: project.workspaceId,
                     userId: userToAdd.id,
-                    role: 'MEMBER' // or GUEST depending on your rules
+                    role: workspaceRole || 'MEMBER'
                 }
             });
         }

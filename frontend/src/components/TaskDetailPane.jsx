@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import RichTextEditor from './RichTextEditor';
 import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusColor, getGithubPRStatusLabel } from '../utils/customFields';
 import UserAvatar from './UserAvatar';
+import { apiFetch, assetUrl } from '../api';
 
 export default function TaskDetailPane({ task, selectedProject, onClose, onTaskUpdate, onDeleteTask, onConvertTask, token, projectRole, customFieldSettings, onOpenPopover, currentUser }) {
   const paneRef = useRef(null);
@@ -82,7 +83,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
   useEffect(() => {
     if (showTagInput) {
-      fetch('http://localhost:5001/api/tags', {
+      apiFetch('/api/tags', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -95,7 +96,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
   useEffect(() => {
     if (showProjectInput && availableProjects.length === 0) {
-      fetch('http://localhost:5001/api/projects', {
+      apiFetch('/api/projects', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -157,7 +158,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     if (!githubPrUrlValue.trim() || isReadOnly) return;
     setIsFetchingPr(true);
     try {
-      const response = await fetch('http://localhost:5001/api/github/pr', {
+      const response = await apiFetch('/api/github/pr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: githubPrUrlValue })
@@ -170,7 +171,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
       }
 
       const newPRs = [...githubPRs, data];
-      const patchResponse = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const patchResponse = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ githubPRs: JSON.stringify(newPRs) })
@@ -194,7 +195,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     try {
       const refreshedPRs = [];
       for (const pr of githubPRs) {
-        const response = await fetch('http://localhost:5001/api/github/pr', {
+        const response = await apiFetch('/api/github/pr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: pr.url })
@@ -207,7 +208,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
         }
       }
 
-      const patchResponse = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const patchResponse = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ githubPRs: JSON.stringify(refreshedPRs) })
@@ -226,7 +227,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     if (isReadOnly) return;
     try {
       const newPRs = githubPRs.filter((_, idx) => idx !== indexToRemove);
-      const patchResponse = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const patchResponse = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ githubPRs: JSON.stringify(newPRs) })
@@ -249,7 +250,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     }
     setIsAutoCoding(true);
     try {
-      const response = await fetch(`http://localhost:5001/api/ai/auto-code/${task.id}`, {
+      const response = await apiFetch(`/api/ai/auto-code/${task.id}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -279,7 +280,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     if (field === 'description' && value === task.description) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ [field]: value })
@@ -308,7 +309,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     }
 
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ isCompleted: !task.isCompleted })
@@ -326,7 +327,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     if (isReadOnly) return;
     try {
       const isCompleted = status === 'APPROVED' || status === 'REJECTED';
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ approvalStatus: status, isCompleted })
@@ -350,7 +351,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     bodyData.customFields = JSON.stringify(parsedFields);
 
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(bodyData)
@@ -397,7 +398,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     e.preventDefault();
     if (isReadOnly || !newSubtaskTitle.trim()) return;
     try {
-      const response = await fetch('http://localhost:5001/api/projects/tasks', {
+      const response = await apiFetch('/api/projects/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ title: newSubtaskTitle, sectionId: task.sectionId, parentId: task.id })
@@ -414,7 +415,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   const handleToggleSubtaskComplete = async (subtaskId, isCompleted) => {
     if (isReadOnly) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${subtaskId}`, {
+      const response = await apiFetch(`/api/projects/tasks/${subtaskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ isCompleted: !isCompleted })
@@ -431,7 +432,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     e.preventDefault();
     if (projectRole === 'VIEWER' || !newCommentText.trim()) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/comments`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ text: newCommentText })
@@ -448,7 +449,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
   const handleToggleReaction = async (commentId, emoji) => {
     if (projectRole === 'VIEWER') return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/comments/${commentId}/reactions`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}/comments/${commentId}/reactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ emoji })
@@ -464,7 +465,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     e.preventDefault();
     if (isReadOnly || !tagInputValue.trim()) return;
     try {
-      const tagRes = await fetch('http://localhost:5001/api/tags', {
+      const tagRes = await apiFetch('/api/tags', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ name: tagInputValue.trim(), color: tagColorValue })
@@ -474,7 +475,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
       if (tagId) {
         const projectId = task.projectId || (selectedProject && selectedProject.id) || task.section?.projectId;
-        const assignRes = await fetch(`http://localhost:5001/api/projects/${projectId}/tasks/${task.id}/tags`, {
+        const assignRes = await apiFetch(`/api/projects/${projectId}/tasks/${task.id}/tags`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ tagId })
@@ -493,7 +494,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     if (isReadOnly) return;
     try {
       const projectId = task.projectId || (selectedProject && selectedProject.id) || task.section?.projectId;
-      const assignRes = await fetch(`http://localhost:5001/api/projects/${projectId}/tasks/${task.id}/tags`, {
+      const assignRes = await apiFetch(`/api/projects/${projectId}/tasks/${task.id}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ tagId })
@@ -511,7 +512,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     if (isReadOnly) return;
     try {
       const projectId = task.projectId || (selectedProject && selectedProject.id) || task.section?.projectId;
-      const res = await fetch(`http://localhost:5001/api/projects/${projectId}/tasks/${task.id}/tags/${tagId}`, {
+      const res = await apiFetch(`/api/projects/${projectId}/tasks/${task.id}/tags/${tagId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -529,7 +530,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
       const sectionId = selectedProj?.sections?.[0]?.id; // Default to first section
       if (!sectionId) return alert('This project has no sections!');
 
-      const res = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/projects`, {
+      const res = await apiFetch(`/api/projects/tasks/${task.id}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ targetProjectId: projectId, targetSectionId: sectionId })
@@ -557,7 +558,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     }
     if (!window.confirm("Are you sure you want to remove this task from the project?")) return;
     try {
-      const res = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/projects/${projectId}`, {
+      const res = await apiFetch(`/api/projects/tasks/${task.id}/projects/${projectId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -578,7 +579,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     if (isReadOnly) return;
     setOpenSectionMenuId(null);
     try {
-      const res = await fetch(`http://localhost:5001/api/projects/tasks/move`, {
+      const res = await apiFetch(`/api/projects/tasks/move`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ taskId: task.id, targetSectionId: newSectionId, projectId })
@@ -604,7 +605,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
     if (projectRole === 'VIEWER') return;
     if (!window.confirm("Yorumu silmek istediğinize emin misiniz?")) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/comments/${commentId}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}/comments/${commentId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -625,7 +626,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
       const formData = new FormData();
       Array.from(files).forEach(file => formData.append('files', file));
 
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}/attachments`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}/attachments`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
@@ -651,7 +652,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
 
   const handleDeleteAttachment = async (attachmentId) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/attachments/${attachmentId}`, {
+      const response = await apiFetch(`/api/projects/attachments/${attachmentId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -746,49 +747,51 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
                 {isAutoCoding ? '🤖 Coding...' : '🤖 Auto-Code'}
               </button>
             )}
-            <div className="more-menu-container" style={{ position: 'relative' }}>
-              <button
-                style={{ ...styles.iconBtn, fontSize: '1.2rem', paddingBottom: '0.2rem' }}
-                onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
-                title="More actions"
-              >
-                ⋯
-              </button>
+            {!isReadOnly && (
+              <div className="more-menu-container" style={{ position: 'relative' }}>
+                <button
+                  style={{ ...styles.iconBtn, fontSize: '1.2rem', paddingBottom: '0.2rem' }}
+                  onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                  title="More actions"
+                >
+                  ⋯
+                </button>
 
-              {isMoreMenuOpen && (
-                <div style={{ position: 'absolute', top: '100%', right: '0', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 100, padding: '0.4rem', minWidth: '150px', marginTop: '4px' }}>
-                  <div
-                    style={{ position: 'relative' }}
-                    onMouseEnter={() => setIsConvertMenuOpen(true)}
-                    onMouseLeave={() => setIsConvertMenuOpen(false)}
-                  >
-                    <button style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: isConvertMenuOpen ? 'var(--bg-secondary)' : 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 8h16M4 16h16"></path><circle cx="6" cy="8" r="2"></circle><circle cx="18" cy="16" r="2"></circle></svg>
-                        Convert to
-                      </span>
-                      <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', transform: 'rotate(180deg)' }}>›</span>
+                {isMoreMenuOpen && (
+                  <div style={{ position: 'absolute', top: '100%', right: '0', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 100, padding: '0.4rem', minWidth: '150px', marginTop: '4px' }}>
+                    <div
+                      style={{ position: 'relative' }}
+                      onMouseEnter={() => setIsConvertMenuOpen(true)}
+                      onMouseLeave={() => setIsConvertMenuOpen(false)}
+                    >
+                      <button style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: isConvertMenuOpen ? 'var(--bg-secondary)' : 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 8h16M4 16h16"></path><circle cx="6" cy="8" r="2"></circle><circle cx="18" cy="16" r="2"></circle></svg>
+                          Convert to
+                        </span>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', transform: 'rotate(180deg)' }}>›</span>
+                      </button>
+
+                      {isConvertMenuOpen && (
+                        <div style={{ position: 'absolute', top: '-5px', right: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 101, padding: '0.4rem', minWidth: '150px' }}>
+                          <button onClick={() => { onConvertTask('TASK', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>✓</span> Task</button>
+                          <button onClick={() => { onConvertTask('MILESTONE', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>◇</span> Milestone</button>
+                          <button onClick={() => { onConvertTask('APPROVAL', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>⚖️</span> Approval</button>
+                          <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }}></div>
+                          <button onClick={() => { alert('Coming soon'); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>⑂</span> Subtask</button>
+                          <button onClick={() => { onConvertTask('PROJECT', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>📋</span> Project</button>
+                          <button onClick={() => { alert('Coming soon'); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>◯</span> Task template</button>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }}></div>
+                    <button onClick={() => { onDeleteTask(task.id); setIsMoreMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: 'var(--accent-danger)' }}>🗑️</span> Delete Task
                     </button>
-
-                    {isConvertMenuOpen && (
-                      <div style={{ position: 'absolute', top: '-5px', right: '100%', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 101, padding: '0.4rem', minWidth: '150px' }}>
-                        <button onClick={() => { onConvertTask('TASK', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>✓</span> Task</button>
-                        <button onClick={() => { onConvertTask('MILESTONE', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>◇</span> Milestone</button>
-                        <button onClick={() => { onConvertTask('APPROVAL', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>⚖️</span> Approval</button>
-                        <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }}></div>
-                        <button onClick={() => { alert('Coming soon'); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>⑂</span> Subtask</button>
-                        <button onClick={() => { onConvertTask('PROJECT', task.id); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>📋</span> Project</button>
-                        <button onClick={() => { alert('Coming soon'); setIsMoreMenuOpen(false); setIsConvertMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ color: 'var(--text-secondary)' }}>◯</span> Task template</button>
-                      </div>
-                    )}
                   </div>
-                  <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }}></div>
-                  <button onClick={() => { onDeleteTask(task.id); setIsMoreMenuOpen(false); }} style={{ width: '100%', padding: '0.6rem 0.8rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ color: 'var(--accent-danger)' }}>🗑️</span> Delete Task
-                  </button>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
             <button style={styles.iconBtn} onClick={onClose} title="Close details">×</button>
           </div>
         </div>
@@ -1535,7 +1538,7 @@ export default function TaskDetailPane({ task, selectedProject, onClose, onTaskU
               <div style={styles.attachmentList}>
                 {task.attachments.map(att => {
                   const isImage = att.mimeType?.startsWith('image/');
-                  const fileUrl = `http://localhost:5001/uploads/${att.filename}`;
+                  const fileUrl = assetUrl(`/uploads/${att.filename}`);
                   const sizeStr = att.size < 1024 ? `${att.size} B`
                     : att.size < 1024 * 1024 ? `${(att.size / 1024).toFixed(1)} KB`
                       : `${(att.size / (1024 * 1024)).toFixed(1)} MB`;

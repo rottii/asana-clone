@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import AddFieldModal from './AddFieldModal'
 import { getParsedTaskCustomFields, getParsedGithubPRs, getGithubPRStatusLabel, getGithubPRStatusColor } from '../utils/customFields';
 import UserAvatar from './UserAvatar';
+import { apiFetch } from '../api';
 
 let globalLastDragY = 0;
 
@@ -10,6 +11,8 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
   const [isHovered, setIsHovered] = useState(false)
   const [isEditingMode, setIsEditingMode] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title || '')
+  
+  const isReadOnly = projectRole === 'VIEWER' || projectRole === 'COMMENTER';
   const textareaRef = useRef(null)
 
   useEffect(() => {
@@ -23,7 +26,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
     if (isReadOnly) return;
     if (editTitle !== task.title) {
       try {
-        const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+        const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ title: editTitle })
@@ -44,8 +47,6 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
   const [isLiked, setIsLiked] = useState(() => getLikedTasks().includes(task.id));
   const cardRef = useRef(null)
 
-  const isReadOnly = projectRole === 'VIEWER' || projectRole === 'COMMENTER';
-
   const handleDirectFieldUpdate = async (fieldId, value) => {
     if (isReadOnly) return;
     const bodyData = {};
@@ -54,7 +55,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
     bodyData.customFields = JSON.stringify(parsedFields);
 
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(bodyData)
@@ -83,7 +84,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
     }
 
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ isCompleted: !task.isCompleted })
@@ -99,7 +100,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
     if (isReadOnly) return;
     try {
       const isCompleted = status === 'APPROVED' || status === 'REJECTED';
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ approvalStatus: status, isCompleted })
@@ -139,7 +140,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
     try {
       const currentlyLiked = isLiked;
       const newLikes = currentlyLiked ? Math.max(0, (task.likes || 0) - 1) : (task.likes || 0) + 1;
-      const response = await fetch(`http://localhost:5001/api/projects/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/projects/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ likes: newLikes })
@@ -215,7 +216,7 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
       draggable={!isReadOnly && (!isVirtualGrouping || isMatrixCell) && !isEditingMode}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onDragStart={isEditingMode ? undefined : (e) => {
+      onDragStart={(isEditingMode || isReadOnly) ? undefined : (e) => {
         e.stopPropagation()
         e.dataTransfer.setData('drag-type', 'task')
         e.dataTransfer.setData('task-id', task.id)
@@ -241,11 +242,11 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
           }, 10);
         }
       }}
-      onDragEnd={isEditingMode ? undefined : (e) => {
+      onDragEnd={(isEditingMode || isReadOnly) ? undefined : (e) => {
         e.stopPropagation();
         if (setDraggingTaskId) setDraggingTaskId(null);
       }}
-      onDragOver={isEditingMode ? undefined : (e) => {
+      onDragOver={(isEditingMode || isReadOnly) ? undefined : (e) => {
         e.preventDefault();
         if (draggingTaskId && draggingTaskId !== task.id && (!isVirtualGrouping || isMatrixCell)) {
           let queryId = draggingTaskId;
@@ -291,8 +292,8 @@ export default function TaskCard({ task, token, isVirtualGrouping, customFieldSe
         opacity: (task.isCompleted && !isEditingMode && !openFieldMenuId) ? 0.6 : (draggingTaskId === task.id ? 0.4 : 1),
         position: 'relative',
         transition: 'all 0.15s ease',
-        WebkitUserDrag: isEditingMode ? 'none' : 'element',
-        userDrag: isEditingMode ? 'none' : 'element'
+        WebkitUserDrag: (isEditingMode || isReadOnly) ? 'none' : 'element',
+        userDrag: (isEditingMode || isReadOnly) ? 'none' : 'element'
       }}
       onClickCapture={(e) => {
         let handled = false;

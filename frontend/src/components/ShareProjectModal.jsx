@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react'
 import UserAvatar from './UserAvatar'
+import { apiFetch } from '../api'
 
 export default function ShareProjectModal({ project, token, currentUser, onClose, onProjectUpdated }) {
   const [emailInput, setEmailInput] = useState('')
+  const [inviteAsGuest, setInviteAsGuest] = useState(false)
   const [inviteMessage, setInviteMessage] = useState('')
   const [activeMenuMemberId, setActiveMenuMemberId] = useState(null)
+  const [showAccessMenu, setShowAccessMenu] = useState(false)
   const [menuCoords, setMenuCoords] = useState({ top: 0, left: 0 })
 
   useEffect(() => {
-    const closeMenu = () => setActiveMenuMemberId(null)
+    const closeMenu = () => {
+      setActiveMenuMemberId(null)
+      setShowAccessMenu(false)
+    }
     window.addEventListener('click', closeMenu)
     return () => window.removeEventListener('click', closeMenu)
   }, [])
@@ -18,10 +24,14 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
     if (!emailInput.trim()) return
     setInviteMessage('')
     try {
-      const response = await fetch(`http://localhost:5001/api/projects/${project.id}/share`, {
+      const response = await apiFetch(`/api/projects/${project.id}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ email: emailInput.trim() })
+        body: JSON.stringify({ 
+          email: emailInput.trim(),
+          workspaceRole: inviteAsGuest ? 'GUEST' : 'MEMBER',
+          projectRole: inviteAsGuest ? 'VIEWER' : 'EDITOR'
+        })
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error)
@@ -31,16 +41,29 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
     } catch (err) { setInviteMessage(err.message) }
   }
 
+  const handleUpdatePrivacy = async (isPrivate) => {
+    try {
+      const response = await apiFetch(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ isPrivate })
+      })
+      const data = await response.json()
+      if (response.ok) onProjectUpdated(data)
+    } catch (err) { console.error(err) }
+    setShowAccessMenu(false)
+  }
+
   const handleUpdateRole = async (userId, newRole) => {
     try {
       let response;
       if (newRole === 'REMOVE') {
-        response = await fetch(`http://localhost:5001/api/projects/${project.id}/members/${userId}`, {
+        response = await apiFetch(`/api/projects/${project.id}/members/${userId}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         })
       } else {
-        response = await fetch(`http://localhost:5001/api/projects/${project.id}/members`, {
+        response = await apiFetch(`/api/projects/${project.id}/members`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ userId, role: newRole })
@@ -84,20 +107,95 @@ export default function ShareProjectModal({ project, token, currentUser, onClose
 
         <div style={{ marginBottom: '1.25rem' }}>
           <label style={styles.sectionLabel}>Invite with email</label>
-          <form onSubmit={handleInvite} style={styles.inviteFormRow}>
-            <div style={styles.inputWrapper}>
-              <input 
-                type="email" 
-                placeholder="Add members by name or email..." 
-                value={emailInput}
-                onChange={e => setEmailInput(e.target.value)}
-                style={styles.inviteInput}
-                required
-              />
+          <form onSubmit={handleInvite} style={{ ...styles.inviteFormRow, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={styles.inputWrapper}>
+                <input 
+                  type="email" 
+                  placeholder="Add members by name or email..." 
+                  value={emailInput}
+                  onChange={e => setEmailInput(e.target.value)}
+                  style={styles.inviteInput}
+                  required
+                />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', paddingLeft: '4px' }}>
+                <input 
+                  type="checkbox" 
+                  checked={inviteAsGuest}
+                  onChange={e => setInviteAsGuest(e.target.checked)}
+                />
+                Invite as Guest (Restricted access)
+              </label>
             </div>
             <button type="submit" style={styles.inviteBtn}>Invite</button>
           </form>
           {inviteMessage && <p style={{ fontSize: '0.75rem', marginTop: '0.25rem', color: inviteMessage.includes('başarıyla') ? 'green' : 'red' }}>{inviteMessage}</p>}
+        </div>
+
+        {/* ACCESS SETTINGS */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          <label style={styles.sectionLabel}>Access settings</label>
+          <div 
+            onClick={(e) => { 
+              if (isProjectAdmin) {
+                e.stopPropagation(); 
+                setShowAccessMenu(!showAccessMenu); 
+              }
+            }}
+            style={{ 
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+              padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: '6px', 
+              cursor: isProjectAdmin ? 'pointer' : 'default', backgroundColor: 'var(--bg-secondary)', position: 'relative'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+              <span style={{ fontSize: '1.1rem' }}>{project.isPrivate ? '🔒' : '👥'}</span>
+              <span>{project.isPrivate ? 'Private' : 'My workspace'}</span>
+            </div>
+            {isProjectAdmin && <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>▼</span>}
+
+            {/* Access Menu Dropdown */}
+            {showAccessMenu && isProjectAdmin && (
+              <div 
+                onClick={(e) => e.stopPropagation()}
+                style={{ 
+                  position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, 
+                  backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', 
+                  borderRadius: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 100 
+                }}
+              >
+                <div 
+                  onClick={() => handleUpdatePrivacy(false)}
+                  style={{ padding: '0.75rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  <span style={{ width: '20px', color: !project.isPrivate ? 'var(--text-primary)' : 'transparent', marginTop: '2px' }}>✓</span>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '500', fontSize: '0.9rem', marginBottom: '0.2rem', color: 'var(--text-primary)' }}>
+                      <span>👥</span> My workspace
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Everyone in your workspace can find and access this project.</div>
+                  </div>
+                </div>
+                <div 
+                  onClick={() => handleUpdatePrivacy(true)}
+                  style={{ padding: '0.75rem', cursor: 'pointer', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  <span style={{ width: '20px', color: project.isPrivate ? 'var(--text-primary)' : 'transparent', marginTop: '2px' }}>✓</span>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '500', fontSize: '0.9rem', marginBottom: '0.2rem', color: 'var(--text-primary)' }}>
+                      <span>🔒</span> Private
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Only invited members can find and access this project.</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div>

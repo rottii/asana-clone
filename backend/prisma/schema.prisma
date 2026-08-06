@@ -53,6 +53,7 @@ model User {
   activities    TaskActivity[]
   auditLogs     AuditLog[]
   dashboardLayout DashboardLayout?
+  sessions      Session[]
 }
 
 model Workspace {
@@ -144,6 +145,11 @@ model Project {
   
   customFieldSettings Json?       @default("[]")
   formSettings        Json?
+  dashboardLayout     Json?
+  
+  isPrivate           Boolean     @default(false)
+  isPublicDashboard   Boolean     @default(false)
+  publicToken         String?     @unique
   notifications Notification[]
   goals         GoalProject[]
   starredBy     StarredProject[] @relation("ProjectStars")
@@ -349,6 +355,9 @@ model PortfolioPortfolio {
   id              String    @id @default(uuid())
   createdAt       DateTime  @default(now())
 
+  isPublicDashboard Boolean   @default(false)
+  publicToken       String?   @unique
+
   parentPortfolioId String
   parentPortfolio   Portfolio @relation("ParentPortfolios", fields: [parentPortfolioId], references: [id], onDelete: Cascade)
 
@@ -524,3 +533,14 @@ model AuditLog {
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
+
+// --- YENİ MODEL: SESSION (REFRESH TOKENS) ---
+model Session {
+  id           String   @id @default(uuid())
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

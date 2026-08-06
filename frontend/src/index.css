@@ -103,3 +103,9 @@ body {
   background-color: var(--bg-secondary);
   border-left: 3px solid var(--accent-primary);
 }
+
+/* Dark mode timeline task bar filter */
+body.dark .task-bar,
+body.dark .pt-project-bar {
+  filter: saturate(4);
+}
