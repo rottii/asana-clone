@@ -22,7 +22,14 @@ import { UndoProvider } from './context/UndoContext'
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token'))
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')))
-  const [isDarkMode, setIsDarkMode] = useState(localStorage.getItem('darkMode') === 'true')
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      const u = JSON.parse(userStr)
+      if (u && typeof u.darkMode === 'boolean') return u.darkMode
+    }
+    return localStorage.getItem('darkMode') === 'true'
+  })
   const [projects, setProjects] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
   const [portfolios, setPortfolios] = useState([])
@@ -165,7 +172,22 @@ export default function App() {
     } else {
       document.body.classList.remove('dark')
     }
-  }, [isDarkMode])
+    localStorage.setItem('darkMode', isDarkMode)
+
+    // Sync with backend if logged in
+    if (token) {
+      apiFetch('/api/auth/me/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ darkMode: isDarkMode })
+      }).then(res => res.json()).then(data => {
+        if (data.user) {
+          setUser(data.user)
+          localStorage.setItem('user', JSON.stringify(data.user))
+        }
+      }).catch(err => console.error('Failed to sync preferences:', err))
+    }
+  }, [isDarkMode, token])
 
   // Projeleri çek ve yenileme sonrası aktif projeyi geri yükle
   useEffect(() => {
@@ -196,7 +218,6 @@ export default function App() {
               const found = data.find(p => p.id === savedProjectId)
               if (found) {
                 setSelectedProject(found)
-                setActiveView('project')
               }
             }
           } else {
@@ -227,7 +248,6 @@ export default function App() {
               const found = data.find(p => p.id === savedPortfolioId)
               if (found) {
                 setSelectedPortfolio(found)
-                setActiveView('portfolio_detail')
               }
             }
           } else {

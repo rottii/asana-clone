@@ -3,7 +3,7 @@ import KanbanBoard from './KanbanBoard';
 
 export default function MyTasks({ user, projects, token, setProjects }) {
   if (!user || !projects) return null;
-  
+
   // Find the actual My Tasks project from the backend
   const myTasksProject = projects.find(p => p.status === 'MY_TASKS' && p.ownerId === user.id);
 
@@ -27,16 +27,22 @@ export default function MyTasks({ user, projects, token, setProjects }) {
 
   return (
     <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
-      <KanbanBoard 
+      <KanbanBoard
         selectedProject={myTasksProject}
-        setSelectedProject={(updatedProj) => {
-          setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
+        setSelectedProject={(updater) => {
+          setProjects(prev => {
+            const currentProj = prev.find(p => p.status === 'MY_TASKS' && p.ownerId === user.id);
+            if (!currentProj) return prev;
+            const updatedProj = typeof updater === 'function' ? updater(currentProj) : updater;
+            if (!updatedProj) return prev;
+            return prev.map(p => p.id === updatedProj.id ? updatedProj : p);
+          });
         }}
         projects={projects}
         setProjects={setProjects}
         token={token}
         user={user}
-        handleLogout={() => {}}
+        handleLogout={() => { }}
         isMyTasks={true}
       />
     </div>

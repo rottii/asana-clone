@@ -46,6 +46,7 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
   const [activeOwner, setActiveOwner] = useState(null);
   const [activeMember, setActiveMember] = useState(null);
   const [activeStatus, setActiveStatus] = useState(null);
+  const [activePortfolio, setActivePortfolio] = useState(null);
   const [openDropdown, setOpenDropdown] = useState(null);
   const [showTemplates, setShowTemplates] = useState(true);
 
@@ -54,6 +55,7 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
   // Extract unique values for filters
   const uniqueOwners = [...new Set(safeProjects.map(p => p.owner?.name).filter(Boolean))];
   const uniqueMembers = [...new Set(safeProjects.flatMap(p => p.members?.map(m => m.user?.name)).filter(Boolean))];
+  const uniquePortfolios = [...new Set(safeProjects.flatMap(p => p.portfolios?.map(pItem => pItem.portfolio?.name)).filter(Boolean))];
   const uniqueStatuses = ['ON_TRACK', 'AT_RISK', 'OFF_TRACK', 'ON_HOLD', 'NONE'];
   const statusLabels = { ON_TRACK: 'On track', AT_RISK: 'At risk', OFF_TRACK: 'Off track', ON_HOLD: 'On hold', NONE: 'No status' };
 
@@ -63,6 +65,7 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
     if (searchTerm && !p.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
     if (activeOwner && p.owner?.name !== activeOwner) return false;
     if (activeMember && !p.members?.some(m => m.user?.name === activeMember)) return false;
+    if (activePortfolio && !p.portfolios?.some(pItem => pItem.portfolio?.name === activePortfolio)) return false;
     if (activeStatus && p.status !== activeStatus && !(activeStatus === 'NONE' && !p.status)) return false;
     return true;
   });
@@ -91,10 +94,10 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
             Owner: {activeOwner || 'Any'} <span>⌄</span>
           </button>
           {openDropdown === 'owner' && (
-            <div className="bp-filter-dropdown" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', zIndex: 10, minWidth: '150px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
-              <div style={{ padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => { setActiveOwner(null); setOpenDropdown(null); }}>Any</div>
+            <div className="bp-filter-dropdown">
+              <div className="bp-filter-dropdown-item" onClick={() => { setActiveOwner(null); setOpenDropdown(null); }}>Any</div>
               {uniqueOwners.map(o => (
-                <div key={o} style={{ padding: '8px', cursor: 'pointer' }} onClick={() => { setActiveOwner(o); setOpenDropdown(null); }}>{o}</div>
+                <div key={o} className="bp-filter-dropdown-item" onClick={() => { setActiveOwner(o); setOpenDropdown(null); }}>{o}</div>
               ))}
             </div>
           )}
@@ -105,26 +108,38 @@ export default function BrowseProjects({ projects, user, handleSelectProject, se
             Member: {activeMember || 'Any'} <span>⌄</span>
           </button>
           {openDropdown === 'member' && (
-            <div className="bp-filter-dropdown" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', zIndex: 10, minWidth: '150px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
-              <div style={{ padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => { setActiveMember(null); setOpenDropdown(null); }}>Any</div>
+            <div className="bp-filter-dropdown">
+              <div className="bp-filter-dropdown-item" onClick={() => { setActiveMember(null); setOpenDropdown(null); }}>Any</div>
               {uniqueMembers.map(m => (
-                <div key={m} style={{ padding: '8px', cursor: 'pointer' }} onClick={() => { setActiveMember(m); setOpenDropdown(null); }}>{m}</div>
+                <div key={m} className="bp-filter-dropdown-item" onClick={() => { setActiveMember(m); setOpenDropdown(null); }}>{m}</div>
               ))}
             </div>
           )}
         </div>
 
-        <button className="bp-filter-chip">Portfolios <span>⌄</span></button>
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <button className={`bp-filter-chip ${activePortfolio ? 'active-filter' : ''}`} onClick={() => setOpenDropdown(openDropdown === 'portfolio' ? null : 'portfolio')}>
+            Portfolios: {activePortfolio || 'Any'} <span>⌄</span>
+          </button>
+          {openDropdown === 'portfolio' && (
+            <div className="bp-filter-dropdown">
+              <div className="bp-filter-dropdown-item" onClick={() => { setActivePortfolio(null); setOpenDropdown(null); }}>Any</div>
+              {uniquePortfolios.map(p => (
+                <div key={p} className="bp-filter-dropdown-item" onClick={() => { setActivePortfolio(p); setOpenDropdown(null); }}>{p}</div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div style={{ position: 'relative', display: 'inline-block' }}>
           <button className={`bp-filter-chip ${activeStatus ? 'active-filter' : ''}`} onClick={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}>
             Status: {activeStatus ? statusLabels[activeStatus] : 'Any'} <span>⌄</span>
           </button>
           {openDropdown === 'status' && (
-            <div className="bp-filter-dropdown" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', zIndex: 10, minWidth: '150px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
-              <div style={{ padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => { setActiveStatus(null); setOpenDropdown(null); }}>Any</div>
+            <div className="bp-filter-dropdown">
+              <div className="bp-filter-dropdown-item" onClick={() => { setActiveStatus(null); setOpenDropdown(null); }}>Any</div>
               {uniqueStatuses.map(s => (
-                <div key={s} style={{ padding: '8px', cursor: 'pointer' }} onClick={() => { setActiveStatus(s); setOpenDropdown(null); }}>{statusLabels[s]}</div>
+                <div key={s} className="bp-filter-dropdown-item" onClick={() => { setActiveStatus(s); setOpenDropdown(null); }}>{statusLabels[s]}</div>
               ))}
             </div>
           )}

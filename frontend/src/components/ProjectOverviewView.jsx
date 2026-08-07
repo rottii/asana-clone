@@ -22,6 +22,8 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
   const [githubInput, setGithubInput] = useState(selectedProject.githubRepo || '');
   const [githubDetails, setGithubDetails] = useState(null);
   const [isHoveringStatus, setIsHoveringStatus] = useState(false);
+  const [isSyncingPRs, setIsSyncingPRs] = useState(false);
+  const [includeClosedPRs, setIncludeClosedPRs] = useState(false);
 
   const allUsers = React.useMemo(() => {
     let list = selectedProject?.members?.map(m => m.user) || [];
@@ -97,10 +99,25 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
   const handleSaveGithub = async () => {
     if (isReadOnly) return;
     try {
+      const updates = { githubRepo: githubInput.trim() };
+      
+      if (updates.githubRepo && updates.githubRepo !== '') {
+        const hasGithubField = selectedProject.customFieldSettings?.some(f => f.type === 'github_pr');
+        if (!hasGithubField) {
+          const newField = {
+            id: Date.now().toString(),
+            title: 'Github PR',
+            type: 'github_pr',
+            description: 'Linked GitHub Pull Request'
+          };
+          updates.customFieldSettings = [...(selectedProject.customFieldSettings || []), newField];
+        }
+      }
+
       const response = await apiFetch(`/api/projects/${selectedProject.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ githubRepo: githubInput.trim() })
+        body: JSON.stringify(updates)
       });
       const data = await response.json();
       if (response.ok && onUpdate) {
@@ -109,6 +126,126 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
       setIsEditingGithub(false);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSyncGithubPRs = async () => {
+    if (isReadOnly || !selectedProject.githubRepo) return;
+    setIsSyncingPRs(true);
+    try {
+      // Ensure custom field exists
+      let customFields = selectedProject.customFieldSettings || [];
+      const hasGithubField = customFields.some(f => f.type === 'github_pr');
+      
+      if (!hasGithubField) {
+        const newField = {
+          id: Date.now().toString(),
+          title: 'Github PR',
+          type: 'github_pr',
+          description: 'Linked GitHub Pull Request'
+        };
+        customFields = [...customFields, newField];
+        const resFields = await apiFetch(`/api/projects/${selectedProject.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ customFieldSettings: customFields })
+        });
+        if (resFields.ok) {
+           const projData = await resFields.json();
+           if (onUpdate) onUpdate(projData);
+        }
+      }
+
+      const prsResponse = await apiFetch(`/api/github/prs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl: selectedProject.githubRepo, includeClosed: includeClosedPRs })
+      });
+      
+      if (!prsResponse.ok) throw new Error('Failed to fetch PRs');
+      
+      const prs = await prsResponse.json();
+      
+      // Find already synced PRs
+      const existingSyncedPRUrls = new Set();
+      if (selectedProject.sections) {
+        selectedProject.sections.forEach(section => {
+          if (section.tasks) {
+            section.tasks.forEach(task => {
+               if (task.githubPRs) {
+                 try {
+                   const prsData = typeof task.githubPRs === 'string' ? JSON.parse(task.githubPRs) : task.githubPRs;
+                   if (Array.isArray(prsData)) {
+                     prsData.forEach(p => existingSyncedPRUrls.add(p.url));
+                   }
+                 } catch (e) {
+                   // ignore parse errors
+                 }
+               }
+            });
+          }
+        });
+      }
+
+      const newPrs = prs.filter(pr => !existingSyncedPRUrls.has(pr.url));
+
+      if (newPrs.length === 0) {
+         alert("No new PRs found to sync.");
+         setIsSyncingPRs(false);
+         return;
+      }
+      
+      const targetSectionId = selectedProject.sections?.[0]?.id;
+      if (!targetSectionId) {
+         alert("No section found to add tasks.");
+         setIsSyncingPRs(false);
+         return;
+      }
+
+      for (const pr of newPrs) {
+         let title = pr.title;
+         // Strip 'Auto-implemented task: ' prefix if it exists
+         if (title.toLowerCase().startsWith('auto-implemented task:')) {
+           title = title.replace(/^auto-implemented task:\s*/i, '');
+         }
+         
+         const description = pr.body || '';
+         const githubPRData = JSON.stringify([pr]);
+         const isCompleted = pr.state === 'closed';
+
+         const startDate = pr.createdAt || null;
+         let dueDate = null;
+         if (isCompleted) {
+            dueDate = pr.mergedAt || pr.closedAt || null;
+         }
+
+         await apiFetch('/api/projects/tasks', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+           body: JSON.stringify({
+              title,
+              description,
+              sectionId: targetSectionId,
+              githubPRs: githubPRData,
+              isCompleted,
+              startDate,
+              dueDate
+           })
+         });
+      }
+
+      alert(`Successfully synced ${prs.length} PRs as tasks.`);
+      
+      const getProjRes = await apiFetch(`/api/projects/${selectedProject.id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (getProjRes.ok) {
+         const refreshedProject = await getProjRes.json();
+         if (onUpdate) onUpdate(refreshedProject);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error syncing PRs');
+    } finally {
+      setIsSyncingPRs(false);
     }
   };
 
@@ -272,7 +409,6 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
                   </div>
                 )}
                 
-                {/* Auto-Code Settings Toggle */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid var(--border-color)', borderRadius: '6px', backgroundColor: 'var(--bg-primary)' }}>
                     <div>
                         <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--text-primary)' }}>Allow Auto-Code on open PRs</div>
@@ -284,6 +420,35 @@ export default function ProjectOverviewView({ selectedProject, projectRole, isRe
                             <span style={{ position: 'absolute', content: '""', height: '18px', width: '18px', left: selectedProject.allowAutoCodeOnPR ? '22px' : '2px', bottom: selectedProject.allowAutoCodeOnPR ? '3px' : '2px', backgroundColor: 'white', transition: '.4s', borderRadius: '50%', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}></span>
                         </span>
                     </label>
+                </div>
+                
+                {/* Sync PRs Button */}
+                <div style={{ display: 'flex', flexDirection: 'column', padding: '16px', border: '1px solid var(--border-color)', borderRadius: '6px', backgroundColor: 'var(--bg-primary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                            <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--text-primary)' }}>Sync Pull Requests</div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Take PRs from the connected project and make them tasks.</div>
+                        </div>
+                        <button 
+                          style={{ ...styles.editBtn, padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '8px' }}
+                          onClick={handleSyncGithubPRs}
+                          disabled={isReadOnly || isSyncingPRs}
+                        >
+                          <span>{isSyncingPRs ? 'Syncing...' : 'Sync PRs to Tasks'}</span>
+                        </button>
+                    </div>
+                    <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input 
+                            type="checkbox" 
+                            id="includeClosedPRs" 
+                            checked={includeClosedPRs} 
+                            onChange={(e) => setIncludeClosedPRs(e.target.checked)} 
+                            disabled={isReadOnly || isSyncingPRs}
+                        />
+                        <label htmlFor="includeClosedPRs" style={{ fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                            Include closed and merged PRs
+                        </label>
+                    </div>
                 </div>
               </div>
             ) : (

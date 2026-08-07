@@ -470,18 +470,18 @@ export default function ProjectListView({
               setDragTargetTaskId({ id: task.id, edge: dropEdge });
             } else {
               if (handleLiveTaskSwap) {
-                 const rect = e.currentTarget.getBoundingClientRect();
-                 handleLiveTaskSwap(draggingTaskId, task.id, e.clientY, rect);
+                const rect = e.currentTarget.getBoundingClientRect();
+                handleLiveTaskSwap(draggingTaskId, task.id, e.clientY, rect);
               }
             }
           }
         }}
         onDragLeave={() => setDragTargetTaskId(null)}
-        onDrop={(e) => { 
+        onDrop={(e) => {
           e.stopPropagation();
           const edge = dragTargetTaskId?.edge || 'top';
           setDragTargetTaskId(null);
-          handleGeneralDrop(e, sectionId, task.id, subgroup, edge); 
+          handleGeneralDrop(e, sectionId, task.id, subgroup, edge);
         }}
       >
         <div
@@ -667,7 +667,7 @@ export default function ProjectListView({
               });
             }
             const uniqueTaskProjects = [...new Set(taskProjectNames)];
-            
+
             return (
               <div key="projects" style={{ ...styles.gridBodyCell, width: colWidths.projects || 140, flexShrink: 0, cursor: isReadOnly ? 'default' : 'pointer', color: 'var(--text-secondary)', fontSize: '0.8rem' }} onClick={(e) => !isReadOnly && handleOpenPopoverInline(e, 'projects', task, sectionId)}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1151,18 +1151,18 @@ export default function ProjectListView({
                 onDrop={(e) => { if (!isVirtualGrouping) handleGeneralDrop(e, section.id); }}
               >
                 {/* BÖLÜM (SECTION) BAŞLIK SATIRI */}
-                <div 
-                  className="list-section-header" 
-                  style={{ 
-                    ...styles.sectionAccordionRow, 
-                    position: 'relative', 
+                <div
+                  className="list-section-header"
+                  style={{
+                    ...styles.sectionAccordionRow,
+                    position: 'relative',
                     zIndex: openSectionMenuId === section.id ? 50 : 1,
                     borderBottom: dragTargetTaskId?.id === `section_${section.id}` ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)'
                   }}
                   onDragOver={(e) => {
                     if (draggingTaskId) {
-                       e.preventDefault();
-                       setDragTargetTaskId({ id: `section_${section.id}`, edge: 'bottom' });
+                      e.preventDefault();
+                      setDragTargetTaskId({ id: `section_${section.id}`, edge: 'bottom' });
                     }
                   }}
                   onDragLeave={() => {
@@ -1170,9 +1170,9 @@ export default function ProjectListView({
                   }}
                   onDrop={(e) => {
                     if (draggingTaskId && !isVirtualGrouping) {
-                       e.stopPropagation();
-                       setDragTargetTaskId(null);
-                       handleGeneralDrop(e, section.id);
+                      e.stopPropagation();
+                      setDragTargetTaskId(null);
+                      handleGeneralDrop(e, section.id);
                     }
                   }}
                 >
@@ -1240,124 +1240,124 @@ export default function ProjectListView({
                   </div>
                 </div>
 
-                  {/* Görev Satırları Gövdesi */}
-                  {!isCollapsed && (
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      {section.subgroups ? (
-                        section.subgroups.map(subgroup => (
-                          <div key={subgroup.id}>
-                            <div 
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                if (draggingTaskId) setDragTargetTaskId({ id: `subgroup_${section.id}_${subgroup.id}`, edge: 'bottom' });
-                              }}
-                              onDragLeave={() => setDragTargetTaskId(null)}
-                              onDrop={(e) => { 
-                                e.stopPropagation();
-                                setDragTargetTaskId(null);
-                                handleGeneralDrop(e, section.id, null, subgroup, 'top'); 
-                              }}
-                              style={{ 
-                                display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', 
-                                backgroundColor: 'var(--bg-tertiary)', 
-                                borderBottom: dragTargetTaskId?.id === `subgroup_${section.id}_${subgroup.id}` ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)', 
-                                userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' 
-                              }}
-                            >
-                              <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>↳</span>
-                              <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>{subgroup.name}</span>
-                              <span style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' }}>{subgroup.tasks.length}</span>
-                            </div>
-                            {subgroup.tasks.map(t => renderTaskRow(t, section.id, subgroup))}
+                {/* Görev Satırları Gövdesi */}
+                {!isCollapsed && (
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {section.subgroups ? (
+                      section.subgroups.map(subgroup => (
+                        <div key={subgroup.id}>
+                          <div
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              if (draggingTaskId) setDragTargetTaskId({ id: `subgroup_${section.id}_${subgroup.id}`, edge: 'bottom' });
+                            }}
+                            onDragLeave={() => setDragTargetTaskId(null)}
+                            onDrop={(e) => {
+                              e.stopPropagation();
+                              setDragTargetTaskId(null);
+                              handleGeneralDrop(e, section.id, null, subgroup, 'top');
+                            }}
+                            style={{
+                              display: 'flex', alignItems: 'center', padding: '0.4rem 1rem',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              borderBottom: dragTargetTaskId?.id === `subgroup_${section.id}_${subgroup.id}` ? '2px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                              userSelect: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)'
+                            }}
+                          >
+                            <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>↳</span>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>{subgroup.name}</span>
+                            <span style={{ backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' }}>{subgroup.tasks.length}</span>
                           </div>
-                        ))
-                      ) : (
-                        filteredTasks.map(t => renderTaskRow(t, section.id))
-                      )}
-                      {/* Satır İçi Hızlı Görev Ekleme */}
-                      {!isReadOnly && !isVirtualGrouping && (
-                        <div
-                          style={{ ...styles.quickAddTaskRowList, cursor: 'text' }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setLastInteractedSectionId(section.id);
-                            const inp = document.getElementById(`quick-add-${section.id}`);
-                            if (inp) inp.focus();
-                          }}
-                        >
-                          <span style={{ paddingLeft: '3.5rem', color: '#9CA3AF', fontSize: '0.85rem' }}>+</span>
-                          <input
-                            id={`quick-add-${section.id}`}
-                            type="text"
-                            placeholder="Add task..."
-                            value={quickTaskInputs[section.id] || ''}
-                            onChange={(e) => setQuickTaskInputs({ ...quickTaskInputs, [section.id]: e.target.value })}
-                            onKeyDown={(e) => e.key === 'Enter' && handleCreateQuickTask(section.id)}
-                            onFocus={() => setLastInteractedSectionId(section.id)}
-                            style={styles.quickAddTaskInpCell}
-                          />
+                          {subgroup.tasks.map(t => renderTaskRow(t, section.id, subgroup))}
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                )
-          })}
-                {isAddFieldModalOpen && (
-                  <AddFieldModal
-                    onClose={() => setIsAddFieldModalOpen(false)}
-                    onCreateField={(fieldData) => {
-                      const newField = {
-                        id: Date.now().toString(),
-                        ...fieldData,
-                        title: fieldData.title || 'Unnamed Field',
-                      };
-                      const newCustomFields = [...customFields, newField];
-                      setCustomFields(newCustomFields);
-                      handleSaveProjectSettings({ customFieldSettings: newCustomFields });
-                      setIsAddFieldModalOpen(false);
-                    }}
-                  />
+                      ))
+                    ) : (
+                      filteredTasks.map(t => renderTaskRow(t, section.id))
+                    )}
+                    {/* Satır İçi Hızlı Görev Ekleme */}
+                    {!isReadOnly && !isVirtualGrouping && (
+                      <div
+                        style={{ ...styles.quickAddTaskRowList, cursor: 'text' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLastInteractedSectionId(section.id);
+                          const inp = document.getElementById(`quick-add-${section.id}`);
+                          if (inp) inp.focus();
+                        }}
+                      >
+                        <span style={{ paddingLeft: '3.5rem', color: '#9CA3AF', fontSize: '0.85rem' }}>+</span>
+                        <input
+                          id={`quick-add-${section.id}`}
+                          type="text"
+                          placeholder="Add task..."
+                          value={quickTaskInputs[section.id] || ''}
+                          onChange={(e) => setQuickTaskInputs({ ...quickTaskInputs, [section.id]: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Enter' && handleCreateQuickTask(section.id)}
+                          onFocus={() => setLastInteractedSectionId(section.id)}
+                          style={styles.quickAddTaskInpCell}
+                        />
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
+            )
+          })}
+          {isAddFieldModalOpen && (
+            <AddFieldModal
+              onClose={() => setIsAddFieldModalOpen(false)}
+              onCreateField={(fieldData) => {
+                const newField = {
+                  id: Date.now().toString(),
+                  ...fieldData,
+                  title: fieldData.title || 'Unnamed Field',
+                };
+                const newCustomFields = [...customFields, newField];
+                setCustomFields(newCustomFields);
+                handleSaveProjectSettings({ customFieldSettings: newCustomFields });
+                setIsAddFieldModalOpen(false);
+              }}
+            />
+          )}
+        </div>
       </div>
-      </div>
-      )
+    </div>
+  )
 }
 
-      const styles = {
-        listSpreadsheetWrapper: {flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
-      listTableHeaderRow: {display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', flexShrink: 0, borderLeft: '3px solid transparent' },
-      gridHeaderCell: {boxSizing: 'border-box', padding: '0.6rem', fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderRight: '1px solid var(--border-color)' },
-      sectionAccordionRow: {display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', cursor: 'pointer' },
-      accordionArrowIcon: {fontSize: '0.7rem', color: 'var(--text-primary)', width: '12px' },
-      sectionTitleText: {fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' },
-      sectionTaskCountBadge: {backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' },
-      taskDataTableRow: {display: 'flex', borderBottom: '1px solid var(--bg-tertiary)', transition: 'background-color 0.1s, opacity 0.15s ease', userSelect: 'none' },
-      gridBodyCell: {boxSizing: 'border-box', padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center', borderRight: '1px solid var(--bg-tertiary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-      listAvatarIcon: {width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' },
-      quickAddTaskRowList: {display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--bg-tertiary)', padding: '0.35rem 0' },
-      quickAddTaskInpCell: {flex: 1, border: 'none', outline: 'none', fontSize: '0.85rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' },
-      drag6DotHandleCell: {boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', color: 'var(--text-tertiary)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none', marginRight: '0.4rem' },
-      drag6DotHandleCellTask: {boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', color: 'var(--border-color)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none' },
-      sectionRenameInput: {flex: 1, border: '1px solid var(--accent-primary)', borderRadius: '4px', outline: 'none', padding: '2px 6px', fontSize: '0.9rem', fontWeight: '600', backgroundColor: 'transparent', color: 'var(--text-primary)' },
-      threeDotButton: {background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 0.5rem' },
-      dropdownMenu: {position: 'absolute', top: '100%', right: '1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, padding: '0.25rem', minWidth: '150px' },
-      dropdownItem: {width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left', marginBottom: '2px' },
-      dropdownItemDelete: {width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left' },
-      resizeHandle: {position: 'absolute', right: -2, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10 },
-      addFieldButton: {background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' },
-      addFieldMenu: {position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '200px', padding: '0.5rem 0', maxHeight: '350px', overflowY: 'auto' },
-      addFieldMenuHeader: {padding: '0.5rem 1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' },
-      addFieldMenuItem: {display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.5rem 1rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', textAlign: 'left' },
-      fieldMenuIcon: {fontSize: '1rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' },
-      addFieldMenuShowMore: {padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--accent-primary)', cursor: 'pointer', marginTop: '0.5rem' },
-      cellDropdownMenu: {position: 'absolute', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem', minWidth: '150px', display: 'flex', flexDirection: 'column', maxHeight: '250px', overflowY: 'auto' },
-      columnDropdownMenu: {position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem 0', minWidth: '240px', display: 'flex', flexDirection: 'column', fontWeight: 'normal', textTransform: 'none' },
-      columnHeaderMenuBtn: {background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '1rem', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: '0.5rem', lineHeight: 1 },
-      menuDivider: {borderTop: '1px solid var(--border-color)', margin: '4px 0' },
-      modalOverlay: {position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-      modalContent: {backgroundColor: 'var(--bg-primary)', borderRadius: '8px', padding: '1.5rem', width: '550px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)' }
+const styles = {
+  listSpreadsheetWrapper: { flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' },
+  listTableHeaderRow: { display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', flexShrink: 0, borderLeft: '3px solid transparent' },
+  gridHeaderCell: { boxSizing: 'border-box', padding: '0.6rem', fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderRight: '1px solid var(--border-color)' },
+  sectionAccordionRow: { display: 'flex', alignItems: 'center', padding: '0.4rem 1rem', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none', cursor: 'pointer' },
+  accordionArrowIcon: { fontSize: '0.7rem', color: 'var(--text-primary)', width: '12px' },
+  sectionTitleText: { fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-primary)' },
+  sectionTaskCountBadge: { backgroundColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '10px', padding: '1px 6px', fontSize: '0.7rem', marginLeft: '0.4rem', fontWeight: '600' },
+  taskDataTableRow: { display: 'flex', borderBottom: '1px solid var(--bg-tertiary)', transition: 'background-color 0.1s, opacity 0.15s ease', userSelect: 'none' },
+  gridBodyCell: { boxSizing: 'border-box', padding: '0.5rem 0.6rem', display: 'flex', alignItems: 'center', borderRight: '1px solid var(--bg-tertiary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  listAvatarIcon: { width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold' },
+  quickAddTaskRowList: { display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--bg-tertiary)', padding: '0.35rem 0' },
+  quickAddTaskInpCell: { flex: 1, border: 'none', outline: 'none', fontSize: '0.85rem', color: 'var(--text-primary)', padding: '0.2rem 0', backgroundColor: 'transparent' },
+  drag6DotHandleCell: { boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', color: 'var(--text-tertiary)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none', marginRight: '0.4rem' },
+  drag6DotHandleCellTask: { boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', color: 'var(--border-color)', cursor: 'grab', fontSize: '0.85rem', fontWeight: 'bold', userSelect: 'none' },
+  sectionRenameInput: { flex: 1, border: '1px solid var(--accent-primary)', borderRadius: '4px', outline: 'none', padding: '2px 6px', fontSize: '0.9rem', fontWeight: '600', backgroundColor: 'transparent', color: 'var(--text-primary)' },
+  threeDotButton: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 0.5rem' },
+  dropdownMenu: { position: 'absolute', top: '100%', right: '1rem', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 10, padding: '0.25rem', minWidth: '150px' },
+  dropdownItem: { width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left', marginBottom: '2px' },
+  dropdownItemDelete: { width: '100%', padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: 'var(--accent-danger)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500', textAlign: 'left' },
+  resizeHandle: { position: 'absolute', right: -2, top: 0, bottom: 0, width: '5px', cursor: 'col-resize', zIndex: 10 },
+  addFieldButton: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' },
+  addFieldMenu: { position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '200px', padding: '0.5rem 0', maxHeight: '350px', overflowY: 'auto' },
+  addFieldMenuHeader: { padding: '0.5rem 1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' },
+  addFieldMenuItem: { display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.5rem 1rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', textAlign: 'left' },
+  fieldMenuIcon: { fontSize: '1rem', color: 'var(--text-secondary)', width: '20px', textAlign: 'center' },
+  addFieldMenuShowMore: { padding: '0.5rem 1rem', fontSize: '0.85rem', color: 'var(--accent-primary)', cursor: 'pointer', marginTop: '0.5rem' },
+  cellDropdownMenu: { position: 'absolute', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem', minWidth: '150px', display: 'flex', flexDirection: 'column', maxHeight: '250px', overflowY: 'auto' },
+  columnDropdownMenu: { position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 60, padding: '0.25rem 0', minWidth: '240px', display: 'flex', flexDirection: 'column', fontWeight: 'normal', textTransform: 'none' },
+  columnHeaderMenuBtn: { background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '1rem', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: '0.5rem', lineHeight: 1 },
+  menuDivider: { borderTop: '1px solid var(--border-color)', margin: '4px 0' },
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+  modalContent: { backgroundColor: 'var(--bg-primary)', borderRadius: '8px', padding: '1.5rem', width: '550px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)' }
 }
 
 

@@ -129,6 +129,12 @@ export default function RichTextEditor({ value, onChange, onBlur, placeholder = 
           class: 'mention',
           style: 'color: #4F46E5; background: #EEF2FF; padding: 2px 4px; border-radius: 4px; font-weight: 500;',
         },
+        renderLabel({ options, node }) {
+          const userId = node.attrs.id;
+          const user = usersRef.current.find(u => u.id === userId);
+          const label = user ? user.name : (node.attrs.label || userId);
+          return `@${label}`;
+        },
         suggestion: {
           items: ({ query }) => {
             return usersRef.current
@@ -156,7 +162,7 @@ export default function RichTextEditor({ value, onChange, onBlur, placeholder = 
                   getReferenceClientRect: props.clientRect,
                   appendTo: () => document.body,
                   content: component.element,
-                  showOnCreate: true,
+                  showOnCreate: false,
                   interactive: true,
                   trigger: 'manual',
                   placement: 'bottom-start',
@@ -164,8 +170,13 @@ export default function RichTextEditor({ value, onChange, onBlur, placeholder = 
                   arrow: false,
                   zIndex: 99999,
                 });
+
+                if (props.editor.isFocused) {
+                  popup[0].show();
+                }
               },
               onUpdate(props) {
+                if (!component || !popup) return;
                 component.updateProps(props);
 
                 if (!props.clientRect) return;
@@ -173,13 +184,19 @@ export default function RichTextEditor({ value, onChange, onBlur, placeholder = 
                 popup[0].setProps({
                   getReferenceClientRect: props.clientRect,
                 });
+
+                if (props.editor.isFocused) {
+                  popup[0].show();
+                } else {
+                  popup[0].hide();
+                }
               },
               onKeyDown(props) {
                 if (props.event.key === 'Escape') {
-                  popup[0].hide();
+                  popup?.[0]?.hide();
                   return true;
                 }
-                return component.ref?.onKeyDown(props);
+                return component?.ref?.onKeyDown(props);
               },
               onExit() {
                 if (popup && popup[0]) {

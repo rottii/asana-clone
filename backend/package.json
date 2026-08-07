@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "src/index.js",
   "scripts": {
-    "dev": "npx prisma db push --accept-data-loss && npx prisma generate && node src/index.js"
+    "dev": "npx prisma db push --accept-data-loss && npx prisma generate && node src/server.js",
+    "test": "export DATABASE_URL=postgresql://asana_user:asana_password@postgres_db:5432/asana_test_db && npx prisma db push --accept-data-loss && jest --runInBand --detectOpenHandles",
+    "test:watch": "export DATABASE_URL=postgresql://asana_user:asana_password@postgres_db:5432/asana_test_db && jest --watch"
   },
   "dependencies": {
     "@prisma/client": "^5.14.0",
@@ -24,7 +26,10 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "dotenv-cli": "^7.4.1",
+    "jest": "^29.7.0",
     "nodemon": "^3.1.0",
-    "prisma": "^5.14.0"
+    "prisma": "^5.14.0",
+    "supertest": "^7.0.0"
   }
 }

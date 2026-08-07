@@ -99,7 +99,7 @@ export default function KanbanColumn({ section, token, isVirtualGrouping, custom
       )}
 
       {/* SADECE GÖREV KARTLARININ KAYDIRILDIĞI SCROLL ALANI - TEK BÜYÜK KUTU */}
-      <div className="kanban-task-list" style={{...styles.taskListContainer, gap: isSubgrouped ? '1rem' : '0.75rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', padding: '0.75rem 1rem', marginRight: isMatrixCell ? 0 : styles.taskListContainer.marginRight, boxShadow: '0 1px 3px rgba(0,0,0,0.1)'}}>
+      <div className="kanban-task-list" style={{...styles.taskListContainer, gap: isSubgrouped ? '1rem' : '0.75rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', padding: '0.75rem 1rem', marginRight: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.1)'}}>
         {section.subgroups ? (
           section.subgroups.map((subgroup, index) => (
             <div key={subgroup.id} style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>

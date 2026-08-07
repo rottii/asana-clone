@@ -1,0 +1,50 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Run Integration Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: asana_user
+          POSTGRES_PASSWORD: asana_password
+          POSTGRES_DB: asana_test_db
+        ports:
+          - 5432:5432
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Same as your Dockerfile
+
+      - name: Install Dependencies
+        working-directory: ./backend
+        run: npm install
+
+      - name: Run Tests
+        working-directory: ./backend
+        run: npm run test
+        env:
+          # Override the DATABASE_URL to connect to the postgres service running on localhost in GitHub Actions
+          DATABASE_URL: postgresql://asana_user:asana_password@localhost:5432/asana_test_db
+          JWT_SECRET: testsecret
+          PORT: 5002

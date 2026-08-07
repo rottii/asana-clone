@@ -37,8 +37,8 @@ const styles = {
     gap: '6px'
   },
   composerContainer: {
-    backgroundColor: '#fff',
-    border: '1px solid #e2e8f0',
+    backgroundColor: 'var(--bg-primary)',
+    border: '1px solid var(--border-color)',
     borderRadius: '8px',
     padding: '16px',
     marginBottom: '24px',
@@ -47,25 +47,29 @@ const styles = {
   inputSubject: {
     width: '100%',
     padding: '12px',
-    border: '1px solid #e2e8f0',
+    border: '1px solid var(--border-color)',
     borderBottom: 'none',
     borderRadius: '4px 4px 0 0',
     fontSize: '16px',
     fontWeight: '500',
     outline: 'none',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    backgroundColor: 'transparent',
+    color: 'var(--text-primary)'
   },
   inputBody: {
     width: '100%',
     padding: '12px',
-    border: '1px solid #e2e8f0',
+    border: '1px solid var(--border-color)',
     borderRadius: '0 0 4px 4px',
     fontSize: '14px',
     outline: 'none',
     minHeight: '120px',
     resize: 'vertical',
     boxSizing: 'border-box',
-    fontFamily: 'inherit'
+    fontFamily: 'inherit',
+    backgroundColor: 'transparent',
+    color: 'var(--text-primary)'
   },
   composerActions: {
     display: 'flex',
@@ -93,8 +97,8 @@ const styles = {
     cursor: 'pointer'
   },
   messageCard: {
-    backgroundColor: '#fff',
-    border: '1px solid #e2e8f0',
+    backgroundColor: 'var(--bg-primary)',
+    border: '1px solid var(--border-color)',
     borderRadius: '8px',
     padding: '20px',
     marginBottom: '16px',
@@ -146,7 +150,7 @@ const styles = {
   repliesSection: {
     marginTop: '20px',
     paddingTop: '20px',
-    borderTop: '1px solid #e2e8f0'
+    borderTop: '1px solid var(--border-color)'
   },
   replyCard: {
     display: 'flex',
@@ -168,7 +172,7 @@ const styles = {
   },
   replyContent: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: 'var(--bg-secondary)',
     padding: '12px',
     borderRadius: '8px'
   },
@@ -194,13 +198,15 @@ const styles = {
   replyInput: {
     flex: 1,
     padding: '10px 12px',
-    border: '1px solid #e2e8f0',
+    border: '1px solid var(--border-color)',
     borderRadius: '4px',
     fontSize: '13px',
     outline: 'none',
     fontFamily: 'inherit',
     minHeight: '40px',
-    resize: 'vertical'
+    resize: 'vertical',
+    backgroundColor: 'transparent',
+    color: 'var(--text-primary)'
   },
   emptyState: {
     textAlign: 'center',

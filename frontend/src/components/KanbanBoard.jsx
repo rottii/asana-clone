@@ -182,8 +182,26 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
   const [dropTargetTab, setDropTargetTab] = useState({ id: null, position: null })
 
   const { showUndo } = useUndo();
-  const [optimisticDeletedTaskIds, setOptimisticDeletedTaskIds] = useState(new Set());
-  const [optimisticDeletedSectionIds, setOptimisticDeletedSectionIds] = useState(new Set());
+  const [optimisticDeletedTaskIds, setOptimisticDeletedTaskIdsState] = useState(new Set());
+  const [optimisticDeletedSectionIds, setOptimisticDeletedSectionIdsState] = useState(new Set());
+  const optimisticDeletedTaskIdsRef = useRef(new Set());
+  const optimisticDeletedSectionIdsRef = useRef(new Set());
+
+  const setOptimisticDeletedTaskIds = (setter) => {
+    setOptimisticDeletedTaskIdsState(prev => {
+      const next = typeof setter === 'function' ? setter(prev) : setter;
+      optimisticDeletedTaskIdsRef.current = next;
+      return next;
+    });
+  };
+
+  const setOptimisticDeletedSectionIds = (setter) => {
+    setOptimisticDeletedSectionIdsState(prev => {
+      const next = typeof setter === 'function' ? setter(prev) : setter;
+      optimisticDeletedSectionIdsRef.current = next;
+      return next;
+    });
+  };
 
   // Marquee (lasso) selection
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -235,13 +253,16 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
           let updatedProj = await response.json();
 
           // Filter out the optimistically deleted items so they don't reappear
-          if (optimisticDeletedSectionIds.size > 0) {
-            updatedProj.sections = updatedProj.sections.filter(sec => !optimisticDeletedSectionIds.has(sec.id));
+          const currentDeletedSections = optimisticDeletedSectionIdsRef.current;
+          if (currentDeletedSections.size > 0) {
+            updatedProj.sections = updatedProj.sections.filter(sec => !currentDeletedSections.has(sec.id));
           }
-          if (optimisticDeletedTaskIds.size > 0) {
+          
+          const currentDeletedTasks = optimisticDeletedTaskIdsRef.current;
+          if (currentDeletedTasks.size > 0) {
             updatedProj.sections = updatedProj.sections.map(sec => ({
               ...sec,
-              tasks: (sec.tasks || []).filter(t => !optimisticDeletedTaskIds.has(t.id))
+              tasks: (sec.tasks || []).filter(t => !currentDeletedTasks.has(t.id))
             }));
           }
 
@@ -973,17 +994,17 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
     let validLastSectionId = null;
     let validLastTaskId = null;
     if (parsedSections) {
-        if (lastInteractedSectionId && parsedSections.some(s => s.id === lastInteractedSectionId)) {
-            validLastSectionId = lastInteractedSectionId;
-        }
-        if (lastInteractedTaskId && parsedSections.some(s => (s.tasks || []).some(t => t.id === lastInteractedTaskId))) {
-            validLastTaskId = lastInteractedTaskId;
-        }
+      if (lastInteractedSectionId && parsedSections.some(s => s.id === lastInteractedSectionId)) {
+        validLastSectionId = lastInteractedSectionId;
+      }
+      if (lastInteractedTaskId && parsedSections.some(s => (s.tasks || []).some(t => t.id === lastInteractedTaskId))) {
+        validLastTaskId = lastInteractedTaskId;
+      }
     }
     const targetSectionId = overrides.sectionId || validLastSectionId || parsedSections?.[0]?.id;
     if (!targetSectionId) {
-        alert("This project has no sections. Please create a section first.");
-        return;
+      alert("This project has no sections. Please create a section first.");
+      return;
     }
 
     try {
@@ -1002,7 +1023,7 @@ export default function KanbanBoard({ selectedProject, setSelectedProject, proje
         // Visually focus the newly created task by opening its details pane
         setActiveTaskPaneId(data.id)
       } else { alert(data.error); }
-    } catch (err) { 
+    } catch (err) {
       console.error(err);
       alert("Error adding task: " + err.message);
     }

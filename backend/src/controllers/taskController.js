@@ -17,7 +17,7 @@ const {
 
 exports.createTask = async (req, res) => {
     try {
-        const { title, sectionId, parentId, assigneeId, dueDate, startDate, description, type, approvalStatus } = req.body;
+        const { title, sectionId, parentId, assigneeId, dueDate, startDate, description, type, approvalStatus, isCompleted, githubPRs } = req.body;
         if (!title || !sectionId) return res.status(400).json({ error: 'title ve sectionId zorunludur.' });
 
         const role = await getProjectRoleFromSection(req.user.userId, sectionId);
@@ -33,6 +33,12 @@ exports.createTask = async (req, res) => {
         const nextOrder = lastTask ? lastTask.order + 1 : 0;
 
         const taskType = type || 'TASK';
+        
+        let githubPRsData = null;
+        if (githubPRs !== undefined) {
+            githubPRsData = typeof githubPRs === 'string' ? githubPRs : JSON.stringify(githubPRs);
+        }
+
         const newTask = await prisma.task.create({
             data: {
                 title: title.trim(),
@@ -46,6 +52,8 @@ exports.createTask = async (req, res) => {
                 type: taskType,
                 approvalStatus: taskType === 'APPROVAL' ? (approvalStatus || 'PENDING') : null,
                 order: nextOrder,
+                isCompleted: isCompleted === true,
+                githubPRs: githubPRsData,
                 activities: {
                     create: {
                         action: 'created this task',
@@ -89,7 +97,7 @@ exports.createTask = async (req, res) => {
                 console.error('Notification error:', notifErr);
             }
         }
-        
+
         // Multi-home to assignee's My Tasks project
         if (assigneeId) {
             try {
@@ -123,9 +131,9 @@ exports.createTask = async (req, res) => {
 exports.moveTask = async (req, res) => {
     try {
         const { taskId, taskIds, targetSectionId, orderedTaskIds, projectId, taskPayloads } = req.body;
-        
+
         const tasksToMove = taskIds || (taskId ? [taskId] : []);
-        
+
         if (tasksToMove.length === 0 || !targetSectionId) {
             return res.status(400).json({ error: 'taskId(s) ve targetSectionId zorunludur.' });
         }
@@ -152,7 +160,7 @@ exports.moveTask = async (req, res) => {
                 ...extraData,
                 activities: { create: { action: `moved this task`, userId: req.user.userId } }
             };
-            
+
             const primaryTask = await prisma.task.findFirst({
                 where: { id: id, section: { projectId: safeProjectId } }
             });
@@ -257,7 +265,7 @@ exports.updateTask = async (req, res) => {
             include: { section: true, assignee: true }
         });
         if (!currentTask) return res.status(404).json({ error: 'Görev bulunamadı.' });
-        
+
         const projectId = currentTask.section?.projectId;
 
         const updateData = {};
@@ -299,7 +307,7 @@ exports.updateTask = async (req, res) => {
                 let currentDueDate = currentTask.dueDate ? new Date(currentTask.dueDate) : new Date();
                 let nextDueDate = new Date(currentDueDate);
                 const rule = currentTask.recurrenceRule || 'DAILY';
-                
+
                 if (rule === 'DAILY') {
                     nextDueDate.setDate(nextDueDate.getDate() + 1);
                 } else if (rule === 'WEEKLY') {
@@ -312,7 +320,7 @@ exports.updateTask = async (req, res) => {
                     let customObj = {};
                     try {
                         customObj = typeof currentTask.recurrenceCustom === 'string' ? JSON.parse(currentTask.recurrenceCustom || '{}') : (currentTask.recurrenceCustom || {});
-                    } catch(e) {}
+                    } catch (e) { }
                     const interval = customObj.interval || 1;
                     if (customObj.frequency === 'weekly' || customObj.frequency === 'week') {
                         nextDueDate.setDate(nextDueDate.getDate() + 7 * interval);
@@ -381,7 +389,7 @@ exports.updateTask = async (req, res) => {
         if (isCompleted !== undefined && isCompleted !== currentTask.isCompleted) {
             activitiesToLog.push({ action: isCompleted ? 'completed this task' : 'marked this task incomplete' });
         }
-        
+
         if (githubPRs !== undefined) {
             try {
                 const oldPrsStr = typeof currentTask.githubPRs === 'string' ? currentTask.githubPRs : JSON.stringify(currentTask.githubPRs || []);
@@ -395,7 +403,7 @@ exports.updateTask = async (req, res) => {
                         activitiesToLog.push({ action: 'attached_github_pr', newValue: JSON.stringify(pr) });
                     }
                 }
-            } catch(e) { console.error('Error diffing PRs', e); }
+            } catch (e) { console.error('Error diffing PRs', e); }
         }
 
         if (activitiesToLog.length > 0) {
@@ -433,8 +441,8 @@ exports.updateTask = async (req, res) => {
                 });
             }
             if (newSpawnedTaskId) {
-                 const fullNewTask = await prisma.task.findUnique({ where: { id: newSpawnedTaskId }, include: fullTaskInclude });
-                 if (projectId && fullNewTask) io.to(projectId).emit('task_created', fullNewTask);
+                const fullNewTask = await prisma.task.findUnique({ where: { id: newSpawnedTaskId }, include: fullTaskInclude });
+                if (projectId && fullNewTask) io.to(projectId).emit('task_created', fullNewTask);
             }
         }
 
@@ -463,22 +471,22 @@ exports.updateTask = async (req, res) => {
                     if (isCompleted) {
                         const blockedDependencies = await prisma.taskDependency.findMany({
                             where: { blockingId: updatedTask.id },
-                            include: { 
-                                blockedByTask: { 
-                                    include: { 
-                                        blockedBy: { include: { blockingTask: true } }, 
-                                        section: true 
-                                    } 
-                                } 
+                            include: {
+                                blockedByTask: {
+                                    include: {
+                                        blockedBy: { include: { blockingTask: true } },
+                                        section: true
+                                    }
+                                }
                             }
                         });
-                        
+
                         for (const dep of blockedDependencies) {
                             const blockedTask = dep.blockedByTask;
-                            const allBlockersCompleted = blockedTask.blockedBy.every(b => 
+                            const allBlockersCompleted = blockedTask.blockedBy.every(b =>
                                 b.blockingTask.isCompleted || b.blockingTask.id === updatedTask.id
                             );
-                            
+
                             if (allBlockersCompleted && blockedTask.section?.projectId) {
                                 await evaluateRules(blockedTask.section.projectId, blockedTask.id, { type: 'task_no_longer_blocked' });
                             }
@@ -509,9 +517,9 @@ exports.updateTask = async (req, res) => {
                 if (customFields !== undefined) {
                     let oldFields = {};
                     let newFields = {};
-                    try { oldFields = typeof currentTask.customFields === 'string' ? JSON.parse(currentTask.customFields) : (currentTask.customFields || {}); } catch(e){}
-                    try { newFields = typeof customFields === 'string' ? JSON.parse(customFields) : (customFields || {}); } catch(e){}
-                    
+                    try { oldFields = typeof currentTask.customFields === 'string' ? JSON.parse(currentTask.customFields) : (currentTask.customFields || {}); } catch (e) { }
+                    try { newFields = typeof customFields === 'string' ? JSON.parse(customFields) : (customFields || {}); } catch (e) { }
+
                     if (oldFields && newFields) {
                         for (const key of Object.keys(newFields)) {
                             if (newFields[key] !== oldFields[key]) {
@@ -564,7 +572,7 @@ exports.updateTask = async (req, res) => {
                 console.error('Notification error:', notifErr);
             }
         }
-        
+
         // ─── My Tasks Sync ───────────────────────────────────────────────────
         if (assigneeId !== undefined && assigneeId !== currentTask.assigneeId) {
             try {
@@ -579,7 +587,7 @@ exports.updateTask = async (req, res) => {
                         });
                     }
                 }
-                
+
                 // Add to new assignee's My Tasks
                 if (assigneeId) {
                     const newMyTasksProj = await ensureMyTasksProject(assigneeId);
@@ -666,7 +674,7 @@ exports.convertToProject = async (req, res) => {
             where: { id: taskId },
             include: { section: { include: { project: true } } }
         });
-        
+
         if (!task) {
             return res.status(404).json({ error: 'Task not found' });
         }

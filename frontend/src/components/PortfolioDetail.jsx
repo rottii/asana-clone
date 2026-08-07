@@ -320,7 +320,7 @@ export default function PortfolioDetail({ portfolio, setPortfolio, portfolios, s
                         }}
                       />
                       <div style={styles.inlineDropdownMenu}>
-                        {projects.filter(p => !details.projectsList?.find(pl => pl.id === p.id)).map(p => (
+                        {projects.filter(p => p.status !== 'MY_TASKS' && !details.projectsList?.find(pl => pl.id === p.id)).map(p => (
                           <div key={p.id} style={styles.dropdownItem} onClick={() => handleAddProject(p.id)}>
                             <span style={{ marginRight: 8 }}>📋</span> {p.name}
                           </div>

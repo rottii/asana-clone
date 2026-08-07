@@ -219,7 +219,7 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
 
             {templates.length > 0 && (
               <>
-                <div style={{ margin: '32px 0 16px', borderTop: '1px solid #E8ECEE', paddingTop: '24px' }}>
+                <div style={{ margin: '32px 0 16px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: 500, marginBottom: '12px' }}>Or start from a template</h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
                     {templates.map(template => (
@@ -227,7 +227,7 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
                         key={template.id} 
                         onClick={() => handleUseTemplate(template)}
                         style={{
-                          border: '1px solid #E8ECEE',
+                          border: '1px solid var(--border-color)',
                           borderRadius: '8px',
                           padding: '16px',
                           cursor: 'pointer',
@@ -235,7 +235,7 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
                           flexDirection: 'column',
                           gap: '8px',
                           transition: 'box-shadow 0.2s',
-                          backgroundColor: '#fff'
+                          backgroundColor: 'var(--bg-primary)'
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'}
                         onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
@@ -244,7 +244,7 @@ export default function CreateProject({ token, setProjects, setPortfolios, setAc
                           {template.icon || '📋'}
                         </div>
                         <div style={{ fontWeight: 500, fontSize: '14px' }}>{template.name}</div>
-                        <div style={{ fontSize: '12px', color: '#6B7280' }}>Click to use this template</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Click to use this template</div>
                       </div>
                     ))}
                   </div>
@@ -340,7 +340,7 @@ const styles = {
   },
   formInput: {
     padding: '10px 12px',
-    border: '1px solid #D1D5DB',
+    border: '1px solid var(--border-color)',
     backgroundColor: 'var(--bg-secondary)',
     borderRadius: '4px',
     fontSize: '15px',
@@ -349,7 +349,7 @@ const styles = {
   },
   formSelect: {
     padding: '10px 12px',
-    border: '1px solid #D1D5DB',
+    border: '1px solid var(--border-color)',
     backgroundColor: 'var(--bg-primary)',
     borderRadius: '4px',
     fontSize: '15px',

@@ -28,6 +28,7 @@ model User {
   name        String
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
+  darkMode    Boolean             @default(false)
 
   projects    Project[]           // Sahib olduğu projeler
   memberships ProjectMembership[] // Rol içeren proje üyelikleri

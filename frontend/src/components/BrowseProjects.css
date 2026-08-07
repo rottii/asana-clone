@@ -1,5 +1,7 @@
 .browse-projects-container {
   flex: 1;
+  height: 100%;
+  box-sizing: border-box;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   padding: 32px 40px;
@@ -67,9 +69,22 @@
   margin-bottom: 24px;
 }
 
+.bp-new-project-btn {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .bp-filter-chip {
   background-color: var(--bg-primary);
-  border: 1px solid #E8ECEE;
+  border: 1px solid var(--border-color);
   border-radius: 16px;
   padding: 6px 16px;
   font-size: 13px;
@@ -89,7 +104,7 @@
 }
 
 .bp-filter-chip.active-filter {
-  background-color: #E8F0FE;
+  background-color: rgba(69, 115, 210, 0.15);
   border-color: #4573D2;
   color: #4573D2;
 }
@@ -98,14 +113,40 @@
   color: #4573D2;
 }
 
-.bp-filter-dropdown div:hover {
-  background-color: var(--bg-secondary);
+.bp-filter-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  z-index: 10;
+  min-width: 130px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  padding: 8px;
 }
 
-/* Table */
+.bp-filter-dropdown-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.bp-filter-dropdown-item:last-child {
+  margin-bottom: 0;
+}
+
+.bp-filter-dropdown-item:hover {
+  background-color: var(--bg-secondary);
+}
 .bp-table {
   width: 100%;
-  border-top: 1px solid #E8ECEE;
+  border-top: 1px solid var(--border-color);
   margin-bottom: 60px;
 }
 
@@ -113,7 +154,7 @@
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #E8ECEE;
+  border-bottom: 1px solid var(--border-color);
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: 500;
@@ -123,7 +164,7 @@
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #E8ECEE;
+  border-bottom: 1px solid var(--border-color);
   cursor: pointer;
 }
 
@@ -140,6 +181,17 @@
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.bp-sidebar-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
 }
 
 .bp-project-icon {

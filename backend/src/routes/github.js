@@ -100,4 +100,66 @@ router.post('/pr', async (req, res) => {
   }
 });
 
+router.post('/prs', async (req, res) => {
+  const { repoUrl, includeClosed } = req.body;
+  if (!repoUrl) {
+    return res.status(400).json({ error: 'GitHub repository URL is required' });
+  }
+
+  try {
+    let cleanedUrl = repoUrl.trim();
+    if (cleanedUrl.endsWith('/')) {
+      cleanedUrl = cleanedUrl.slice(0, -1);
+    }
+    const parts = cleanedUrl.split('/');
+    const repo = parts[parts.length - 1];
+    const owner = parts[parts.length - 2];
+
+    const prState = includeClosed ? 'all' : 'open';
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/pulls?state=${prState}&per_page=100`;
+    
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Asana-Clone-App',
+        ...(process.env.GITHUB_TOKEN && { 'Authorization': `Bearer ${process.env.GITHUB_TOKEN}` })
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+         return res.status(404).json({ error: 'Repository not found or is private.' });
+      }
+      if (response.status === 403) {
+         return res.status(403).json({ error: 'GitHub API rate limit exceeded.' });
+      }
+      return res.status(response.status).json({ error: 'Failed to fetch PRs from GitHub API' });
+    }
+
+    const data = await response.json();
+
+    const prs = data.map(pr => ({
+      url: pr.html_url,
+      number: pr.number,
+      title: pr.title,
+      body: pr.body,
+      owner,
+      repo,
+      state: pr.state,
+      draft: pr.draft,
+      merged: pr.merged_at != null,
+      createdAt: pr.created_at,
+      closedAt: pr.closed_at,
+      mergedAt: pr.merged_at,
+      author: pr.user?.login,
+      authorAvatar: pr.user?.avatar_url
+    }));
+
+    return res.json(prs);
+  } catch (error) {
+    console.error('Error fetching GitHub PRs:', error);
+    return res.status(500).json({ error: 'Internal server error while fetching PRs' });
+  }
+});
+
 module.exports = router;

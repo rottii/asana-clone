@@ -170,7 +170,7 @@ const InsertMenu = ({ editor, onClose }) => {
 
   if (inputConfig) {
     return (
-      <div ref={menuRef} style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#FFF', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 99999, width: '280px', padding: '12px', marginTop: '4px' }} onClick={(e) => e.stopPropagation()}>
+      <div ref={menuRef} style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 99999, width: '280px', padding: '12px', marginTop: '4px' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
             {inputConfig.type === 'mention' ? 'Mention User' : 'Embed Link'}
@@ -217,7 +217,7 @@ const InsertMenu = ({ editor, onClose }) => {
 
   if (showEmojiPicker) {
     return (
-      <div ref={menuRef} style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#FFF', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 99999, width: '280px', padding: '8px', marginTop: '4px' }} onClick={(e) => e.stopPropagation()}>
+      <div ref={menuRef} style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 99999, width: '280px', padding: '8px', marginTop: '4px' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid #E5E7EB' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
             {emojiCategories.map(cat => (
@@ -260,16 +260,16 @@ const InsertMenu = ({ editor, onClose }) => {
   }
 
   return (
-    <div ref={menuRef} style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: '#FFF', border: '1px solid #E5E7EB', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 99999, minWidth: '220px', padding: '8px 0', marginTop: '4px', textAlign: 'left' }}>
+    <div ref={menuRef} style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 99999, minWidth: '220px', padding: '8px 0', marginTop: '4px', textAlign: 'left' }}>
       <div style={{ padding: '0 12px', fontSize: '0.75rem', color: '#9CA3AF', marginBottom: '4px' }}>Insert</div>
       {items.map((item, idx) => {
         if (item.type === 'divider') {
-          return <div key={idx} style={{ height: '1px', backgroundColor: '#E5E7EB', margin: '4px 0' }} />;
+          return <div key={idx} style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }} />;
         }
         return (
           <div
             key={idx}
-            style={{ padding: '6px 12px', fontSize: '0.9rem', color: '#374151', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+            style={{ padding: '6px 12px', fontSize: '0.9rem', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
             onClick={(e) => {
               e.stopPropagation();
               if (item.label !== 'Emoji') {
@@ -279,10 +279,10 @@ const InsertMenu = ({ editor, onClose }) => {
                 item.action();
               }
             }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
-            <span style={{ color: '#6B7280', fontSize: '1rem', width: '24px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{item.icon}</span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', width: '24px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{item.icon}</span>
             {item.label}
           </div>
         )
@@ -401,7 +401,7 @@ export default function ProjectNoteView({ selectedProject, isReadOnly, activeVie
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: '#FFF', height: '100%', overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-primary)', height: '100%', overflow: 'hidden' }}>
       <style>{`
         .note-editor-wrapper .ProseMirror p.is-editor-empty:first-child::before {
           content: attr(data-placeholder);
@@ -412,10 +412,10 @@ export default function ProjectNoteView({ selectedProject, isReadOnly, activeVie
         }
         .note-editor-wrapper .ProseMirror { outline: none; min-height: 150px; font-size: 1.05rem; line-height: 1.6; }
         .note-editor-wrapper .ProseMirror pre {
-          background: #F1F2F4;
+          background: var(--bg-tertiary);
           border-radius: 6px;
           padding: 16px;
-          color: #374151;
+          color: var(--text-primary);
           font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
           font-size: 0.9rem;
           margin: 1rem 0;
@@ -429,8 +429,8 @@ export default function ProjectNoteView({ selectedProject, isReadOnly, activeVie
           border: none;
         }
         .note-editor-wrapper .ProseMirror code {
-          background: #F3F4F6;
-          border: 1px solid #D1D5DB;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-color);
           border-radius: 4px;
           padding: 2px 4px;
           font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -451,7 +451,7 @@ export default function ProjectNoteView({ selectedProject, isReadOnly, activeVie
         .note-editor-wrapper .ProseMirror table td,
         .note-editor-wrapper .ProseMirror table th {
           min-width: 1em;
-          border: 1px solid #E2E8F0;
+          border: 1px solid var(--border-color);
           padding: 3px 5px;
           vertical-align: top;
           box-sizing: border-box;
@@ -460,7 +460,7 @@ export default function ProjectNoteView({ selectedProject, isReadOnly, activeVie
         .note-editor-wrapper .ProseMirror table th {
           font-weight: bold;
           text-align: left;
-          background-color: #F8FAFC;
+          background-color: var(--bg-secondary);
         }
       `}</style>
 
@@ -579,8 +579,8 @@ export default function ProjectNoteView({ selectedProject, isReadOnly, activeVie
                       }
                     }}
                     style={{
-                      background: '#FFF',
-                      border: '1px solid #E2E8F0',
+                      background: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
                       borderRadius: '50%',
                       width: '28px',
                       height: '28px',
@@ -601,7 +601,7 @@ export default function ProjectNoteView({ selectedProject, isReadOnly, activeVie
                       e.currentTarget.style.background = '#FEE2E2';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#FFF';
+                      e.currentTarget.style.background = 'var(--bg-primary)';
                     }}
                   >
                     ×
@@ -626,7 +626,7 @@ export default function ProjectNoteView({ selectedProject, isReadOnly, activeVie
                         alignItems: 'center',
                         gap: '0.5rem',
                         padding: '6px 12px',
-                        backgroundColor: '#FFF',
+                        backgroundColor: 'var(--bg-primary)',
                         border: '1px solid var(--border-color)',
                         borderRadius: '6px',
                         cursor: 'pointer',

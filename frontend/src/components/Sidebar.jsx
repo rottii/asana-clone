@@ -221,7 +221,7 @@ export default function Sidebar({
               {/* RIGHT PANE - Profile */}
               <div style={{ width: '280px', display: 'flex', flexDirection: 'column' }}>
                 {/* Top active workspace banner */}
-                <div style={{ backgroundColor: '#FFF7ED', padding: '12px 16px', fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)' }}>
+                <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '12px 16px', fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)' }}>
                   {activeWorkspace?.name || 'My workspace'}
                 </div>
 

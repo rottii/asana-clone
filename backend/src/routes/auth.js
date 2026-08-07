@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const { OAuth2Client } = require('google-auth-library');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -81,12 +82,36 @@ router.post('/google', async (req, res) => {
         },
       });
 
+      // Otomatik olarak Workspace ve Team oluşturma
+      const workspace = await prisma.workspace.create({
+        data: {
+          name: `${user.name}'s Workspace`,
+          members: {
+            create: { userId: user.id, role: 'ADMIN' }
+          },
+          teams: {
+            create: {
+              name: 'Work',
+              description: 'Default team',
+              members: {
+                create: { userId: user.id, role: 'ADMIN' }
+              }
+            }
+          }
+        },
+        include: { teams: true }
+      });
+
+      const teamId = workspace.teams[0].id;
+
       // Otomatik olarak "My Tasks" projesi oluşturma (Aynı Register gibi)
       await prisma.project.create({
         data: {
           name: 'My Tasks',
           status: 'MY_TASKS',
           ownerId: user.id,
+          workspaceId: workspace.id,
+          teamId: teamId,
           color: '#4F46E5',
           icon: '👤',
           sections: {
@@ -114,7 +139,7 @@ router.post('/google', async (req, res) => {
       message: 'Google login successful!',
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
-      user: { id: user.id, name: user.name, email: user.email }
+      user: { id: user.id, name: user.name, email: user.email, darkMode: user.darkMode }
     });
 
   } catch (error) {
@@ -151,12 +176,36 @@ router.post('/register', async (req, res) => {
       },
     });
 
+    // Otomatik olarak Workspace ve Team oluşturma
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: `${newUser.name}'s Workspace`,
+        members: {
+          create: { userId: newUser.id, role: 'ADMIN' }
+        },
+        teams: {
+          create: {
+            name: 'Work',
+            description: 'Default team',
+            members: {
+              create: { userId: newUser.id, role: 'ADMIN' }
+            }
+          }
+        }
+      },
+      include: { teams: true }
+    });
+
+    const teamId = workspace.teams[0].id;
+
     // Otomatik olarak "My Tasks" projesi oluşturma
     await prisma.project.create({
       data: {
         name: 'My Tasks',
         status: 'MY_TASKS',
         ownerId: newUser.id,
+        workspaceId: workspace.id,
+        teamId: teamId,
         color: '#4F46E5',
         icon: '👤',
         sections: {
@@ -183,7 +232,8 @@ router.post('/register', async (req, res) => {
       message: 'Kullanıcı başarıyla oluşturuldu.', 
       userId: newUser.id,
       token: tokens.accessToken,
-      refreshToken: tokens.refreshToken
+      refreshToken: tokens.refreshToken,
+      user: { id: newUser.id, name: newUser.name, email: newUser.email, darkMode: newUser.darkMode }
     });
   } catch (error) {
     res.status(500).json({ error: 'Kayıt esnasında bir hata oluştu.', details: error.message });
@@ -218,7 +268,7 @@ router.post('/login', async (req, res) => {
       message: 'Giriş başarılı!',
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
-      user: { id: user.id, name: user.name, email: user.email }
+      user: { id: user.id, name: user.name, email: user.email, darkMode: user.darkMode }
     });
   } catch (error) {
     res.status(500).json({ error: 'Giriş esnasında bir hata oluştu.', details: error.message });
@@ -285,6 +335,20 @@ router.post('/logout', async (req, res) => {
     res.json({ message: 'Logged out successfully.' });
   } catch (error) {
     res.status(500).json({ error: 'Logout failed.', details: error.message });
+  }
+});
+
+// 5. PREFERENCES - PATCH /api/auth/me/preferences
+router.patch('/me/preferences', authenticateToken, async (req, res) => {
+  try {
+    const { darkMode } = req.body;
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { darkMode }
+    });
+    res.json({ message: 'Preferences updated', user: { id: updatedUser.id, name: updatedUser.name, email: updatedUser.email, darkMode: updatedUser.darkMode } });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update preferences', details: error.message });
   }
 });
 

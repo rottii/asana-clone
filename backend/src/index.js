@@ -47,10 +47,16 @@ app.use(Sentry.Handlers.requestHandler());
 app.use(Sentry.Handlers.tracingHandler());
 
 const httpServer = http.createServer(app);
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
 const io = new Server(httpServer, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE']
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
+    credentials: true
   }
 });
 
@@ -95,7 +101,19 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" } // allow images to be loaded
 }));
 
-app.use(cors());
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
+  credentials: true
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(xssSanitizer);
@@ -214,9 +232,4 @@ async function bootstrapData() {
   }
 }
 
-httpServer.listen(PORT, async () => {
-  console.log(`Server ${PORT} portunda başarıyla başlatıldı (HTTP & WebSocket).`);
-  await bootstrapData();
-  startCronScheduler();
-  startReminderCron(io);
-});
+module.exports = { app, httpServer, bootstrapData };

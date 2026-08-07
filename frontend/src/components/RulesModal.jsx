@@ -647,10 +647,10 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
 
             {/* CONNECTOR FROM TRIGGER */}
             {ruleData.branches.length === 1 && ruleData.branches[0].conditions.length === 0 ? (
-              <div style={{ position: 'relative', width: '40px', height: '2px', background: '#D1D5DB', marginTop: '39px' }}>
+              <div style={{ position: 'relative', width: '40px', height: '2px', background: 'var(--border-color)', marginTop: '39px' }}>
                 <button
                   onClick={(e) => { e.stopPropagation(); setNodeType('condition', ruleData.branches[0].id, 0, ''); }}
-                  style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '24px', height: '24px', borderRadius: '50%', border: '2px solid #D1D5DB', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: '#6B7280', padding: 0, paddingBottom: '2px' }}
+                  style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '24px', height: '24px', borderRadius: '50%', border: '2px solid var(--border-color)', background: 'var(--bg-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: 'var(--text-tertiary)', padding: 0, paddingBottom: '2px' }}
                 >+</button>
               </div>
             ) : (
@@ -666,24 +666,24 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
 
                     {/* SOLID LINE DOWN TO NEXT BRANCH */}
                     {bIdx < ruleData.branches.length - 1 && (
-                      <div style={{ position: 'absolute', top: '40px', bottom: '-30px', left: '19px', width: '2px', background: '#D1D5DB', zIndex: -1 }}></div>
+                      <div style={{ position: 'absolute', top: '40px', bottom: '-30px', left: '19px', width: '2px', background: 'var(--border-color)', zIndex: -1 }}></div>
                     )}
 
                     {/* SOLID LINE UP TO PREVIOUS BRANCH */}
                     {bIdx > 0 && (
-                      <div style={{ position: 'absolute', top: '0', height: '40px', left: '19px', width: '2px', background: '#D1D5DB', zIndex: -1 }}></div>
+                      <div style={{ position: 'absolute', top: '0', height: '40px', left: '19px', width: '2px', background: 'var(--border-color)', zIndex: -1 }}></div>
                     )}
 
                     {/* DASHED LINE DOWN TO ADD BRANCH BUTTON */}
                     {bIdx === ruleData.branches.length - 1 && showSpineDot && (
-                      <div style={{ position: 'absolute', top: '40px', bottom: '-10px', left: '19px', width: '2px', borderLeft: '2px dashed #D1D5DB', zIndex: -1 }}></div>
+                      <div style={{ position: 'absolute', top: '40px', bottom: '-10px', left: '19px', width: '2px', borderLeft: '2px dashed var(--border-color)', zIndex: -1 }}></div>
                     )}
 
                     {showSpineDot && (
                       <>
                         <div className="spine-node-row" style={{ width: '40px', justifyContent: 'center', height: '80px', flexShrink: 0, margin: 0, position: 'relative' }}>
-                          {bIdx === 0 && <div style={{ position: 'absolute', top: '39px', left: '0', width: '20px', height: '2px', background: '#D1D5DB', zIndex: -1 }}></div>}
-                          <div style={{ position: 'absolute', top: '39px', right: '0', width: '20px', height: '2px', background: '#D1D5DB', zIndex: -1 }}></div>
+                          {bIdx === 0 && <div style={{ position: 'absolute', top: '39px', left: '0', width: '20px', height: '2px', background: 'var(--border-color)', zIndex: -1 }}></div>}
+                          <div style={{ position: 'absolute', top: '39px', right: '0', width: '20px', height: '2px', background: 'var(--border-color)', zIndex: -1 }}></div>
                           <div className="spine-circle">...</div>
                         </div>
                         <div className="h-connector" style={{ marginTop: '39px', width: '40px' }}></div>
@@ -714,9 +714,9 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
                           <div className="rule-node" style={{ justifyContent: 'center' }}>
                             <button className="node-remove" onClick={(e) => { e.stopPropagation(); removeBranch(branch.id); }}>×</button>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ width: '24px', height: '24px', background: '#F3F4F6', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#6B7280' }}>→</div>
+                              <div style={{ width: '24px', height: '24px', background: 'var(--bg-secondary)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'var(--text-tertiary)' }}>→</div>
                               <div>
-                                <div style={{ fontWeight: 500, fontSize: '0.9rem', color: '#374151' }}>Otherwise</div>
+                                <div style={{ fontWeight: 500, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Otherwise</div>
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>If all other conditions are not met</div>
                               </div>
                             </div>
@@ -828,7 +828,7 @@ export default function RulesModal({ projectId, token, onClose, editRule = null 
               {(ruleData.branches.length > 1 || (ruleData.branches[0].type !== 'otherwise' && ruleData.branches[0].conditions.length > 0)) && (
                 <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', position: 'relative', zIndex: 2, height: '60px', marginTop: '-20px' }}>
                   {/* Dashed elbow line */}
-                  <div style={{ position: 'absolute', left: '19px', top: '0', width: '20px', height: '27px', borderLeft: '2px dashed #D1D5DB', borderBottom: '2px dashed #D1D5DB', borderBottomLeftRadius: '8px' }}></div>
+                  <div style={{ position: 'absolute', left: '19px', top: '0', width: '20px', height: '27px', borderLeft: '2px dashed var(--border-color)', borderBottom: '2px dashed var(--border-color)', borderBottomLeftRadius: '8px' }}></div>
                   <div style={{ marginLeft: '40px', marginTop: '10px', position: 'relative' }}>
                     <button className="add-branch-btn" onClick={(e) => { e.stopPropagation(); setShowAddBranchMenu(!showAddBranchMenu); }} style={{ margin: 0 }}>+ Add branch</button>
 

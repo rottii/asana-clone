@@ -8,17 +8,12 @@ export const useUndo = () => {
 
 export const UndoProvider = ({ children }) => {
   const [undoAction, setUndoAction] = useState(null);
+  const undoActionRef = useRef(null);
   const timeoutRef = useRef(null);
 
-  // showUndo params:
-  // message: string to display
-  // onUndo: function to call when user clicks undo
-  // onCommit: optional function to call when timeout expires (e.g. for optimistic deletes)
-  // timeoutMs: time in ms before the action is "committed" or the toast simply disappears
   const showUndo = ({ message, onUndo, onCommit = null, timeoutMs = 5000 }) => {
-    // If there is an existing undo action, commit it before showing a new one
-    if (undoAction?.onCommit) {
-      undoAction.onCommit();
+    if (undoActionRef.current?.onCommit) {
+      undoActionRef.current.onCommit();
     }
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -26,39 +21,43 @@ export const UndoProvider = ({ children }) => {
 
     const newUndoAction = { message, onUndo, onCommit };
     setUndoAction(newUndoAction);
+    undoActionRef.current = newUndoAction;
 
     timeoutRef.current = setTimeout(() => {
-      if (onCommit) {
-        onCommit();
+      if (undoActionRef.current?.onCommit) {
+        undoActionRef.current.onCommit();
       }
       setUndoAction(null);
+      undoActionRef.current = null;
     }, timeoutMs);
   };
 
   const handleUndo = () => {
-    if (!undoAction) return;
+    if (!undoActionRef.current) return;
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     
-    if (undoAction.onUndo) {
-      undoAction.onUndo();
+    if (undoActionRef.current.onUndo) {
+      undoActionRef.current.onUndo();
     }
     
     setUndoAction(null);
+    undoActionRef.current = null;
   };
 
   const handleClose = () => {
-    if (!undoAction) return;
+    if (!undoActionRef.current) return;
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     
-    if (undoAction.onCommit) {
-      undoAction.onCommit();
+    if (undoActionRef.current.onCommit) {
+      undoActionRef.current.onCommit();
     }
     
     setUndoAction(null);
+    undoActionRef.current = null;
   };
 
   return (
